@@ -11,6 +11,9 @@ dependencies = [
   "pydantic>=2.7,<3",
 ]
 
+[project.scripts]
+feiyue-interruption-demo = "feiyue_core.runtime.interruption_simulation:main"
+
 [project.optional-dependencies]
 dev = [
   "pytest>=8,<9",

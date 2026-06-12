@@ -5,12 +5,19 @@ Feiyue is a private research/design repository for an AI self-improvement system
 ## Implementation
 
 - Core package: `packages/feiyue-core`
-- Current slice: Pydantic schema contracts, recovery-runtime data contracts, command execution, JSONL trace writing, pytest verification, isolated worktree execution, session journal, recovery manifest persistence, recovery prompt generation, operation recording, local-loop recovery integration, reconciliation, resume context preparation, side-effect inspection, inspector-backed reconciliation, persisted resume cleanup, automatic file/git/artifact side-effect check recording, full interruption resume simulation, high-risk recovery safety gating, and git remote ref reconciliation
+- Current slice: Pydantic schema contracts, recovery-runtime data contracts, command execution, JSONL trace writing, pytest verification, isolated worktree execution, session journal, recovery manifest persistence, recovery prompt generation, operation recording, local-loop recovery integration, reconciliation, resume context preparation, side-effect inspection, inspector-backed reconciliation, persisted resume cleanup, automatic file/git/artifact side-effect check recording, full interruption resume simulation, high-risk recovery safety gating, git remote ref reconciliation, and CLI demo entrypoint
 - Local test command:
 
 ```bash
 cd packages/feiyue-core
 python3 -m pytest tests/ -q
+```
+
+- Interruption/resume demo command:
+
+```bash
+cd packages/feiyue-core
+python3 -m feiyue_core.runtime.interruption_simulation --root /tmp/feiyue-demo --json
 ```
 
 ## Documents

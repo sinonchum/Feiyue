@@ -1,7 +1,6 @@
-"""Runtime persistence and recovery helpers."""
+from __future__ import annotations
 
 from .journal import SessionJournal
-from .interruption_simulation import InterruptionSimulationResult, simulate_interrupted_resume
 from .operation_recorder import OperationRecorder
 from .reconciler import Reconciler, ReconciliationDecision, ReconciliationItem, ReconciliationReport
 from .recovery_prompt import RecoveryPromptBuilder
@@ -27,3 +26,14 @@ __all__ = [
     "SideEffectStatus",
     "simulate_interrupted_resume",
 ]
+
+
+def __getattr__(name: str):
+    if name in {"InterruptionSimulationResult", "simulate_interrupted_resume"}:
+        from .interruption_simulation import InterruptionSimulationResult, simulate_interrupted_resume
+
+        return {
+            "InterruptionSimulationResult": InterruptionSimulationResult,
+            "simulate_interrupted_resume": simulate_interrupted_resume,
+        }[name]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+import json
 import subprocess
 from pathlib import Path
 
@@ -98,3 +100,45 @@ def _init_git_repo(path: Path) -> Path:
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", *args], cwd=repo, text=True, capture_output=True, check=True)
+
+
+def build_demo_summary(result: InterruptionSimulationResult) -> dict[str, object]:
+    return {
+        "pending_operations": result.manifest.pending_operations,
+        "warnings": result.warnings,
+        "next_safe_action": result.manifest.next_safe_action,
+        "verified_count": len(result.manifest.verified_outputs),
+        "verified_outputs": result.manifest.verified_outputs,
+        "file_path": str(result.file_path),
+        "artifact_path": str(result.artifact_path),
+        "git_repo_path": str(result.git_repo_path),
+        "file_exists": result.file_path.exists(),
+        "artifact_exists": result.artifact_path.exists(),
+        "recovery_prompt": result.recovery_prompt,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Run Feiyue's deterministic interruption/resume demo.")
+    parser.add_argument("--root", required=True, help="Directory where demo state will be created.")
+    parser.add_argument("--json", action="store_true", help="Emit a machine-readable JSON summary.")
+    args = parser.parse_args(argv)
+
+    result = simulate_interrupted_resume(args.root)
+    summary = build_demo_summary(result)
+    if args.json:
+        print(json.dumps(summary, ensure_ascii=False, sort_keys=True))
+        return 0
+    print("Feiyue interruption/resume demo completed")
+    print(f"pending_operations: {summary['pending_operations']}")
+    print(f"warnings: {summary['warnings']}")
+    print(f"next_safe_action: {summary['next_safe_action']}")
+    print(f"verified_count: {summary['verified_count']}")
+    print(f"file_path: {summary['file_path']}")
+    print(f"artifact_path: {summary['artifact_path']}")
+    print(f"git_repo_path: {summary['git_repo_path']}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
