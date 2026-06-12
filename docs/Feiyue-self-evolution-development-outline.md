@@ -677,6 +677,24 @@ M4 后续只做文档 closeout：
 
 把 worker failure、teacher guidance、successful repair 和 verifier evidence 转化为可审核、可复用的系统资产。
 
+## 当前状态
+
+**Partial Foundation 已完成。**
+
+本轮并行开发已完成：
+
+- M6.1 CuratorInput bundle。
+- M6.2 DistillationProposal model。
+- Curation integration smoke：workflow assets → curator input → review-required distillation proposal。
+
+尚未完成：
+
+- Teacher guidance normalizer。
+- Lesson candidate generator 自动化。
+- Human review gate 状态机。
+- Asset promotion / rejection writer。
+- Dedup / merge policy。
+
 ## 新功能范围
 
 - CuratorInput bundle。
@@ -1209,7 +1227,7 @@ M5 Project Knowledge
 | M3 Resilient Runtime | Done Foundation | anti-amnesia 基础闭环完成 |
 | M4 Candidate / Feedback / Teacher Loop | Done Foundation | fake provider / toy loop / trace resume 完成 |
 | M5 Workflow Asset Layer | Done Foundation | Project knowledge、task contract、bug dossier、lesson packet、regression eval、routing table 与 integration smoke 已完成；后续批量持久化/学习策略归入 M6/M7 |
-| M6 Curator / Distillation | Not Started | 依赖 M5 |
+| M6 Curator / Distillation | Partial Foundation | CuratorInput、DistillationProposal 与 curation smoke 已完成；normalizer/review gate/promotion 未完成 |
 | M7 Weak Model Capability Expansion | Not Started | 依赖 M5/M6 evidence |
 | M8 Creative Role Development | Not Started | 依赖 project knowledge，部分可并行 |
 | M9 Strategy/Evaluation Harness | Not Started | toy metrics 可先行，真实评估依赖 M5–M8 |
@@ -1223,51 +1241,53 @@ M5 Project Knowledge
 
 # 20. Immediate Next Development Slice
 
-## M6.1 / M6.2：Curator Input Bundle + Distillation Proposal
+## M6.3 / M6.4：Teacher Guidance Normalizer + Review Gate
 
-下一步建议进入 M6 Curator / Distillation System，把 M5 产出的 workflow assets 串成可审核的经验沉淀流程。
+下一步建议继续 M6，补齐 teacher guidance normalizer 和 human review gate，让 distillation proposal 进入可审核状态机，而不是只停留在 model schema。
 
 ### Objective
 
-实现 provider-free 的 Curator input bundle 和 lesson/template/eval/routing proposal，让 worker failure、teacher guidance、verifier evidence 可以被整理成可审核的 reusable asset candidates。
+实现 provider-free 的 teacher guidance normalization 和 review gate 状态机。Teacher 输出要先被压缩为 root cause / fix strategy / prevention rule / suggested assets，再进入 review-required proposal；proposal 只有通过显式 review action 才能 promoted/rejected。
 
 ### Files
 
 Create:
 
-- `packages/feiyue-core/feiyue_core/curation/__init__.py`
-- `packages/feiyue-core/feiyue_core/curation/curator_input.py`
-- `packages/feiyue-core/feiyue_core/curation/distillation_proposal.py`
-- `packages/feiyue-core/tests/test_curator_input.py`
-- `packages/feiyue-core/tests/test_distillation_proposal.py`
+- `packages/feiyue-core/feiyue_core/curation/teacher_guidance.py`
+- `packages/feiyue-core/feiyue_core/curation/review_gate.py`
+- `packages/feiyue-core/tests/test_teacher_guidance.py`
+- `packages/feiyue-core/tests/test_review_gate.py`
 
 Update:
 
-- `packages/feiyue-core/tests/test_workflow_assets_integration.py` or add a dedicated curation integration smoke.
+- `packages/feiyue-core/feiyue_core/curation/__init__.py`
+- Add or extend curation integration smoke.
 - `README.md`
 - `docs/Feiyue-self-evolution-development-outline.md`
 
 ### Functional Acceptance
 
-- CuratorInput can bundle task contract, bug dossier, teacher guidance text, verifier evidence summary, lesson packet, regression check, and routing context.
-- DistillationProposal can propose updates to lesson, task template, regression eval, skill candidate, project memory, and routing rule without auto-promoting them.
-- Proposal status must start as review-required/draft, not approved.
-- Integration smoke covers workflow assets → curator input → distillation proposal.
+- Teacher guidance text can be normalized into bounded fields: root cause, minimal fix strategy, prevention rule, suggested asset updates.
+- Raw guidance/evidence is bounded and never dumped unbounded.
+- Review gate can transition proposal from review_required/draft to accepted/rejected with reviewer id and rationale.
+- Review gate must reject direct auto-promotion without explicit review action.
+- Integration smoke covers curator input → normalized guidance → distillation proposal → review gate decision.
 
 ### Code Quality & Cleanliness Acceptance
 
 - Provider-free and deterministic.
-- No raw long logs; evidence excerpts are bounded.
-- All proposals carry provenance/source IDs.
+- Explicit status transitions with invalid-transition tests.
+- All review actions carry provenance/source IDs and rationale.
 - compileall / pytest / diff-check / secret scan pass.
 
 ### Dependencies
 
-- M5 Workflow Asset Layer foundation.
-- Existing LessonPacket, BugDossier, RegressionCheck, ModelRoutingTable.
+- M6.1 CuratorInput.
+- M6.2 DistillationProposal.
+- Existing BugDossier / LessonPacket / RegressionCheck.
 - Does not depend on real provider / network.
 
 ### Parallelization
 
-可并行：CuratorInput schema 与 DistillationProposal schema 可以分两条 lane 开发。
-必须串行：最终 curation integration smoke 需要两条 lane 合并后由 controller 完成。
+可并行：Teacher Guidance Normalizer 与 Review Gate 可以分两条 lane 开发。
+必须串行：最终 integration smoke 需要两条 lane 合并后由 controller 完成。
