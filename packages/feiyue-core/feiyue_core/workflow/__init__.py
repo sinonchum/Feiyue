@@ -7,11 +7,14 @@ from feiyue_core.workflow.project_knowledge import (
     ProjectKnowledgeLoader,
     build_worker_context,
 )
+from feiyue_core.workflow.task_contract import TaskContract, build_task_contract
 
 __all__ = [
     "KNOWLEDGE_FILENAMES",
     "ProjectKnowledge",
     "ProjectKnowledgeInitializer",
     "ProjectKnowledgeLoader",
+    "TaskContract",
+    "build_task_contract",
     "build_worker_context",
 ]
