@@ -21,6 +21,13 @@ class TraceEventType(StrEnum):
     MANIFEST_UPDATED = "manifest_updated"
     RECOVERY_STARTED = "recovery_started"
     RECOVERY_COMPLETED = "recovery_completed"
+    CANDIDATE_GENERATED = "candidate_generated"
+    VERIFICATION_FAILED = "verification_failed"
+    VERIFICATION_PASSED = "verification_passed"
+    FEEDBACK_ANALYZED = "feedback_analyzed"
+    TEACHER_GUIDANCE_REQUESTED = "teacher_guidance_requested"
+    CANDIDATE_REVISED = "candidate_revised"
+    ITERATION_COMPLETED = "iteration_completed"
 
 
 class TraceEvent(FeiyueModel):

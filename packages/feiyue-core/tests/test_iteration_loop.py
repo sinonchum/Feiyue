@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+
+from feiyue_core.audit import JsonlTraceWriter
 from feiyue_core.generation import CandidateService, ToyIterationLoop
 from feiyue_core.providers import FakeStudentProvider, FakeTeacherProvider, ModelProfile, ProviderRole
 from feiyue_core.routing import ModelRoleRouter, TeacherInterventionPolicy
@@ -117,3 +120,44 @@ def test_toy_iteration_loop_stops_with_failed_candidate_when_attempt_budget_is_e
     assert len(result.feedback) == 1
     assert result.teacher_guidance_events == []
     assert result.final_candidate.metadata["verification_result_id"] == "verify_fail_001"
+
+
+def test_toy_iteration_loop_persists_auditable_jsonl_trace(tmp_path) -> None:
+    trace_path = tmp_path / "iteration-trace.jsonl"
+    loop = ToyIterationLoop(
+        candidate_service=candidate_service(),
+        verifier=SequenceVerifier([failed_pytest_result(), passed_pytest_result()]),
+        trace_writer=JsonlTraceWriter(trace_path),
+        session_id="sess_loop_trace_001",
+    )
+
+    result = loop.run(
+        task=task_spec(),
+        strategy=strategy(),
+        initial_file_writes={"math_tools.py": "def add(a, b):\n    return -1\n"},
+        revised_file_writes={"math_tools.py": "def add(a, b):\n    return a + b\n"},
+        max_attempts=2,
+    )
+
+    events = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+    event_types = [event["type"] for event in events]
+
+    assert result.passed is True
+    assert event_types == [
+        "candidate_generated",
+        "verification_failed",
+        "feedback_analyzed",
+        "teacher_guidance_requested",
+        "candidate_revised",
+        "verification_passed",
+        "feedback_analyzed",
+        "iteration_completed",
+    ]
+    assert all(event["session_id"] == "sess_loop_trace_001" for event in events)
+    assert events[0]["data"]["candidate_id"] == result.candidates[0].id
+    assert events[0]["data"]["prompt_rendered_hash"].startswith("sha256:")
+    assert events[1]["data"]["verification_result_id"] == "verify_fail_001"
+    assert events[3]["data"]["teacher_trigger"] == "consecutive_student_failures"
+    assert events[4]["data"]["parent_candidate_id"] == result.candidates[0].id
+    assert events[-1]["data"]["passed"] is True
+    assert events[-1]["data"]["final_candidate_id"] == result.final_candidate.id
