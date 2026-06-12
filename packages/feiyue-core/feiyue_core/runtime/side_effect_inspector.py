@@ -33,6 +33,8 @@ class SideEffectInspector:
             return self.check_artifact_exists(spec["path"])
         if check_type == "git_ref":
             return self.check_git_ref(spec["repo_path"], spec["ref"], spec["expected_sha"])
+        if check_type == "git_remote_ref":
+            return self.check_git_remote_ref(spec["remote_url"], spec["ref"], spec["expected_sha"])
         return SideEffectCheck(
             subject=str(spec.get("subject", "unknown")),
             status=SideEffectStatus.NEEDS_INSPECTION,
@@ -102,5 +104,43 @@ class SideEffectInspector:
             subject=f"{repo}:{ref}",
             status=SideEffectStatus.UNSAFE_TO_REPEAT,
             reason="git ref mismatch",
+            observed={"sha": actual, "expected_sha": expected_sha},
+        )
+
+    def check_git_remote_ref(self, remote_url: str, ref: str, expected_sha: str) -> SideEffectCheck:
+        completed = subprocess.run(
+            ["git", "ls-remote", remote_url, ref],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        subject = f"{remote_url}:{ref}"
+        if completed.returncode != 0:
+            return SideEffectCheck(
+                subject=subject,
+                status=SideEffectStatus.NEEDS_INSPECTION,
+                reason="git remote ref unavailable",
+                observed={"exit_code": completed.returncode, "stderr": completed.stderr},
+            )
+        output = completed.stdout.strip()
+        if not output:
+            return SideEffectCheck(
+                subject=subject,
+                status=SideEffectStatus.NEEDS_INSPECTION,
+                reason="git remote ref missing",
+                observed={"exists": False},
+            )
+        actual = output.split()[0]
+        if actual == expected_sha:
+            return SideEffectCheck(
+                subject=subject,
+                status=SideEffectStatus.CONFIRMED,
+                reason="git remote ref matches",
+                observed={"sha": actual},
+            )
+        return SideEffectCheck(
+            subject=subject,
+            status=SideEffectStatus.UNSAFE_TO_REPEAT,
+            reason="git remote ref mismatch",
             observed={"sha": actual, "expected_sha": expected_sha},
         )

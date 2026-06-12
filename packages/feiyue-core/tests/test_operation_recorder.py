@@ -165,3 +165,26 @@ def test_operation_recorder_auto_derives_artifact_exists_check(tmp_path) -> None
 
     checks = journal.read_manifest().side_effect_checks["op_artifact_auto_001"]
     assert checks == [{"type": "artifact_exists", "path": str(artifact)}]
+
+
+def test_operation_recorder_auto_derives_git_remote_ref_check(tmp_path) -> None:
+    journal = SessionJournal(tmp_path / "session.jsonl")
+    recorder = OperationRecorder(journal)
+
+    recorder.register(
+        operation_id="op_git_remote_auto_001",
+        tool="git_push",
+        args={"remote_url": "file:///tmp/remote.git", "remote_ref": "refs/heads/main", "expected_sha": "abc123"},
+        risk_level=OperationRiskLevel.HIGH,
+        preconditions={"local_head": "abc123"},
+    )
+
+    checks = journal.read_manifest().side_effect_checks["op_git_remote_auto_001"]
+    assert checks == [
+        {
+            "type": "git_remote_ref",
+            "remote_url": "file:///tmp/remote.git",
+            "ref": "refs/heads/main",
+            "expected_sha": "abc123",
+        }
+    ]

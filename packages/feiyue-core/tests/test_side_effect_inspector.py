@@ -73,3 +73,49 @@ def test_git_ref_check_marks_mismatch_unsafe_to_repeat(tmp_path) -> None:
 
     assert result.status == SideEffectStatus.UNSAFE_TO_REPEAT
     assert result.reason == "git ref mismatch"
+
+
+def _make_local_and_bare_remote(tmp_path):
+    source = tmp_path / "source"
+    remote = tmp_path / "remote.git"
+    source.mkdir()
+    _git(source, "init", "-b", "main")
+    _git(source, "config", "user.email", "test@example.com")
+    _git(source, "config", "user.name", "Test User")
+    (source / "README.md").write_text("hello\n", encoding="utf-8")
+    _git(source, "add", "README.md")
+    _git(source, "commit", "-m", "initial")
+    head = _git(source, "rev-parse", "HEAD").stdout.strip()
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True, text=True)
+    _git(source, "remote", "add", "origin", str(remote))
+    _git(source, "push", "origin", "HEAD:refs/heads/main")
+    return source, remote, head
+
+
+def test_git_remote_ref_check_confirms_expected_remote_head(tmp_path) -> None:
+    _source, remote, head = _make_local_and_bare_remote(tmp_path)
+
+    result = SideEffectInspector().check_git_remote_ref(str(remote), "refs/heads/main", expected_sha=head)
+
+    assert result.status == SideEffectStatus.CONFIRMED
+    assert result.reason == "git remote ref matches"
+    assert result.observed["sha"] == head
+
+
+def test_git_remote_ref_check_marks_mismatch_unsafe_to_repeat(tmp_path) -> None:
+    _source, remote, _head = _make_local_and_bare_remote(tmp_path)
+
+    result = SideEffectInspector().check_git_remote_ref(str(remote), "refs/heads/main", expected_sha="deadbeef")
+
+    assert result.status == SideEffectStatus.UNSAFE_TO_REPEAT
+    assert result.reason == "git remote ref mismatch"
+
+
+def test_inspect_dispatches_git_remote_ref_specs(tmp_path) -> None:
+    _source, remote, head = _make_local_and_bare_remote(tmp_path)
+
+    result = SideEffectInspector().inspect(
+        {"type": "git_remote_ref", "remote_url": str(remote), "ref": "refs/heads/main", "expected_sha": head}
+    )
+
+    assert result.status == SideEffectStatus.CONFIRMED

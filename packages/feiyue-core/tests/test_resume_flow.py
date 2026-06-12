@@ -151,3 +151,39 @@ def test_resume_flow_recovers_interrupted_recorded_git_side_effect_after_restart
     assert "op_git_002" not in persisted.pending_operations
     assert "operation op_git_002 reconciled as confirmed" in persisted.verified_outputs
     assert persisted.next_safe_action == "continue with next planned step"
+
+
+def test_resume_flow_recovers_interrupted_recorded_remote_git_side_effect_after_restart(tmp_path) -> None:
+    source = tmp_path / "source"
+    remote = tmp_path / "remote.git"
+    source.mkdir()
+    subprocess.run(["git", "init", "-b", "main"], cwd=source, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=source, check=True)
+    subprocess.run(["git", "config", "user.name", "Test User"], cwd=source, check=True)
+    (source / "README.md").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=source, check=True)
+    subprocess.run(["git", "commit", "-m", "initial"], cwd=source, check=True, capture_output=True, text=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=source, check=True, capture_output=True, text=True
+    ).stdout.strip()
+    subprocess.run(["git", "init", "--bare", str(remote)], check=True, capture_output=True, text=True)
+    subprocess.run(["git", "remote", "add", "origin", str(remote)], cwd=source, check=True)
+
+    journal = SessionJournal(tmp_path / "session.jsonl")
+    recorder = OperationRecorder(journal)
+    recorder.register(
+        operation_id="op_git_remote_001",
+        tool="git_push",
+        args={"remote_url": str(remote), "remote_ref": "refs/heads/main", "expected_sha": head},
+        risk_level=OperationRiskLevel.HIGH,
+        preconditions={"local_head": head},
+    )
+    subprocess.run(["git", "push", "origin", "HEAD:refs/heads/main"], cwd=source, check=True, capture_output=True, text=True)
+
+    result = ResumeFlow(journal=journal).prepare()
+    persisted = journal.read_manifest()
+
+    assert result.warnings == []
+    assert "op_git_remote_001" not in persisted.pending_operations
+    assert "operation op_git_remote_001 reconciled as confirmed" in persisted.verified_outputs
+    assert persisted.next_safe_action == "continue with next planned step"

@@ -135,8 +135,19 @@ class OperationRecorder:
         repo_path = args.get("repo_path")
         ref = args.get("ref") or args.get("remote_ref")
         expected_sha = args.get("expected_sha")
+        remote_url = args.get("remote_url")
+        has_git_remote_ref_contract = all(isinstance(value, str) for value in [remote_url, ref, expected_sha])
+        if tool in {"git_push", "git_update_ref"} and has_git_remote_ref_contract:
+            checks.append(
+                {
+                    "type": "git_remote_ref",
+                    "remote_url": remote_url,
+                    "ref": ref,
+                    "expected_sha": expected_sha,
+                }
+            )
         has_git_ref_contract = all(isinstance(value, str) for value in [repo_path, ref, expected_sha])
-        if tool in {"git_push", "git_update_ref"} and has_git_ref_contract:
+        if tool in {"git_push", "git_update_ref"} and has_git_ref_contract and not has_git_remote_ref_contract:
             checks.append(
                 {
                     "type": "git_ref",
