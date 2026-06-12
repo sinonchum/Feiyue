@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from feiyue_core.capability import CapabilityLevel, default_capability_ladder, rank_for
-from feiyue_core.creative import CreativeBrief, CreativeVariant, CreativeVariantType
+from feiyue_core.creative import (
+    CreativeBrief,
+    CreativeCritique,
+    CreativeCritiqueRecommendation,
+    CreativeVariant,
+    CreativeVariantType,
+    UserSelectionFeedback,
+    UserSelectionStatus,
+)
 from feiyue_core.workflow import ProjectKnowledgeInitializer, build_worker_context
 
 
-def test_creative_brief_and_variants_are_candidate_only_review_artifacts(tmp_path) -> None:
+def test_creative_brief_variants_critique_and_selection_are_candidate_evidence(tmp_path) -> None:
     ProjectKnowledgeInitializer(tmp_path).initialize()
     hermes_dir = tmp_path / ".hermes"
     (hermes_dir / "project-memory.md").write_text(
@@ -82,5 +90,35 @@ def test_creative_brief_and_variants_are_candidate_only_review_artifacts(tmp_pat
         assert variant.candidate_only is True
         assert "## Verification Idea" in rendered_variant
 
-    assert variants[0].variant_type is CreativeVariantType.CONSERVATIVE
-    assert variants[1].required_capability_level == CapabilityLevel.TASTE_AWARE_CREATIVE_VARIANTS.value
+    critique = CreativeCritique(
+        critique_id="critique-bold-m8-demo",
+        variant_id=variants[1].variant_id,
+        constraint_violations=[],
+        risk_assessment="Bold cross-project transfer may overfit noisy lessons.",
+        feasibility_notes="Feasible as a candidate review artifact before any PRD conversion.",
+        verification_cost="Medium: requires user review and accepted proposal metrics.",
+        recommendation=CreativeCritiqueRecommendation.REVISE,
+        source_ids=[brief.brief_id, variants[1].variant_id, "design-laws-m8-demo"],
+    )
+    rendered_critique = critique.render_markdown()
+    assert "# Creative Critique: critique-bold-m8-demo" in rendered_critique
+    assert "- Recommendation: revise" in rendered_critique
+    assert "## Constraint Violations\n\n- None" in rendered_critique
+
+    feedback = UserSelectionFeedback(
+        feedback_id="selection-m8-demo",
+        brief_id=brief.brief_id,
+        selected_variant_id=variants[0].variant_id,
+        status=UserSelectionStatus.ACCEPTED,
+        rationale="The conservative variant is useful because it stays grounded in reviewed lessons.",
+        violated_design_laws=[],
+        useful_aspects=["grounded in lessons", "clear verification path"],
+        source_ids=[brief.brief_id, variants[0].variant_id, critique.critique_id],
+    )
+    rendered_feedback = feedback.render_markdown()
+
+    assert feedback.status is UserSelectionStatus.ACCEPTED
+    assert feedback.selected_variant_id == "variant-conservative-m8-demo"
+    assert "# User Selection Feedback: selection-m8-demo" in rendered_feedback
+    assert "- Status: accepted" in rendered_feedback
+    assert "grounded in lessons" in rendered_feedback

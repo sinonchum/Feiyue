@@ -818,20 +818,22 @@ M4 后续只做文档 closeout：
 
 ## 当前状态
 
-**Partial Foundation 已完成。**
+**Foundation 已完成。**
 
 本轮并行开发已完成：
 
 - M8.1 Creative Brief。
 - M8.2 Creative Variant Schema。
-- Creative integration smoke：project knowledge + capability ladder → creative brief → candidate-only variants。
+- M8.3 Creative Critique。
+- M8.4 User Selection Feedback。
+- Creative integration smoke：project knowledge + capability ladder → creative brief → candidate-only variants → critique → user selection feedback。
 
-尚未完成：
+后续增强项：
 
-- Creative critique template。
-- User selection feedback record。
 - Opportunity discovery from lessons / failures。
 - Accepted creative proposal metrics。
+- Creative prompt/template hashing。
+- 与真实 creative provider 的连接。
 
 ## 新功能范围
 
@@ -1266,7 +1268,7 @@ M5 Project Knowledge
 | M5 Workflow Asset Layer | Done Foundation | Project knowledge、task contract、bug dossier、lesson packet、regression eval、routing table 与 integration smoke 已完成；后续批量持久化/学习策略归入 M6/M7 |
 | M6 Curator / Distillation | Done Foundation | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate 与 curation smoke 已完成；promotion writer/dedup 作为后续增强 |
 | M7 Weak Model Capability Expansion | Done Foundation | CapabilityLadder、TaskComplexity、WorkerPerformanceRecord、ModelCapabilityProfile、recommendation rules 与 capability smoke 已完成；routing adapter/真实数据连接后续增强 |
-| M8 Creative Role Development | Partial Foundation | CreativeBrief、CreativeVariant 与 creative smoke 已完成；critique/selection/opportunity metrics 未完成 |
+| M8 Creative Role Development | Done Foundation | CreativeBrief、CreativeVariant、CreativeCritique、UserSelectionFeedback 与 creative smoke 已完成；opportunity/metrics/real provider 后续增强 |
 | M9 Strategy/Evaluation Harness | Not Started | toy metrics 可先行，真实评估依赖 M5–M8 |
 | M10 Real Provider Integration | Not Started | 需要授权，不改 Hermes config |
 | M11 Real Workflow Execution | Not Started | 依赖 M5/M6/M10，provider-free toy path 可先做 |
@@ -1278,52 +1280,51 @@ M5 Project Knowledge
 
 # 20. Immediate Next Development Slice
 
-## M8.3 / M8.4：Creative Critique + User Selection Feedback
+## M9.1 / M9.2：Strategy Evaluation Records + Scorecards
 
-下一步继续 M8。Creative brief/variant 已能表达候选创意；接下来要让系统能批判候选、记录用户选择反馈，为 taste-aware proposal 和 accepted creative proposal metrics 做基础。
+下一步进入 M9 Strategy / Evaluation Harness。M5-M8 已经形成 workflow、curation、capability、creative evidence；现在需要把这些 evidence 汇总为可比较的 evaluation records 和 scorecards，用来证明 Feiyue 是否真的提升弱模型执行质量和创意候选质量。
 
 ### Objective
 
-实现 provider-free 的 creative critique 和 user selection feedback schema。每个 creative variant 必须能被批判其风险、违反约束可能性、验证成本和适合度；用户选择/拒绝必须记录 rationale，后续用于 taste-aware learning，但不自动修改 project memory 或 routing。
+实现 provider-free 的 strategy evaluation record 和 scorecard schema。先不接真实 provider，不跑真实 benchmark；只定义可验证、可聚合的评价数据结构和 deterministic aggregation。
 
 ### Files
 
 Create:
 
-- `packages/feiyue-core/feiyue_core/creative/critique.py`
-- `packages/feiyue-core/feiyue_core/creative/selection.py`
-- `packages/feiyue-core/tests/test_creative_critique.py`
-- `packages/feiyue-core/tests/test_creative_selection.py`
+- `packages/feiyue-core/feiyue_core/evaluation/__init__.py`
+- `packages/feiyue-core/feiyue_core/evaluation/record.py`
+- `packages/feiyue-core/feiyue_core/evaluation/scorecard.py`
+- `packages/feiyue-core/tests/test_strategy_evaluation_record.py`
+- `packages/feiyue-core/tests/test_strategy_scorecard.py`
 
 Update:
 
-- `packages/feiyue-core/feiyue_core/creative/__init__.py`
-- Extend creative integration smoke.
+- Add provider-free evaluation integration smoke.
 - `README.md`
 - `docs/Feiyue-self-evolution-development-outline.md`
 
 ### Functional Acceptance
 
-- CreativeCritique can record variant id, constraint violations, risk assessment, feasibility notes, verification cost, recommendation, and source IDs.
-- UserSelectionFeedback can record accepted/rejected/deferred status, selected variant id, rationale, violated design laws, useful aspects, and source IDs.
-- Feedback remains evidence only; it does not auto-promote variants to PRD/task.
-- Deterministic Markdown render for review.
+- StrategyEvaluationRecord can capture strategy id, model id, task id, capability level, pass/fail outcome, teacher calls, cost units, latency units, creative acceptance status, and source IDs.
+- StrategyScorecard can aggregate records by strategy id.
+- Scorecard reports pass rate, teacher call rate, average cost/latency, accepted creative rate, unsafe count, and source IDs.
+- Aggregation is deterministic and does not use LLM self-assessment.
 
 ### Code Quality & Cleanliness Acceptance
 
 - Provider-free and deterministic.
 - No real model/provider/network calls.
-- No automatic project memory mutation.
-- Validation rejects empty rationale/source IDs.
+- Explicit handling of zero-record scorecards.
 - compileall / pytest / diff-check / secret scan pass.
 
 ### Dependencies
 
-- M8.1 CreativeBrief.
-- M8.2 CreativeVariant.
-- M5 design laws/project knowledge optional via source IDs.
+- M7 capability records/recommendations.
+- M8 creative selection feedback.
+- M5/M6 evidence IDs.
 
 ### Parallelization
 
-可并行：Creative Critique 与 User Selection Feedback 可以分两条 lane 开发。
-必须串行：integration smoke 需要两条 lane 合并后完成。
+可并行：StrategyEvaluationRecord 与 StrategyScorecard 可以分两条 lane 开发。
+必须串行：evaluation integration smoke 需要两条 lane 合并后完成。
