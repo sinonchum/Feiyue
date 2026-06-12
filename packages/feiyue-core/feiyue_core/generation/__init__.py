@@ -4,6 +4,7 @@ from .candidate_service import CandidateService, CandidateServiceError, Candidat
 from .iteration_loop import CandidateVerifier, ToyIterationLoop, ToyIterationResult
 from .prompt_loader import PromptArtifact, PromptTemplateError, PromptTemplateLoader
 from .structured_output import CandidateOutputError, CandidateOutputParser, ParsedCandidateOutput, ProviderCandidateOutput
+from .trace_replay import IterationResumeContext, IterationResumeContextBuilder, IterationTraceReader
 
 __all__ = [
     "CandidateOutputError",
@@ -12,6 +13,9 @@ __all__ = [
     "CandidateServiceError",
     "CandidateServiceResult",
     "CandidateVerifier",
+    "IterationResumeContext",
+    "IterationResumeContextBuilder",
+    "IterationTraceReader",
     "ParsedCandidateOutput",
     "PromptArtifact",
     "PromptTemplateError",
