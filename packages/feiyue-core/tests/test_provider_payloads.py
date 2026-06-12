@@ -20,7 +20,7 @@ def test_model_profile_records_role_and_redacts_secret() -> None:
         cost_tier="low",
         strengths=["code repair"],
         weaknesses=["long horizon planning"],
-        api_key="sk-test-secret-value-1234567890",
+        api_key="fixture-api-key-value",
     )
 
     dumped = profile.model_dump(mode="json")
