@@ -5,7 +5,7 @@ Feiyue is a private research/design repository for an AI self-improvement system
 ## Implementation
 
 - Core package: `packages/feiyue-core`
-- Current slice: Pydantic schema contracts and recovery-runtime data contracts
+- Current slice: Pydantic schema contracts, recovery-runtime data contracts, command execution, JSONL trace writing, and pytest verification
 - Local test command:
 
 ```bash
