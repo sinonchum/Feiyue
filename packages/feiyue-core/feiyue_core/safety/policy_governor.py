@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from enum import StrEnum
+from pathlib import Path
+from typing import Any
 
-from pydantic import Field
+from pydantic import Field, ValidationError
 
 from feiyue_core.schemas.common import FeiyueModel
 
@@ -36,6 +38,77 @@ class PolicyGovernorConfig(FeiyueModel):
     require_privacy_approval_for_sensitive_data: bool = True
 
 
+class PolicyConfigLoadError(ValueError):
+    """Raised when a project policy config cannot be parsed or validated."""
+
+    def __init__(self, path: Path, message: str) -> None:
+        self.path = path
+        super().__init__(f"invalid policy config at {path}: {message}")
+
+
+class PolicyGovernorConfigLoader:
+    """Load provider-free safety policy from .feiyue/policy.yaml with safe defaults."""
+
+    def __init__(self, project_root: str | Path, relative_path: str = ".feiyue/policy.yaml") -> None:
+        self.project_root = Path(project_root)
+        self.relative_path = relative_path
+
+    @property
+    def path(self) -> Path:
+        return self.project_root / self.relative_path
+
+    def load(self) -> PolicyGovernorConfig:
+        if not self.path.exists():
+            return PolicyGovernorConfig()
+
+        try:
+            data = self._parse_simple_yaml(self.path.read_text(encoding="utf-8"))
+            return PolicyGovernorConfig.model_validate(data)
+        except (PolicyConfigLoadError, ValidationError) as exc:
+            if isinstance(exc, PolicyConfigLoadError):
+                raise
+            raise PolicyConfigLoadError(self.path, str(exc)) from exc
+
+    def _parse_simple_yaml(self, text: str) -> dict[str, Any]:
+        data: dict[str, Any] = {}
+        for line_number, raw_line in enumerate(text.splitlines(), start=1):
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if ":" not in line:
+                raise PolicyConfigLoadError(self.path, f"line {line_number} is not a key-value pair")
+            key, raw_value = line.split(":", 1)
+            key = key.strip()
+            value = raw_value.strip()
+            if not key:
+                raise PolicyConfigLoadError(self.path, f"line {line_number} has an empty key")
+            data[key] = self._parse_scalar(value)
+        return data
+
+    @staticmethod
+    def _parse_scalar(value: str) -> Any:
+        lowered = value.lower()
+        if lowered == "true":
+            return True
+        if lowered == "false":
+            return False
+        if value.isdecimal():
+            return int(value)
+        return value
+
+
+class HumanApprovalRecord(FeiyueModel):
+    approval_id: str
+    task_id: str
+    approved_action: str
+    approver: str
+    approved_at: str
+    reason: str
+
+    def applies_to(self, request: "PolicyRequest") -> bool:
+        return self.task_id == request.task_id and self.approved_action == request.operation
+
+
 class PolicyRequest(FeiyueModel):
     task_id: str
     operation: str
@@ -61,13 +134,16 @@ class PolicyGovernor:
     def __init__(self, config: PolicyGovernorConfig | None = None) -> None:
         self.config = config or PolicyGovernorConfig()
 
-    def evaluate(self, request: PolicyRequest) -> PolicyDecision:
+    def evaluate(self, request: PolicyRequest, approval_record: HumanApprovalRecord | None = None) -> PolicyDecision:
+        approval_applies = approval_record is not None and approval_record.applies_to(request)
+        approval_id = approval_record.approval_id if approval_record is not None and approval_applies else None
         if request.estimated_tokens > self.config.max_tokens_per_task:
             return self._decision(
                 request,
                 action=GovernanceAction.BLOCK,
                 reason=PolicyDecisionReason.TOKEN_BUDGET_EXCEEDED,
                 message=f"estimated tokens {request.estimated_tokens} exceed task budget {self.config.max_tokens_per_task}",
+                human_approval_id=approval_id,
             )
 
         if request.operation == "worker_retry" and request.worker_retries_used >= self.config.max_worker_retries:
@@ -76,6 +152,7 @@ class PolicyGovernor:
                 action=GovernanceAction.BLOCK,
                 reason=PolicyDecisionReason.WORKER_RETRY_BUDGET_EXHAUSTED,
                 message="worker retry budget exhausted",
+                human_approval_id=approval_id,
             )
 
         if request.operation == "teacher_call" and request.teacher_calls_used >= self.config.max_teacher_calls:
@@ -84,12 +161,14 @@ class PolicyGovernor:
                 action=GovernanceAction.BLOCK,
                 reason=PolicyDecisionReason.TEACHER_CALL_BUDGET_EXHAUSTED,
                 message="teacher call budget exhausted",
+                human_approval_id=approval_id,
             )
 
         if (
             request.contains_sensitive_data
             and self.config.require_privacy_approval_for_sensitive_data
             and not request.privacy_approved
+            and not approval_applies
         ):
             return self._decision(
                 request,
@@ -97,15 +176,17 @@ class PolicyGovernor:
                 reason=PolicyDecisionReason.PRIVACY_APPROVAL_REQUIRED,
                 message="sensitive data requires privacy approval before provider execution",
                 requires_human_approval=True,
+                human_approval_id=approval_id,
             )
 
-        if request.risk_level == RiskLevel.HIGH and self.config.require_human_for_high_risk:
+        if request.risk_level == RiskLevel.HIGH and self.config.require_human_for_high_risk and not approval_applies:
             return self._decision(
                 request,
                 action=GovernanceAction.ESCALATE,
                 reason=PolicyDecisionReason.HIGH_RISK_OPERATION,
                 message="high-risk operation requires manual approval before execution",
                 requires_human_approval=True,
+                human_approval_id=approval_id,
             )
 
         return self._decision(
@@ -113,6 +194,7 @@ class PolicyGovernor:
             action=GovernanceAction.ALLOW,
             reason=PolicyDecisionReason.WITHIN_POLICY,
             message="request is within policy",
+            human_approval_id=approval_id,
         )
 
     @staticmethod
@@ -123,6 +205,7 @@ class PolicyGovernor:
         reason: PolicyDecisionReason,
         message: str,
         requires_human_approval: bool = False,
+        human_approval_id: str | None = None,
     ) -> PolicyDecision:
         return PolicyDecision(
             action=action,
@@ -138,5 +221,6 @@ class PolicyGovernor:
                 "estimated_tokens": request.estimated_tokens,
                 "contains_sensitive_data": request.contains_sensitive_data,
                 "privacy_approved": request.privacy_approved,
+                "human_approval_id": human_approval_id,
             },
         )

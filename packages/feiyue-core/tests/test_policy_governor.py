@@ -1,8 +1,13 @@
+import pytest
+
 from feiyue_core.safety import (
     GovernanceAction,
+    HumanApprovalRecord,
+    PolicyConfigLoadError,
     PolicyDecisionReason,
     PolicyGovernor,
     PolicyGovernorConfig,
+    PolicyGovernorConfigLoader,
     PolicyRequest,
     RiskLevel,
 )
@@ -26,6 +31,60 @@ def test_policy_governor_allows_low_risk_within_budgets() -> None:
     assert decision.requires_human_approval is False
     assert decision.audit_metadata["task_id"] == "m12-allow"
     assert decision.audit_metadata["risk_level"] == "low"
+
+
+def test_policy_governor_allows_high_risk_operation_with_matching_human_approval() -> None:
+    request = PolicyRequest(
+        task_id="m12-approved-risk",
+        operation="promotion",
+        risk_level=RiskLevel.HIGH,
+        worker_retries_used=0,
+        teacher_calls_used=0,
+        estimated_tokens=300,
+        contains_sensitive_data=False,
+    )
+    approval = HumanApprovalRecord(
+        approval_id="approval-003",
+        task_id="m12-approved-risk",
+        approved_action="promotion",
+        approver="Simon",
+        approved_at="2026-06-13T10:00:00Z",
+        reason="Approve high-risk promotion after review.",
+    )
+
+    decision = PolicyGovernor().evaluate(request, approval_record=approval)
+
+    assert decision.action == GovernanceAction.ALLOW
+    assert decision.reason == PolicyDecisionReason.WITHIN_POLICY
+    assert decision.requires_human_approval is False
+    assert decision.audit_metadata["human_approval_id"] == "approval-003"
+
+
+def test_policy_governor_rejects_non_matching_human_approval() -> None:
+    request = PolicyRequest(
+        task_id="m12-approval-match",
+        operation="promotion",
+        risk_level=RiskLevel.HIGH,
+        worker_retries_used=0,
+        teacher_calls_used=0,
+        estimated_tokens=300,
+        contains_sensitive_data=False,
+    )
+    approval = HumanApprovalRecord(
+        approval_id="approval-004",
+        task_id="m12-approval-match",
+        approved_action="provider_call",
+        approver="Simon",
+        approved_at="2026-06-13T10:00:00Z",
+        reason="Approve a different action only.",
+    )
+
+    decision = PolicyGovernor().evaluate(request, approval_record=approval)
+
+    assert decision.action == GovernanceAction.ESCALATE
+    assert decision.reason == PolicyDecisionReason.HIGH_RISK_OPERATION
+    assert decision.requires_human_approval is True
+    assert decision.audit_metadata["human_approval_id"] is None
 
 
 def test_policy_governor_escalates_high_risk_operations_before_execution() -> None:
@@ -147,4 +206,113 @@ def test_policy_governor_serializes_deterministic_decision() -> None:
         "estimated_tokens": 250,
         "contains_sensitive_data": False,
         "privacy_approved": False,
+        "human_approval_id": None,
     }
+
+
+def test_policy_config_loader_uses_safe_defaults_when_yaml_missing(tmp_path) -> None:
+    config = PolicyGovernorConfigLoader(tmp_path).load()
+
+    assert config == PolicyGovernorConfig()
+
+
+def test_policy_config_loader_reads_project_yaml(tmp_path) -> None:
+    config_dir = tmp_path / ".feiyue"
+    config_dir.mkdir()
+    (config_dir / "policy.yaml").write_text(
+        "\n".join(
+            [
+                "max_worker_retries: 1",
+                "max_teacher_calls: 0",
+                "max_tokens_per_task: 1200",
+                "require_human_for_high_risk: false",
+                "require_privacy_approval_for_sensitive_data: true",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    config = PolicyGovernorConfigLoader(tmp_path).load()
+
+    assert config.max_worker_retries == 1
+    assert config.max_teacher_calls == 0
+    assert config.max_tokens_per_task == 1200
+    assert config.require_human_for_high_risk is False
+    assert config.require_privacy_approval_for_sensitive_data is True
+
+
+def test_policy_config_loader_rejects_invalid_yaml_value_with_typed_error(tmp_path) -> None:
+    config_dir = tmp_path / ".feiyue"
+    config_dir.mkdir()
+    policy_path = config_dir / "policy.yaml"
+    policy_path.write_text("max_worker_retries: nope\n", encoding="utf-8")
+
+    with pytest.raises(PolicyConfigLoadError) as exc_info:
+        PolicyGovernorConfigLoader(tmp_path).load()
+
+    assert exc_info.value.path == policy_path
+    assert "max_worker_retries" in str(exc_info.value)
+
+
+def test_human_approval_record_allows_exact_pending_action() -> None:
+    request = PolicyRequest(
+        task_id="m12-approval",
+        operation="promotion",
+        risk_level=RiskLevel.HIGH,
+        worker_retries_used=0,
+        teacher_calls_used=0,
+        estimated_tokens=300,
+        contains_sensitive_data=False,
+    )
+    approval = HumanApprovalRecord(
+        approval_id="approval-001",
+        task_id="m12-approval",
+        approved_action="promotion",
+        approver="Simon",
+        approved_at="2026-06-13T10:00:00Z",
+        reason="Approve controlled test promotion.",
+    )
+
+    assert approval.applies_to(request) is True
+    assert approval.model_dump(mode="json") == {
+        "approval_id": "approval-001",
+        "task_id": "m12-approval",
+        "approved_action": "promotion",
+        "approver": "Simon",
+        "approved_at": "2026-06-13T10:00:00Z",
+        "reason": "Approve controlled test promotion.",
+    }
+
+
+def test_human_approval_record_does_not_apply_to_other_task_or_action() -> None:
+    approval = HumanApprovalRecord(
+        approval_id="approval-002",
+        task_id="m12-approval",
+        approved_action="promotion",
+        approver="Simon",
+        approved_at="2026-06-13T10:00:00Z",
+        reason="Approve only promotion for this task.",
+    )
+
+    other_task_request = PolicyRequest(
+        task_id="m12-other",
+        operation="promotion",
+        risk_level=RiskLevel.HIGH,
+        worker_retries_used=0,
+        teacher_calls_used=0,
+        estimated_tokens=300,
+        contains_sensitive_data=False,
+    )
+    other_action_request = PolicyRequest(
+        task_id="m12-approval",
+        operation="provider_call",
+        risk_level=RiskLevel.HIGH,
+        worker_retries_used=0,
+        teacher_calls_used=0,
+        estimated_tokens=300,
+        contains_sensitive_data=False,
+    )
+
+    assert approval.applies_to(other_task_request) is False
+    assert approval.applies_to(other_action_request) is False
