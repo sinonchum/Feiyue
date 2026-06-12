@@ -484,3 +484,70 @@ def test_policy_governor_escalates_high_risk_promotion_before_branch_creation(tm
     assert refs.strip() == ""
     assert promotion.source_repo_clean is True
     assert promotion.promotion_worktree_removed is True
+
+
+
+def test_workflow_report_writer_persists_execution_policy_decision_markdown(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-report-policy-execution",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    report = ToyWorkflowExecutor(policy_governor=PolicyGovernor()).execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        project_name="toy-calculator",
+        risk_level=RiskLevel.LOW,
+        estimated_tokens=640,
+    )
+
+    artifacts = WorkflowReportWriter(repo).write(report=report)
+
+    markdown = artifacts.execution_markdown_path.read_text(encoding="utf-8")
+    assert "## Policy Decision" in markdown
+    assert "- action: allow" in markdown
+    assert "- reason: within_policy" in markdown
+    assert "- operation: candidate_execution" in markdown
+    assert "- estimated_tokens: 640" in markdown
+
+
+def test_workflow_report_writer_persists_promotion_policy_decision_markdown(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-report-policy-promotion",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    writes = [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")]
+    executor = ToyWorkflowExecutor(policy_governor=PolicyGovernor())
+    report = executor.execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=writes,
+        project_name="toy-calculator",
+    )
+    promotion = executor.promote_verified_writes(
+        source_repo=repo,
+        report=report,
+        candidate_writes=writes,
+        target_branch="feiyue/m12-report-policy-promotion",
+        commit_message="feat: should not promote without approval",
+        risk_level=RiskLevel.HIGH,
+    )
+
+    artifacts = WorkflowReportWriter(repo).write(report=report, promotion=promotion)
+
+    markdown = artifacts.promotion_markdown_path.read_text(encoding="utf-8")
+    assert "## Policy Decision" in markdown
+    assert "- action: escalate" in markdown
+    assert "- reason: high_risk_operation" in markdown
+    assert "- operation: promotion" in markdown
+    assert "- requires_human_approval: True" in markdown

@@ -170,10 +170,15 @@ def _render_execution_report_markdown(report: WorkflowExecutionReport) -> str:
         "## Attempts",
         str(report.attempt_count),
         "",
-        "## Safety",
-        f"- source_repo_clean: {report.source_repo_clean}",
-        f"- sandbox_removed: {report.sandbox_removed}",
     ]
+    lines.extend(_render_policy_decision_section(report.policy_decision))
+    lines.extend(
+        [
+            "## Safety",
+            f"- source_repo_clean: {report.source_repo_clean}",
+            f"- sandbox_removed: {report.sandbox_removed}",
+        ]
+    )
     return "\n".join(lines) + "\n"
 
 
@@ -215,6 +220,7 @@ def _render_promotion_markdown(promotion: PromotionResult) -> str:
     ]
     if promotion.reason:
         lines.extend(["", "## Reason", promotion.reason])
+    lines.extend(_render_policy_decision_section(promotion.policy_decision))
     return "\n".join(lines) + "\n"
 
 
@@ -222,6 +228,23 @@ def _render_bullets(items: list[str]) -> list[str]:
     if not items:
         return ["- None"]
     return [f"- {item}" for item in items]
+
+
+def _render_policy_decision_section(policy_decision: PolicyDecision | None) -> list[str]:
+    if policy_decision is None:
+        return ["## Policy Decision", "- None", ""]
+    metadata = policy_decision.audit_metadata
+    lines = [
+        "## Policy Decision",
+        f"- action: {policy_decision.action.value}",
+        f"- reason: {policy_decision.reason.value}",
+        f"- requires_human_approval: {policy_decision.requires_human_approval}",
+        f"- message: {policy_decision.message}",
+    ]
+    for key in sorted(metadata):
+        lines.append(f"- {key}: {metadata[key]}")
+    lines.append("")
+    return lines
 
 
 class ToyWorkflowExecutor:
