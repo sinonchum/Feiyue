@@ -889,20 +889,22 @@ M4 后续只做文档 closeout：
 
 ## 当前状态
 
-**Partial Foundation 已完成。**
+**Foundation 已完成。**
 
 本轮并行开发已完成：
 
 - M9.1 Strategy Evaluation Record。
 - M9.2 Strategy Scorecard。
-- Evaluation integration smoke：creative selection evidence → strategy evaluation records → scorecard aggregation。
+- M9.3 Benchmark Task Suite。
+- M9.4 Strategy Comparison Report。
+- Evaluation integration smoke：benchmark suite + creative selection evidence → strategy evaluation records → scorecards → comparison report。
 
-尚未完成：
+后续增强项：
 
-- Benchmark task suite。
-- weak-only / weak+task-contract / weak+verifier / weak+sparse-teacher / strong-reference comparison。
-- cost-normalized quality metrics。
-- repeated mistake / distillation gain report。
+- Real benchmark runner。
+- weak-only / weak+task-contract / weak+verifier / weak+sparse-teacher / strong-reference real comparison。
+- Real provider / real workflow metrics ingestion。
+- Longitudinal distillation gain report。
 
 ## 新功能范围
 
@@ -1286,7 +1288,7 @@ M5 Project Knowledge
 | M6 Curator / Distillation | Done Foundation | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate 与 curation smoke 已完成；promotion writer/dedup 作为后续增强 |
 | M7 Weak Model Capability Expansion | Done Foundation | CapabilityLadder、TaskComplexity、WorkerPerformanceRecord、ModelCapabilityProfile、recommendation rules 与 capability smoke 已完成；routing adapter/真实数据连接后续增强 |
 | M8 Creative Role Development | Done Foundation | CreativeBrief、CreativeVariant、CreativeCritique、UserSelectionFeedback 与 creative smoke 已完成；opportunity/metrics/real provider 后续增强 |
-| M9 Strategy/Evaluation Harness | Partial Foundation | StrategyEvaluationRecord、StrategyScorecard 与 evaluation smoke 已完成；benchmark/comparison runner 未完成 |
+| M9 Strategy/Evaluation Harness | Done Foundation | StrategyEvaluationRecord、StrategyScorecard、BenchmarkSuite、StrategyComparisonReport 与 evaluation smoke 已完成；真实 benchmark/provider 后续增强 |
 | M10 Real Provider Integration | Not Started | 需要授权，不改 Hermes config |
 | M11 Real Workflow Execution | Not Started | 依赖 M5/M6/M10，provider-free toy path 可先做 |
 | M12 Safety/Budget Governor | Not Started | 依赖 M7/M10/M11 |
