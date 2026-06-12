@@ -2,6 +2,14 @@
 
 from feiyue_core.workflow.bug_dossier import BugDossier
 from feiyue_core.workflow.lesson_packet import LessonPacket
+from feiyue_core.workflow.model_routing_table import (
+    MODEL_ROUTING_FILENAME,
+    REQUIRED_MODEL_ROUTING_ROLES,
+    ModelRoutingTable,
+    ModelRoutingTableInitializer,
+    ModelRoutingTableLoader,
+    RoleRoute,
+)
 from feiyue_core.workflow.project_knowledge import (
     KNOWLEDGE_FILENAMES,
     ProjectKnowledge,
@@ -22,12 +30,18 @@ __all__ = [
     "BugDossier",
     "KNOWLEDGE_FILENAMES",
     "LessonPacket",
+    "MODEL_ROUTING_FILENAME",
+    "ModelRoutingTable",
+    "ModelRoutingTableInitializer",
+    "ModelRoutingTableLoader",
     "ProjectKnowledge",
     "ProjectKnowledgeInitializer",
     "ProjectKnowledgeLoader",
+    "REQUIRED_MODEL_ROUTING_ROLES",
     "RegressionCheck",
     "RegressionEvalAssets",
     "RegressionEvalWriter",
+    "RoleRoute",
     "TaskContract",
     "UnsafeRegressionCommandError",
     "build_regression_check_from_lesson",
