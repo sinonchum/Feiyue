@@ -25,6 +25,21 @@ class SideEffectCheck(FeiyueModel):
 
 
 class SideEffectInspector:
+    def inspect(self, spec: dict[str, Any]) -> SideEffectCheck:
+        check_type = spec.get("type")
+        if check_type == "file_hash":
+            return self.check_file_hash(spec["path"], spec["expected_sha256"])
+        if check_type == "artifact_exists":
+            return self.check_artifact_exists(spec["path"])
+        if check_type == "git_ref":
+            return self.check_git_ref(spec["repo_path"], spec["ref"], spec["expected_sha"])
+        return SideEffectCheck(
+            subject=str(spec.get("subject", "unknown")),
+            status=SideEffectStatus.NEEDS_INSPECTION,
+            reason=f"unsupported side effect check type: {check_type}",
+            observed={"spec_type": check_type},
+        )
+
     def check_file_hash(self, path: str | Path, expected_sha256: str) -> SideEffectCheck:
         file_path = Path(path)
         if not file_path.exists():

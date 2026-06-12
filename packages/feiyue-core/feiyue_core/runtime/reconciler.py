@@ -7,6 +7,7 @@ from pydantic import Field
 from feiyue_core.schemas.common import FeiyueModel
 
 from .journal import SessionJournal
+from .side_effect_inspector import SideEffectInspector, SideEffectStatus
 
 
 class ReconciliationDecision(StrEnum):
@@ -29,14 +30,19 @@ class ReconciliationReport(FeiyueModel):
 
 
 class Reconciler:
-    def __init__(self, journal: SessionJournal) -> None:
+    def __init__(self, journal: SessionJournal, inspector: SideEffectInspector | None = None) -> None:
         self.journal = journal
+        self.inspector = inspector or SideEffectInspector()
 
     def reconcile(self) -> ReconciliationReport:
         manifest = self.journal.read_manifest()
         decisions: list[ReconciliationItem] = []
 
         for operation_id in manifest.pending_operations:
+            checks = manifest.side_effect_checks.get(operation_id, [])
+            if checks:
+                decisions.append(self._decision_from_side_effect_checks(operation_id, checks))
+                continue
             reason = self._reason_for_pending(operation_id, manifest.open_questions)
             decisions.append(
                 ReconciliationItem(
@@ -72,6 +78,17 @@ class Reconciler:
         )
         summary = self._summary(decisions)
         return ReconciliationReport(decisions=decisions, next_safe_action=next_safe_action, summary=summary)
+
+    def _decision_from_side_effect_checks(self, operation_id: str, checks: list[dict[str, object]]) -> ReconciliationItem:
+        results = [self.inspector.inspect(check) for check in checks]
+        reason = "; ".join(f"{result.subject}: {result.reason}" for result in results)
+        if any(result.status == SideEffectStatus.UNSAFE_TO_REPEAT for result in results):
+            decision = ReconciliationDecision.UNSAFE_TO_REPEAT
+        elif all(result.status == SideEffectStatus.CONFIRMED for result in results):
+            decision = ReconciliationDecision.CONFIRMED
+        else:
+            decision = ReconciliationDecision.NEEDS_INSPECTION
+        return ReconciliationItem(operation_id=operation_id, decision=decision, reason=reason)
 
     @staticmethod
     def _reason_for_pending(operation_id: str, open_questions: list[str]) -> str:

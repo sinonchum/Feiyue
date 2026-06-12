@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 from pydantic import Field, field_serializer
 
@@ -17,6 +18,7 @@ class RecoveryManifest(FeiyueModel):
     do_not_repeat: list[str] = Field(default_factory=list)
     completed_steps: list[str] = Field(default_factory=list)
     pending_operations: list[str] = Field(default_factory=list)
+    side_effect_checks: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     changed_files: list[str] = Field(default_factory=list)
     verified_outputs: list[str] = Field(default_factory=list)
     open_questions: list[str] = Field(default_factory=list)
