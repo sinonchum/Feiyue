@@ -24,6 +24,74 @@ class IterationResumeContext(FeiyueModel):
     resume_summary: str
 
 
+class IterationResumePromptBuilder:
+    def build(self, context: IterationResumeContext) -> str:
+        do_not_repeat = self._do_not_repeat(context)
+        return "\n".join(
+            [
+                "# Iteration Fallback Resume Prompt",
+                "",
+                "## Durable State Source",
+                "- Treat prior model chat context as disposable.",
+                "- Use only this persisted resume context plus durable repository state.",
+                "- Do not infer success; success requires external verifier evidence.",
+                "",
+                "## Current Iteration State",
+                f"- Session ID: {self._value(context.session_id)}",
+                f"- Task ID: {self._value(context.task_id)}",
+                f"- Latest candidate: {self._value(context.latest_candidate_id)}",
+                f"- Parent candidate: {self._value(context.parent_candidate_id)}",
+                f"- Candidate lineage: {self._lineage(context.candidate_lineage)}",
+                f"- Latest verification result: {self._value(context.latest_verification_result_id)}",
+                f"- Latest feedback category: {self._value(context.latest_feedback_category)}",
+                f"- Teacher guidance already requested: {context.teacher_guidance_already_requested}",
+                f"- Completed: {context.completed}",
+                f"- Passed: {context.passed}",
+                "",
+                "## Do Not Repeat",
+                *do_not_repeat,
+                "",
+                "## Next Safe Action",
+                f"- {context.next_safe_action}",
+                "",
+                "## Resume Summary",
+                context.resume_summary or "None",
+            ]
+        )
+
+    @staticmethod
+    def _value(value: str | None) -> str:
+        return value if value else "None"
+
+    @staticmethod
+    def _lineage(candidate_lineage: list[str]) -> str:
+        return " -> ".join(candidate_lineage) if candidate_lineage else "None"
+
+    @staticmethod
+    def _do_not_repeat(context: IterationResumeContext) -> list[str]:
+        rules: list[str] = []
+        if context.teacher_guidance_already_requested:
+            rules.append("- Do not request duplicate teacher guidance; it was already requested.")
+        if context.latest_feedback_category and context.latest_feedback_category != "passed":
+            rules.append(f"- Do not regenerate the same failed candidate after {context.latest_feedback_category}.")
+        if context.completed and context.passed:
+            rules.append("- Do not regenerate a new candidate before checking whether promotion/acceptance is sufficient.")
+        if context.latest_candidate_id:
+            rules.append(f"- Do not lose candidate lineage; continue from {context.latest_candidate_id} unless evidence says otherwise.")
+        rules.append("- Do not mark success until an external verifier passes.")
+        if rules == ["- Do not mark success until an external verifier passes."] and not any(
+            [
+                context.latest_candidate_id,
+                context.latest_feedback_category,
+                context.teacher_guidance_already_requested,
+                context.completed,
+                context.passed,
+            ]
+        ):
+            return ["- None"]
+        return rules
+
+
 class IterationTraceReader:
     def __init__(self, path: str | Path) -> None:
         self.path = Path(path)
