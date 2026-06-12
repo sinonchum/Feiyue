@@ -116,17 +116,40 @@ class OperationRecorder:
 
     @staticmethod
     def _derive_side_effect_checks(tool: str, args: dict[str, object]) -> list[dict[str, object]]:
-        if tool != "write_file":
-            return []
-        path = args.get("path")
-        content = args.get("content")
-        if not isinstance(path, str) or content is None:
-            return []
-        encoded = str(content).encode("utf-8")
-        return [
-            {
-                "type": "file_hash",
-                "path": path,
-                "expected_sha256": hashlib.sha256(encoded).hexdigest(),
-            }
-        ]
+        checks: list[dict[str, object]] = []
+        if tool == "write_file":
+            path = args.get("path")
+            content = args.get("content")
+            if isinstance(path, str) and content is not None:
+                encoded = str(content).encode("utf-8")
+                checks.append(
+                    {
+                        "type": "file_hash",
+                        "path": path,
+                        "expected_sha256": hashlib.sha256(encoded).hexdigest(),
+                    }
+                )
+
+        repo_path = args.get("repo_path")
+        ref = args.get("ref") or args.get("remote_ref")
+        expected_sha = args.get("expected_sha")
+        has_git_ref_contract = all(isinstance(value, str) for value in [repo_path, ref, expected_sha])
+        if tool in {"git_push", "git_update_ref"} and has_git_ref_contract:
+            checks.append(
+                {
+                    "type": "git_ref",
+                    "repo_path": repo_path,
+                    "ref": ref,
+                    "expected_sha": expected_sha,
+                }
+            )
+
+        artifact_path = args.get("artifact_path")
+        if isinstance(artifact_path, str):
+            checks.append({"type": "artifact_exists", "path": artifact_path})
+        artifact_paths = args.get("artifact_paths")
+        if isinstance(artifact_paths, list):
+            for path in artifact_paths:
+                if isinstance(path, str):
+                    checks.append({"type": "artifact_exists", "path": path})
+        return checks

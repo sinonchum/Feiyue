@@ -130,3 +130,38 @@ def test_operation_recorder_removes_side_effect_checks_after_finish(tmp_path) ->
     manifest = journal.read_manifest()
     assert manifest.pending_operations == []
     assert "op_write_finished_001" not in manifest.side_effect_checks
+
+
+def test_operation_recorder_auto_derives_git_ref_check(tmp_path) -> None:
+    journal = SessionJournal(tmp_path / "session.jsonl")
+    recorder = OperationRecorder(journal)
+
+    recorder.register(
+        operation_id="op_git_auto_001",
+        tool="git_push",
+        args={"repo_path": str(tmp_path), "ref": "refs/remotes/origin/main", "expected_sha": "abc123"},
+        risk_level=OperationRiskLevel.HIGH,
+        preconditions={"local_head": "abc123"},
+    )
+
+    checks = journal.read_manifest().side_effect_checks["op_git_auto_001"]
+    assert checks == [
+        {"type": "git_ref", "repo_path": str(tmp_path), "ref": "refs/remotes/origin/main", "expected_sha": "abc123"}
+    ]
+
+
+def test_operation_recorder_auto_derives_artifact_exists_check(tmp_path) -> None:
+    journal = SessionJournal(tmp_path / "session.jsonl")
+    recorder = OperationRecorder(journal)
+    artifact = tmp_path / "report.json"
+
+    recorder.register(
+        operation_id="op_artifact_auto_001",
+        tool="generate_artifact",
+        args={"artifact_path": str(artifact)},
+        risk_level=OperationRiskLevel.MEDIUM,
+        preconditions={"task_id": "task_001"},
+    )
+
+    checks = journal.read_manifest().side_effect_checks["op_artifact_auto_001"]
+    assert checks == [{"type": "artifact_exists", "path": str(artifact)}]
