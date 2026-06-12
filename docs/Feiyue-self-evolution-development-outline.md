@@ -679,21 +679,22 @@ M4 后续只做文档 closeout：
 
 ## 当前状态
 
-**Partial Foundation 已完成。**
+**Foundation 已完成。**
 
 本轮并行开发已完成：
 
 - M6.1 CuratorInput bundle。
 - M6.2 DistillationProposal model。
-- Curation integration smoke：workflow assets → curator input → review-required distillation proposal。
+- M6.3 Teacher Guidance Normalizer。
+- M6.4 Review Gate。
+- Curation integration smoke：workflow assets → curator input → normalized teacher guidance → review-required distillation proposal → review decision。
 
-尚未完成：
+后续增强项：
 
-- Teacher guidance normalizer。
 - Lesson candidate generator 自动化。
-- Human review gate 状态机。
 - Asset promotion / rejection writer。
 - Dedup / merge policy。
+- Review decisions 到正式 `.hermes/` asset writes 的安全落地。
 
 ## 新功能范围
 
@@ -1227,7 +1228,7 @@ M5 Project Knowledge
 | M3 Resilient Runtime | Done Foundation | anti-amnesia 基础闭环完成 |
 | M4 Candidate / Feedback / Teacher Loop | Done Foundation | fake provider / toy loop / trace resume 完成 |
 | M5 Workflow Asset Layer | Done Foundation | Project knowledge、task contract、bug dossier、lesson packet、regression eval、routing table 与 integration smoke 已完成；后续批量持久化/学习策略归入 M6/M7 |
-| M6 Curator / Distillation | Partial Foundation | CuratorInput、DistillationProposal 与 curation smoke 已完成；normalizer/review gate/promotion 未完成 |
+| M6 Curator / Distillation | Done Foundation | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate 与 curation smoke 已完成；promotion writer/dedup 作为后续增强 |
 | M7 Weak Model Capability Expansion | Not Started | 依赖 M5/M6 evidence |
 | M8 Creative Role Development | Not Started | 依赖 project knowledge，部分可并行 |
 | M9 Strategy/Evaluation Harness | Not Started | toy metrics 可先行，真实评估依赖 M5–M8 |
@@ -1241,53 +1242,53 @@ M5 Project Knowledge
 
 # 20. Immediate Next Development Slice
 
-## M6.3 / M6.4：Teacher Guidance Normalizer + Review Gate
+## M7.1 / M7.2：Capability Ladder + Worker Performance Record
 
-下一步建议继续 M6，补齐 teacher guidance normalizer 和 human review gate，让 distillation proposal 进入可审核状态机，而不是只停留在 model schema。
+下一步建议进入 M7 Weak Model Capability Expansion。M5/M6 已经能形成 workflow assets 和 review-first curation evidence，接下来要把这些 evidence 用来显式跟踪弱模型的任务能力边界。
 
 ### Objective
 
-实现 provider-free 的 teacher guidance normalization 和 review gate 状态机。Teacher 输出要先被压缩为 root cause / fix strategy / prevention rule / suggested assets，再进入 review-required proposal；proposal 只有通过显式 review action 才能 promoted/rejected。
+实现 provider-free 的 capability ladder 和 worker performance record，让系统能记录某个模型/worker 在某类任务上的成功、失败、重复错误、teacher 介入和 verifier 结果，为后续 promotion/demotion/routing recommendation 做基础。
 
 ### Files
 
 Create:
 
-- `packages/feiyue-core/feiyue_core/curation/teacher_guidance.py`
-- `packages/feiyue-core/feiyue_core/curation/review_gate.py`
-- `packages/feiyue-core/tests/test_teacher_guidance.py`
-- `packages/feiyue-core/tests/test_review_gate.py`
+- `packages/feiyue-core/feiyue_core/capability/__init__.py`
+- `packages/feiyue-core/feiyue_core/capability/ladder.py`
+- `packages/feiyue-core/feiyue_core/capability/performance_record.py`
+- `packages/feiyue-core/tests/test_capability_ladder.py`
+- `packages/feiyue-core/tests/test_worker_performance_record.py`
 
 Update:
 
-- `packages/feiyue-core/feiyue_core/curation/__init__.py`
-- Add or extend curation integration smoke.
+- Add a provider-free capability integration smoke.
 - `README.md`
 - `docs/Feiyue-self-evolution-development-outline.md`
 
 ### Functional Acceptance
 
-- Teacher guidance text can be normalized into bounded fields: root cause, minimal fix strategy, prevention rule, suggested asset updates.
-- Raw guidance/evidence is bounded and never dumped unbounded.
-- Review gate can transition proposal from review_required/draft to accepted/rejected with reviewer id and rationale.
-- Review gate must reject direct auto-promotion without explicit review action.
-- Integration smoke covers curator input → normalized guidance → distillation proposal → review gate decision.
+- Capability ladder defines ordered levels from read-only audit to teacher-assisted complex repair / creative variants.
+- Task complexity can be represented deterministically.
+- WorkerPerformanceRecord can capture worker/model id, task id, capability level, result status, verifier result, teacher calls, repeated mistake category, curation evidence IDs, and review decision IDs.
+- Records can render deterministic Markdown/JSON-friendly summaries.
+- No capability promotion yet; this slice only records evidence.
 
 ### Code Quality & Cleanliness Acceptance
 
 - Provider-free and deterministic.
-- Explicit status transitions with invalid-transition tests.
-- All review actions carry provenance/source IDs and rationale.
+- No LLM self-assessment used as capability evidence.
+- Evidence source IDs are explicit.
 - compileall / pytest / diff-check / secret scan pass.
 
 ### Dependencies
 
-- M6.1 CuratorInput.
-- M6.2 DistillationProposal.
-- Existing BugDossier / LessonPacket / RegressionCheck.
+- M5 workflow assets.
+- M6 curation/review evidence.
+- Existing verification result concepts.
 - Does not depend on real provider / network.
 
 ### Parallelization
 
-可并行：Teacher Guidance Normalizer 与 Review Gate 可以分两条 lane 开发。
-必须串行：最终 integration smoke 需要两条 lane 合并后由 controller 完成。
+可并行：Capability Ladder 与 Worker Performance Record 可以分两条 lane 开发。
+必须串行：最终 capability integration smoke 需要两条 lane 合并后由 controller 完成。
