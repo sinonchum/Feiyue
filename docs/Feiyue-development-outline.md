@@ -2,7 +2,9 @@
 
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 >
-> **Goal:** 建立一个以外部验证器为核心的 AI 自我提升闭环：任务输入、候选生成、沙箱执行、验证反馈、策略优化、技能沉淀、评测对比、审计回放。
+> **Goal:** 建立一个以外部验证器为核心的系统层自我进化闭环：任务输入、student 候选生成、沙箱执行、验证反馈、候选修订、稀疏 teacher 指导、指导蒸馏、策略优化、技能沉淀、评测对比、审计回放。Feiyue 必须让 mimo-v2.5-pro、deepseek-v4-pro 等 student models 通过系统进化尽量接近强 teacher model 的输出质量，并在模型切换后保持质量约束。
+>
+> **Canonical reference:** 后续开发和计划默认以 [`Feiyue-system-doctrine.md`](Feiyue-system-doctrine.md) 为准；除非用户特别说明，不得把 Feiyue 简化为普通弱模型 wrapper、普通 fallback runtime 或普通 code repair bot。
 >
 > **Architecture:** 先实现本地可运行的单机 MVP：FastAPI + Python orchestrator + Git worktree sandbox + pytest-style verifier + JSONL traces。待闭环跑通后，再扩展 Dashboard、队列、数据库、向量检索、远程沙箱和训练数据导出。
 >
@@ -22,8 +24,8 @@
   - Git worktree sandbox、命令执行、pytest verifier、trace 保存。
 - **Phase 3：抗失忆会话运行时**
   - session journal、recovery manifest、operation records、known mistakes、fallback clean rebuild、断电/断网恢复。
-- **Phase 4：候选生成与反馈分析**
-  - LLM provider adapter、候选计划/补丁生成、失败归因。
+- **Phase 4：角色化候选生成、反馈分析与系统进化闭环**
+  - Role-aware provider contract、student/teacher model routing、候选计划/补丁生成、失败归因、teacher sparse intervention、指导蒸馏。
 - **Phase 5：评测基准与策略版本**
   - 固定 eval set、策略对比、指标记录、回滚规则、repeated mistake 指标。
 - **Phase 6：技能/经验沉淀**
@@ -399,52 +401,71 @@ Feiyue/
 
 ---
 
-## 7. Phase 4：候选生成与反馈分析
+## 7. Phase 4：角色化候选生成、反馈分析与系统进化闭环
 
 ### 目标
 
-引入 LLM，但只让它生成候选和分析反馈，不直接决定成功；同时所有 provider failure 必须走 Resilient Session Runtime。
+引入 LLM，但必须按 student / teacher / reviewer / labeler / fallback 等角色建模。默认由弱/低成本 student model 生成和修订候选；强模型默认只在 policy 触发时作为 teacher、reviewer 或 labeler 稀疏介入。所有 provider failure 必须走 Resilient Session Runtime。Phase 4 的目标不是普通“LLM candidate generation”，而是跑通可验证的系统层自我进化闭环：student → verifier → feedback → revision → sparse teacher guidance → distillation。
 
 ### 功能
 
-1. Provider adapter。
-2. Structured candidate generation。
-3. Patch generation 或 plan generation。
-4. Feedback Analyzer。
-5. Iteration loop：失败 → 分析 → 生成修复候选 → 再验证。
-6. Provider failure handling：主模型失败时写 model_error event，fallback clean rebuild。
+1. Role-aware provider contract：ProviderRole、ModelProfile、ProviderRequest、ProviderResponse、ProviderError。
+2. FakeStudentProvider / FakeTeacherProvider，用于无 credential 的 deterministic tests。
+3. ModelRoleRouter：根据任务风险、预算、失败次数、verifier confidence 和 policy 决定使用 student 还是 teacher。
+4. TeacherInterventionPolicy：弱模型连续失败、unknown failure、高风险 candidate、eval regression 等情况下触发 teacher。
+5. Structured candidate generation：student 输出 plan/patch/prompt/tool-use candidate。
+6. Patch generation 或 plan generation。
+7. Feedback Analyzer + failure taxonomy。
+8. Iteration loop：失败 → 分析 → student 修订候选 → 再验证。
+9. Sparse teacher guidance：teacher 输出结构化指导，不默认直接替代整个执行过程。
+10. Teacher guidance distillation：将 teacher 指导、成功修订和失败反例沉淀为 checklist、prompt template、failure playbook、tool-use recipe 或 eval case。
+11. Provider failure handling：模型失败时写 model_error event，fallback clean rebuild。
+12. Cross-model quality preservation：模型切换后从 durable TaskSpec、verifier、strategy assets、teacher-distilled guidance 和 recovery manifest 重建质量约束。
 
 ### 技术栈
 
 - OpenAI-compatible chat completions。
+- Role-aware provider abstraction。
 - Pydantic structured output。
 - Prompt templates in YAML/Markdown。
+- Deterministic fake providers for tests。
 - Optional: json repair。
 
 ### 主要文件
 
 - `feiyue_core/providers/base.py`
 - `feiyue_core/providers/openai_compatible.py`
+- `feiyue_core/providers/fake.py`
+- `feiyue_core/providers/roles.py`
+- `feiyue_core/routing/model_role_router.py`
+- `feiyue_core/routing/teacher_policy.py`
 - `feiyue_core/generation/candidate_generator.py`
 - `feiyue_core/generation/prompts/*.md`
 - `feiyue_core/feedback/error_taxonomy.py`
 - `feiyue_core/feedback/analyzer.py`
+- `feiyue_core/distillation/teacher_guidance.py`
 - `tests/test_provider_payloads.py`
+- `tests/test_model_role_router.py`
+- `tests/test_teacher_intervention_policy.py`
 - `tests/test_feedback_taxonomy.py`
 
 ### 依赖
 
 - 依赖 Phase 2 local_loop。
 - 依赖 Phase 3 recovery runtime。
-- 依赖 API key，但 unit tests 必须 mock。
+- 依赖 API key，但 unit tests 必须 mock/fake。
 - 依赖 prompt versioning。
+- 依赖 role-aware model profile 和 budget policy。
+- 依赖后续 Phase 5 eval harness 来证明 teacher 稀疏介入是否真的提升弱模型质量。
 
 ### 是否可并行
 
-- 可并行：provider adapter 和 feedback taxonomy。
-- 可并行：prompt templates 和 unit tests。
+- 可并行：role-aware provider contract、feedback taxonomy、prompt templates、teacher policy tests。
+- 可并行：FakeStudentProvider / FakeTeacherProvider 和 ModelProfile schema。
+- 必须串行：ModelRoleRouter 要等 provider roles 和 budget/risk inputs 稳定。
 - 必须串行：真实 iteration loop 要等 Phase 2 稳定。
 - 必须串行：真实 provider fallback 要等 Phase 3 recovery runtime。
+- 必须串行：teacher guidance distillation 要等 feedback taxonomy 和 trace schema 稳定。
 
 ### 常见问题与解决思路
 
@@ -458,11 +479,19 @@ Feiyue/
    - 解决：每个 task budget；限制 iteration count 和 candidate count。
 5. **Provider 差异 / 主模型不可用**
    - 解决：adapter 层保存 provider/model/version/error；失败后通过 recovery runtime rebuild，不直接复用 dirty messages。
+6. **把 teacher 变成默认 executor，导致成本失控和弱模型无法进化**
+   - 解决：TeacherInterventionPolicy 默认稀疏介入；teacher 输出优先作为 guidance / review / label，而不是直接替代 student 完成全流程。
+7. **弱模型增强停留在一次性脚手架，没有系统进化**
+   - 解决：每次 teacher guidance、失败修订、成功策略必须进入 distillation/eval pipeline，形成可复用资产并用 Phase 5 评测证明收益。
 
 ### 验收标准
 
 - Mock provider tests 覆盖 payload、parse、error handling。
+- Role-aware provider tests 覆盖 student / teacher / reviewer / labeler / fallback roles。
+- Teacher intervention policy 能证明：默认 student 执行，达到失败/风险/不确定性阈值后才触发 teacher。
 - 一个 toy failure 能生成修复候选并通过 verifier。
+- Teacher guidance 不直接覆盖 verifier 结论；成功必须来自 verifier 或人工验收。
+- Distillation 输出包含来源 trace、teacher role、适用条件和验证证据。
 - LLM 失败不会破坏 trace、manifest 或 sandbox。
 
 ### 测试与验收方式
@@ -471,11 +500,13 @@ Feiyue/
 - **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：验证代码结构、测试覆盖、lint/type/import、secret scan、文档同步和 git 工作区干净。
 
 - Unit tests：provider payload、auth header redaction、response parse、retryable/non-retryable error 分类。
+- Role routing tests：student 默认执行；teacher 只在 policy 触发时介入；budget 不允许时拒绝 teacher。
 - Contract tests：candidate JSON 必须能 validate 成 Candidate；feedback analyzer 必须引用具体 verifier evidence。
 - Fake-provider integration：用 deterministic fake provider 生成修复候选，跑通 local_loop，不依赖真实 API key。
+- Sparse-teacher integration：weak student 失败后，teacher 生成 guidance，student/revision loop 产出新 candidate，并由 verifier 证明结果。
 - Failure tests：provider timeout/429/invalid JSON 必须写 model_error event，并触发 recovery runtime clean rebuild。
-- 命令：`pytest packages/feiyue-core/tests/test_provider_payloads.py packages/feiyue-core/tests/test_feedback_taxonomy.py -v`，再跑 toy loop 集成测试。
-- 合格标准：无真实 credential 也能测试；provider failure 不污染 manifest；候选生成结果可验证、可回放。
+- 命令：`pytest packages/feiyue-core/tests/test_provider_payloads.py packages/feiyue-core/tests/test_model_role_router.py packages/feiyue-core/tests/test_teacher_intervention_policy.py packages/feiyue-core/tests/test_feedback_taxonomy.py -v`，再跑 toy loop 集成测试。
+- 合格标准：无真实 credential 也能测试；provider failure 不污染 manifest；候选生成结果可验证、可回放；teacher 调用次数、触发原因和 distillation artifacts 可审计。
 
 ---
 
@@ -493,6 +524,8 @@ Feiyue/
 4. Metrics aggregation。
 5. Strategy comparison report。
 6. Regression gate。
+7. Model amplification report：比较 weak-only、weak+Feiyue scaffold、weak+sparse-teacher、strong-full-run。
+8. Teacher cost/quality metrics：teacher_call_rate、teacher_token_ratio、weak_autonomy_rate、quality_gap_to_teacher、cost_normalized_quality、distillation_gain。
 
 ### 技术栈
 
@@ -546,6 +579,7 @@ Feiyue/
 - Fixture tests：固定 eval task JSONL schema、任务类别、预期 verifier 配置。
 - Runner tests：同一 strategy version 重跑结果结构稳定，记录 task_id、strategy_hash、metrics。
 - Metrics tests：成功率、平均迭代次数、成本、耗时、repeated_mistake_count、regression flag 计算正确。
+- Model-amplification metrics tests：weak-only / weak+Feiyue / weak+sparse-teacher / strong-full-run 的 quality gap、teacher call rate、weak autonomy rate 和 cost-normalized quality 计算正确。
 - Report tests：Markdown/JSON 对比报告包含 baseline、candidate、delta、pass/fail gate。
 - 命令：`pytest packages/feiyue-core/tests/test_eval_runner.py packages/feiyue-core/tests/test_metrics.py -v`。
 - 合格标准：策略比较可复现；指标下降会阻断发布；报告能定位失败任务和证据。
@@ -977,12 +1011,18 @@ LLM judge 容易偏差、奖励作弊和幻觉。Feiyue 的核心原则是：LLM
 - File/Git reconciliation。
 - Clean fallback rebuild tests。
 
-### M4：LLM candidate + feedback
+### M4：Role-aware student/teacher candidate + feedback
 
-- Provider adapter。
+- Role-aware provider contract。
+- FakeStudentProvider / FakeTeacherProvider。
+- ModelRoleRouter。
+- TeacherInterventionPolicy。
 - Candidate generator。
 - Feedback analyzer。
-- Retry loop。
+- Student revision loop。
+- Sparse teacher guidance。
+- Teacher guidance distillation。
+- Provider failure recovery。
 
 ### M5：Eval + strategy
 

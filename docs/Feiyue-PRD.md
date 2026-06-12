@@ -3,13 +3,14 @@
 > **版本**：v0.1
 > **日期**：2026-06-12
 > **仓库**：Feiyue
-> **定位**：一个面向代码、推理、研究与工具型任务的“工程化自我提升”系统，而不是宣称模型能够自主无限改写自身底层权重的强 RSI 系统。
+> **定位**：一个面向代码、推理、研究与工具型任务的“工程化自我提升”系统；它通过系统层自我进化、弱/强模型角色协作、外部验证器、教师指导蒸馏和持久化质量约束，让 mimo-v2.5-pro、deepseek-v4-pro 等 student models 在模型切换和低强模型调用条件下尽量获得接近 Opus、Fable、GPT-5.5 等 teacher models 的输出质量。
+> **Canonical reference**：后续开发与计划必须以 [`Feiyue-system-doctrine.md`](Feiyue-system-doctrine.md) 为准；除非另有明确说明，不得把 Feiyue 简化成普通弱模型 wrapper、普通 fallback runtime 或普通 code repair bot。
 
 ---
 
 ## 1. 产品一句话
 
-Feiyue 是一个受控的 AI 自我提升系统：它让 Agent 在真实任务环境中生成候选方案、执行验证器、收集反馈、形成经验资产，并通过评测、提示词/策略优化、技能库沉淀和可选训练数据产出，实现可审计、可回滚、可量化的局部能力提升闭环。
+Feiyue 是一个受控的 AI 自我提升系统：它让 Agent 在真实任务环境中生成候选方案、执行验证器、收集反馈、形成经验资产，并通过评测、提示词/策略优化、技能库沉淀、teacher guidance distillation 和可选训练数据产出，实现可审计、可回滚、可量化的系统层进化闭环。Feiyue 的关键目标之一是让弱/低成本 student models 在系统持续进化后，跨模型切换时仍能保持高质量输出，并尽量减少 GPT-5.5 / Opus / Fable 等强 teacher models 的全程执行需求。
 
 ---
 
@@ -37,6 +38,10 @@ Feiyue 是一个受控的 AI 自我提升系统：它让 Agent 在真实任务�
 4. **可审计与可回滚**：保留每次实验的输入、输出、工具调用摘要、指标、变更 diff 与结论。
 5. **防止自嗨循环**：LLM-as-Judge 只能作为辅助信号，不能单独决定“能力提升”。
 6. **沉淀可复用能力**：成功策略进入技能库、提示词库、任务模板、评测集或训练数据候选池。
+7. **系统层自我进化**：Feiyue 的进化发生在 prompt、planner、tool policy、model routing、failure playbook、skill library、eval cases 和 strategy versions 等系统资产上；这些资产必须可审计、可回滚、可评测。
+8. **弱模型质量放大**：通过 verifier-driven feedback、bounded revision、teacher sparse intervention 和 distillation，让 mimo-v2.5-pro、deepseek-v4-pro 等 student models 尽量逼近强 teacher model 的输出质量。
+9. **强模型稀疏教师化**：GPT-5.5 / Opus / Fable 等强模型默认担任 teacher、reviewer、labeler、strategy critic 或 curriculum designer，而不是默认全程 executor。
+10. **跨模型质量保持**：模型 fallback 或切换后，输出质量必须依赖 durable TaskSpec、verifier、strategy assets、known mistakes、teacher-distilled guidance 和 recovery manifest 维持，而不是依赖单个模型的临时上下文。
 
 ### 3.2 非目标
 
@@ -101,17 +106,19 @@ Feiyue 由以下核心模块组成：
 
 1. **任务入口 Task Intake**：接收任务、约束、代码仓库、评测目标和安全权限。
 2. **任务建模 Task Spec Builder**：把自然语言任务转成结构化规格。
-3. **候选生成 Candidate Generator**：生成多个计划、补丁、提示词或策略。
-4. **执行沙箱 Execution Sandbox**：在隔离环境中运行代码、测试、工具调用或模拟器。
-5. **验证器 Verifier Layer**：运行单元测试、静态检查、数据集指标、形式验证、人类检查表等。
-6. **反馈归因 Feedback Analyzer**：把失败原因分类，提取可操作修正。
-7. **策略优化器 Strategy Optimizer**：比较候选方案，更新 Prompt、Planner 参数、工具选择或技能。
-8. **记忆与技能库 Memory/Skill Library**：保存可复用模式、反例、任务模板。
-9. **评测基准 Evaluation Harness**：长期追踪能力变化。
-10. **审计与回滚 Audit/Replay Store**：保存轨迹、指标、版本、变更和回滚点。
-11. **抗失忆会话运行时 Resilient Session Runtime**：在模型 fallback、断电、断网、进程重启后，从持久 journal/manifest/artifacts 重建上下文，避免重复踩坑和未知副作用。
-12. **安全治理 Safety Governor**：权限控制、数据脱敏、预算限制、人工批准。
-13. **可视化控制台 Dashboard**：展示实验、指标、候选比较、失败模式和改进历史。
+3. **模型角色路由 Model Role Router**：区分 student、teacher、reviewer、labeler、judge_aux、fallback 等角色，决定何时使用弱模型、何时稀疏调用强模型。
+4. **候选生成 Candidate Generator**：由 student model 默认生成多个计划、补丁、Prompt 或策略，并记录候选 lineage。
+5. **执行沙箱 Execution Sandbox**：在隔离环境中运行代码、测试、工具调用或模拟器。
+6. **验证器 Verifier Layer**：运行单元测试、静态检查、数据集指标、形式验证、人类检查表等。
+7. **反馈归因 Feedback Analyzer**：把失败原因分类，提取可操作修正。
+8. **教师介入与指导蒸馏 Teacher Intervention & Distillation**：在策略触发时调用强 teacher model，并将指导沉淀为弱模型可复用的 checklist、prompt template、failure playbook、tool-use recipe 或 eval case。
+9. **策略优化器 Strategy Optimizer**：比较候选方案，更新 Prompt、Planner 参数、工具选择、model routing policy 或技能。
+10. **记忆与技能库 Memory/Skill Library**：保存可复用模式、反例、任务模板。
+11. **评测基准 Evaluation Harness**：长期追踪能力变化，并比较 weak-only、weak+Feiyue、weak+sparse-teacher、strong-full-run。
+12. **审计与回滚 Audit/Replay Store**：保存轨迹、指标、版本、变更和回滚点。
+13. **抗失忆会话运行时 Resilient Session Runtime**：在模型 fallback、断电、断网、进程重启后，从持久 journal/manifest/artifacts 重建上下文，保护系统进化状态、避免重复踩坑和未知副作用。
+14. **安全治理 Safety Governor**：权限控制、数据脱敏、预算限制、人工批准。
+15. **可视化控制台 Dashboard**：展示实验、指标、候选比较、失败模式、teacher intervention、模型质量差距和改进历史。
 
 ---
 
@@ -672,6 +679,8 @@ Feiyue 由以下核心模块组成：
 - 能对两个策略版本跑同一 eval 并比较指标。
 - 每个 Phase 都有可执行测试命令或人工验收 checklist，且验收证据进入 trace/audit。
 - 任何恢复/fallback 场景的成功都必须通过 manifest、journal、side-effect reconciliation 证据确认。
+- MVP 必须至少能比较 weak-only、weak+Feiyue scaffold、weak+sparse-teacher 三种模式的 toy task 结果。
+- 必须记录 teacher_call_count、teacher_trigger_reason 和 weak_model_revision_count。
 
 ### 长期指标
 
@@ -682,6 +691,11 @@ Feiyue 由以下核心模块组成：
 - 回归率下降。
 - 技能复用命中率提升。
 - 失败归因准确率提升。
+- Weak autonomy rate 提升：弱模型无需 teacher 也能完成任务的比例提高。
+- Quality gap to teacher 降低：弱模型 + Feiyue 与强模型 full-run baseline 的质量差距缩小。
+- Teacher token ratio 降低：强模型 token 占总 token 的比例下降，同时质量不显著下降。
+- Cost-normalized quality 提升：单位成本质量高于强模型全程执行 baseline。
+- Distillation gain 可测：teacher guidance 被沉淀后，student model 在同类任务上的后续表现提升。
 
 ---
 
@@ -716,6 +730,16 @@ Feiyue 由以下核心模块组成：
 
 - **表现**：还没跑通闭环就引入 Temporal、K8s、复杂向量库。
 - **应对**：MVP 先用本地 worktree + FastAPI + PostgreSQL + pytest eval。
+
+### 风险 7：弱模型增强被误解为没有自我进化
+
+- **表现**：系统只是把强模型输出转交给弱模型，或只做一次性 prompt wrapper，无法积累可复用能力。
+- **应对**：teacher guidance 必须进入 distillation pipeline；策略、prompt、routing policy、failure playbook 和 eval cases 必须版本化并经过评测证明。
+
+### 风险 8：强模型退化为默认 executor
+
+- **表现**：为了追求短期质量，系统频繁调用 GPT-5.5 / Opus / Fable 全程完成任务，导致成本高、弱模型没有改进、系统没有沉淀。
+- **应对**：TeacherInterventionPolicy 默认稀疏介入；记录 teacher_call_rate 和 teacher_token_ratio；强模型默认输出 guidance/review/labels，而不是直接替代 verifier 和 student loop。
 
 ---
 
