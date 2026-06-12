@@ -109,8 +109,9 @@ Feiyue 由以下核心模块组成：
 8. **记忆与技能库 Memory/Skill Library**：保存可复用模式、反例、任务模板。
 9. **评测基准 Evaluation Harness**：长期追踪能力变化。
 10. **审计与回滚 Audit/Replay Store**：保存轨迹、指标、版本、变更和回滚点。
-11. **安全治理 Safety Governor**：权限控制、数据脱敏、预算限制、人工批准。
-12. **可视化控制台 Dashboard**：展示实验、指标、候选比较、失败模式和改进历史。
+11. **抗失忆会话运行时 Resilient Session Runtime**：在模型 fallback、断电、断网、进程重启后，从持久 journal/manifest/artifacts 重建上下文，避免重复踩坑和未知副作用。
+12. **安全治理 Safety Governor**：权限控制、数据脱敏、预算限制、人工批准。
+13. **可视化控制台 Dashboard**：展示实验、指标、候选比较、失败模式和改进历史。
 
 ---
 
@@ -412,7 +413,45 @@ Feiyue 由以下核心模块组成：
 
 ---
 
-## 7.11 Safety Governor：安全治理
+## 7.11 Resilient Session Runtime：抗失忆会话运行时
+
+### 功能
+
+- 模型 fallback、provider 失败、断电、断网、进程重启后，从持久状态恢复任务。
+- 维护 append-only session journal、latest recovery manifest、durable summary、artifacts。
+- 记录 `known_mistakes` / `do_not_repeat`，避免 fallback 模型重复之前已确认失败的做法。
+- 所有 side-effect tool call 执行前创建 operation record，恢复时先调和 pending/unknown operation。
+- fallback 不继承半坏内存消息列表，而是从 manifest + journal tail + artifacts clean rebuild context。
+- 恢复后第一步必须分类：confirmed facts、unknowns、unsafe assumptions、next safe action。
+
+### 技术栈
+
+- JSONL session journal。
+- Pydantic recovery schemas。
+- Local artifact store：command logs、tool results、diffs、model errors。
+- Optional SQLite index：只保存 metadata/offset，不保存大 payload。
+- Git/filesystem/GitHub reconciliation probes。
+
+### 依赖
+
+- 依赖 Audit / Replay Store。
+- 依赖 Safety Governor 阻止 unknown side effect。
+- 依赖 Evaluation Harness 统计 repeated mistake / recovery success 指标。
+- 依赖 Memory / Skill Library，但本轮 mistake ledger 默认不直接进入长期记忆。
+
+### 验收标准
+
+- 主模型失败并 fallback 后，恢复 prompt 包含 confirmed facts 和 do-not-repeat 列表。
+- 断电/重启后能从 latest manifest 恢复 task state。
+- file/Git/GitHub side effect 状态 unknown 时，系统先查询 sha256、git status、remote HEAD 或 API 状态，不自动重复执行。
+- auxiliary 任务失败不会污染主任务状态。
+- repeated_mistake_count 可被 Evaluation Harness 统计。
+
+详见：[`docs/resilient-session-runtime.md`](resilient-session-runtime.md)。
+
+---
+
+## 7.12 Safety Governor：安全治理
 
 ### 功能
 
@@ -421,6 +460,7 @@ Feiyue 由以下核心模块组成：
 - 预算限制：token、时间、候选数、并行度。
 - 数据保护：PII/secret 扫描，训练数据导出审批。
 - 人工批准：高风险操作前阻断。
+- 恢复状态不明确时，阻止继续执行高风险 side effect。
 
 ### 技术栈
 
@@ -431,16 +471,18 @@ Feiyue 由以下核心模块组成：
 ### 依赖
 
 - 贯穿所有执行模块。
+- 依赖 Resilient Session Runtime 提供 operation status 与 recovery state。
 
 ### 验收标准
 
 - 未授权操作被拦截。
 - 所有 side-effect 操作进入 audit log。
 - 危险命令必须人工批准。
+- pending/unknown side effect 未调和前，不允许重复 push/send/delete。
 
 ---
 
-## 7.12 Dashboard：可视化控制台
+## 7.13 Dashboard：可视化控制台
 
 ### 功能
 

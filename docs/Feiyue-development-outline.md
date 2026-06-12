@@ -20,17 +20,19 @@
   - Task、Candidate、ExecutionRun、VerificationResult、StrategyVersion 的 schema。
 - **Phase 2：本地执行闭环 MVP**
   - Git worktree sandbox、命令执行、pytest verifier、trace 保存。
-- **Phase 3：候选生成与反馈分析**
+- **Phase 3：抗失忆会话运行时**
+  - session journal、recovery manifest、operation records、known mistakes、fallback clean rebuild、断电/断网恢复。
+- **Phase 4：候选生成与反馈分析**
   - LLM provider adapter、候选计划/补丁生成、失败归因。
-- **Phase 4：评测基准与策略版本**
-  - 固定 eval set、策略对比、指标记录、回滚规则。
-- **Phase 5：技能/经验沉淀**
+- **Phase 5：评测基准与策略版本**
+  - 固定 eval set、策略对比、指标记录、回滚规则、repeated mistake 指标。
+- **Phase 6：技能/经验沉淀**
   - 从成功和失败轨迹生成 skill candidates、failure playbooks。
-- **Phase 6：安全治理**
-  - 权限模型、secret scan、危险命令审批、预算控制。
-- **Phase 7：Dashboard 与人工审核**
-  - 任务状态、候选对比、指标趋势、技能审核 UI。
-- **Phase 8：高级能力**
+- **Phase 7：安全治理**
+  - 权限模型、secret scan、危险命令审批、预算控制、unknown side effect 阻断。
+- **Phase 8：Dashboard 与人工审核**
+  - 任务状态、候选对比、指标趋势、技能审核 UI、恢复状态展示。
+- **Phase 9：高级能力**
   - Tree search、bandit 策略优化、向量检索、Docker/remote sandbox、训练数据导出。
 
 ### 1.2 MVP 优先级
@@ -80,6 +82,8 @@ Feiyue/
         feedback/
         strategy/
         audit/
+        runtime/
+        recovery/
         safety/
       tests/
   evals/
@@ -270,11 +274,91 @@ Feiyue/
 
 ---
 
-## 6. Phase 3：候选生成与反馈分析
+## 6. Phase 3：抗失忆会话运行时
 
 ### 目标
 
-引入 LLM，但只让它生成候选和分析反馈，不直接决定成功。
+解决中途切模型、provider fallback、断电、断网、进程重启导致的“失忆”和重复踩坑问题。模型上下文和 provider cache 视为 disposable，本地持久 journal/manifest/artifacts 才是事实来源。
+
+### 功能
+
+1. Session journal：append-only JSONL，记录用户消息、模型调用、工具操作、错误、恢复事件。
+2. Recovery manifest：5–12 KB 的低内存恢复清单，保存 confirmed facts、known mistakes、do-not-repeat、pending operations、changed files、next safe action。
+3. Operation records：所有写文件、命令、Git/GitHub/API side effect 执行前先登记。
+4. Known mistakes ledger：记录已验证失败的做法和用户纠正，fallback/resume 时强制注入。
+5. Clean fallback rebuild：主模型失败后，fallback 从持久状态重建上下文，不继承半坏 messages。
+6. Reconciliation：恢复时调和 file/Git/GitHub pending/unknown side effect。
+7. Recovery prompt contract：恢复后先分类 confirmed/unknown/unsafe/next safe action，再继续执行。
+8. Auxiliary isolation：标题生成、压缩、vision、embedding 等辅助失败不能污染主任务。
+
+### 技术栈
+
+- Pydantic recovery schemas。
+- JSONL journal writer。
+- Local artifact store：command logs、tool results、diffs、model errors。
+- Optional SQLite index：metadata + offsets only。
+- Git/filesystem/GitHub probes。
+
+### 主要文件
+
+- `feiyue_core/runtime/state_machine.py`
+- `feiyue_core/runtime/session_journal.py`
+- `feiyue_core/recovery/manifest.py`
+- `feiyue_core/recovery/operation_record.py`
+- `feiyue_core/recovery/known_mistakes.py`
+- `feiyue_core/recovery/reconciler.py`
+- `feiyue_core/recovery/prompt_builder.py`
+- `tests/test_recovery_manifest.py`
+- `tests/test_operation_records.py`
+- `tests/test_fallback_rebuild.py`
+- `tests/test_pending_operation_reconciliation.py`
+
+### 依赖
+
+- 依赖 Phase 1 schema。
+- 依赖 Phase 2 command runner / sandbox 提供 side effect 执行入口。
+- 依赖 Git 命令和文件 hash 检查。
+- 不依赖 LLM provider；fallback 测试应可用 fake provider 完成。
+
+### 是否可并行
+
+- 可并行：session_journal、manifest schema、operation_record schema、known_mistakes schema。
+- 可并行：file reconciler 和 git reconciler。
+- 必须串行：operation records 要先于 side-effect tool wrapper。
+- 必须串行：clean fallback rebuild 要等 manifest + journal reader 稳定。
+
+### 常见问题与解决思路
+
+1. **恢复时重复执行 GitHub push / send message**
+   - 解决：external side effect 状态 unknown 时，先查 remote HEAD/API/idempotency key；无法确认时请求人工确认。
+2. **fallback 模型忽略之前的错误**
+   - 解决：known_mistakes/do_not_repeat 作为硬约束进入 recovery prompt；runtime 检查下一步计划是否违反。
+3. **manifest 被模型幻觉污染**
+   - 解决：模型只能 propose manifest update，runtime 只能基于 durable evidence commit。
+4. **journal 太大**
+   - 解决：journal 存摘要和 artifact refs；大输出进入 artifacts。
+5. **断电时 operation 停在 started**
+   - 解决：resume 后按 operation type 调和：file 查 sha256，git 查 status/log/remote，command 查 log/exit marker。
+6. **辅助任务失败触发主 fallback**
+   - 解决：auxiliary lane 完全隔离，只写 auxiliary event。
+
+### 验收标准
+
+- 模拟主模型失败后，fallback prompt 包含 confirmed facts 和 do-not-repeat。
+- 模拟断电后，resume 能调和 file write started 状态，不重复写。
+- 模拟 git push unknown 后，resume 先查询 remote HEAD，不重复 push。
+- repeated_mistake_count 在 eval metrics 中可记录。
+- auxiliary failure 不改变 main manifest。
+
+详见：[`docs/resilient-session-runtime.md`](resilient-session-runtime.md)。
+
+---
+
+## 7. Phase 4：候选生成与反馈分析
+
+### 目标
+
+引入 LLM，但只让它生成候选和分析反馈，不直接决定成功；同时所有 provider failure 必须走 Resilient Session Runtime。
 
 ### 功能
 
@@ -283,6 +367,7 @@ Feiyue/
 3. Patch generation 或 plan generation。
 4. Feedback Analyzer。
 5. Iteration loop：失败 → 分析 → 生成修复候选 → 再验证。
+6. Provider failure handling：主模型失败时写 model_error event，fallback clean rebuild。
 
 ### 技术栈
 
@@ -305,6 +390,7 @@ Feiyue/
 ### 依赖
 
 - 依赖 Phase 2 local_loop。
+- 依赖 Phase 3 recovery runtime。
 - 依赖 API key，但 unit tests 必须 mock。
 - 依赖 prompt versioning。
 
@@ -313,6 +399,7 @@ Feiyue/
 - 可并行：provider adapter 和 feedback taxonomy。
 - 可并行：prompt templates 和 unit tests。
 - 必须串行：真实 iteration loop 要等 Phase 2 稳定。
+- 必须串行：真实 provider fallback 要等 Phase 3 recovery runtime。
 
 ### 常见问题与解决思路
 
@@ -324,18 +411,18 @@ Feiyue/
    - 解决：Feedback Analyzer 必须引用具体日志片段；不能只给结论。
 4. **API 成本不可控**
    - 解决：每个 task budget；限制 iteration count 和 candidate count。
-5. **Provider 差异**
-   - 解决：adapter 层只暴露统一 request/response；保存 provider/model/version。
+5. **Provider 差异 / 主模型不可用**
+   - 解决：adapter 层保存 provider/model/version/error；失败后通过 recovery runtime rebuild，不直接复用 dirty messages。
 
 ### 验收标准
 
 - Mock provider tests 覆盖 payload、parse、error handling。
 - 一个 toy failure 能生成修复候选并通过 verifier。
-- LLM 失败不会破坏 trace 或 sandbox。
+- LLM 失败不会破坏 trace、manifest 或 sandbox。
 
 ---
 
-## 7. Phase 4：评测基准与策略版本
+## 8. Phase 5：评测基准与策略版本
 
 ### 目标
 
@@ -396,7 +483,7 @@ Feiyue/
 
 ---
 
-## 8. Phase 5：技能与经验沉淀
+## 9. Phase 6：技能与经验沉淀
 
 ### 目标
 
@@ -454,7 +541,7 @@ Feiyue/
 
 ---
 
-## 9. Phase 6：安全治理
+## 10. Phase 7：安全治理
 
 ### 目标
 
@@ -513,7 +600,7 @@ Feiyue/
 
 ---
 
-## 10. Phase 7：API 与 Dashboard
+## 11. Phase 8：API 与 Dashboard
 
 ### 目标
 
@@ -576,7 +663,7 @@ Feiyue/
 
 ---
 
-## 11. Phase 8：高级自我提升能力
+## 12. Phase 9：高级自我提升能力
 
 ### 目标
 
@@ -732,28 +819,37 @@ LLM judge 容易偏差、奖励作弊和幻觉。Feiyue 的核心原则是：LLM
 - pytest verifier。
 - Toy repo loop。
 
-### M3：LLM candidate + feedback
+### M3：Resilient runtime
+
+- Session journal。
+- Recovery manifest。
+- Operation records。
+- Known mistakes ledger。
+- File/Git reconciliation。
+- Clean fallback rebuild tests。
+
+### M4：LLM candidate + feedback
 
 - Provider adapter。
 - Candidate generator。
 - Feedback analyzer。
 - Retry loop。
 
-### M4：Eval + strategy
+### M5：Eval + strategy
 
 - Eval fixtures。
 - Metrics。
 - Strategy version。
 - Comparison report。
 
-### M5：Skill candidate + safety
+### M6：Skill candidate + safety
 
 - Skill candidate generator。
 - Failure playbook。
 - Permission policy。
 - Secret scan。
 
-### M6：API/Dashboard
+### M7：API/Dashboard
 
 - FastAPI endpoints。
 - Minimal dashboard。
