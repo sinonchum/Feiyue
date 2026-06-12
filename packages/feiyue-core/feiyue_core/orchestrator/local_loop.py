@@ -32,12 +32,24 @@ class LocalLoopResult(FeiyueModel):
     trace_refs: list[str] = Field(default_factory=list)
 
 
+class LocalLoopInterrupted(RuntimeError):
+    def __init__(self, stage: str) -> None:
+        super().__init__(f"local loop interrupted after {stage}")
+        self.stage = stage
+
+
 class LocalLoop:
-    def __init__(self, trace_path: str | Path, journal_path: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        trace_path: str | Path,
+        journal_path: str | Path | None = None,
+        interrupt_after: str | None = None,
+    ) -> None:
         self.trace_path = Path(trace_path)
         self.trace_writer = JsonlTraceWriter(self.trace_path)
         self.journal = SessionJournal(journal_path) if journal_path is not None else None
         self.operation_recorder = OperationRecorder(self.journal) if self.journal is not None else None
+        self.interrupt_after = interrupt_after
         self.command_runner = CommandRunner(default_timeout_seconds=120)
         self.verifier = PytestVerifier(self.command_runner)
 
@@ -52,6 +64,7 @@ class LocalLoop:
                 risk_level=OperationRiskLevel.MEDIUM,
                 preconditions={"repo_path": str(repo_path)},
             )
+        self._maybe_interrupt("operation_registered")
         with WorktreeSandbox(repo_path) as sandbox:
             self._write_event(
                 task.id,
@@ -59,8 +72,11 @@ class LocalLoop:
                 "sandbox created",
                 {"candidate_id": candidate.id, "sandbox_path": str(sandbox.path)},
             )
+            self._maybe_interrupt("sandbox_created")
             self._apply_file_writes(sandbox.path, candidate)
+            self._maybe_interrupt("file_writes")
             verification = self.verifier.verify(sandbox.path)
+            self._maybe_interrupt("verification")
             execution = self._execution_from_verification(candidate, verification)
             candidate.status = CandidateStatus.VERIFIED if verification.passed else CandidateStatus.FAILED
             self._write_event(
@@ -161,3 +177,7 @@ class LocalLoop:
                 data=data,
             )
         )
+
+    def _maybe_interrupt(self, stage: str) -> None:
+        if self.interrupt_after == stage:
+            raise LocalLoopInterrupted(stage)
