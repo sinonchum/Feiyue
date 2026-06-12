@@ -65,6 +65,27 @@ def _get_text(url):
         return response.read().decode("utf-8")
 
 
+def _get_html(url):
+    with urlopen(url, timeout=5) as response:
+        assert response.headers["content-type"] == "text/html; charset=utf-8"
+        return response.read().decode("utf-8")
+
+
+def test_runs_api_dashboard_renders_human_readable_html(tmp_path) -> None:
+    _write_run_evidence(tmp_path, "m13-api-demo")
+
+    with _api_server(tmp_path) as base_url:
+        html = _get_html(f"{base_url}/dashboard")
+
+    assert "Feiyue Run Dashboard" in html
+    assert "Total Runs" in html
+    assert "Approval Required" in html
+    assert "m13-api-demo" in html
+    assert "request_human_approval" in html
+    assert "<pre>" not in html
+    assert "JSON.stringify" not in html
+
+
 def test_runs_api_get_runs_returns_catalog_summary(tmp_path) -> None:
     _write_run_evidence(tmp_path, "m13-api-demo")
 

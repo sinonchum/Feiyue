@@ -34,6 +34,8 @@ python3 -m feiyue_core.workflow.runs_api --root ../.. --host 127.0.0.1 --port 87
 Read-only API endpoints:
 
 ```text
+GET /
+GET /dashboard
 GET /runs
 GET /runs/<task_id>
 GET /runs/<task_id>/handoff
@@ -51,4 +53,4 @@ GET /runs/<task_id>/handoff
 
 ## Status
 
-Private repository. Current baseline includes provider-free Feiyue core foundations through M9, the M10 safe provider/profile integration foundation, and the M11 provider-free toy workflow execution, fake teacher-guided retry, verified branch promotion, run report persistence with policy/action evidence sections plus machine-readable run-evidence indexes plus fallback handoff summaries, and M12 policy governor integration foundation with run-evidence loader, YAML policy config loader, exact-match human approval records, persisted approval.json artifacts, approval-aware fallback handoff summaries, `RunCatalog` aggregate summaries, read-only local API, and `feiyue-runs` local inspection CLI. Real provider smoke, Hermes profile execution, and real-project promotion remain gated on explicit authorization and configured credentials.
+Private repository. Current baseline includes provider-free Feiyue core foundations through M9, the M10 safe provider/profile integration foundation, and the M11 provider-free toy workflow execution, fake teacher-guided retry, verified branch promotion, run report persistence with policy/action evidence sections plus machine-readable run-evidence indexes plus fallback handoff summaries, and M12 policy governor integration foundation with run-evidence loader, YAML policy config loader, exact-match human approval records, persisted approval.json artifacts, approval-aware fallback handoff summaries, `RunCatalog` aggregate summaries, read-only local API/dashboard, and `feiyue-runs` local inspection CLI. Real provider smoke, Hermes profile execution, and real-project promotion remain gated on explicit authorization and configured credentials.

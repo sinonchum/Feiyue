@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -8,6 +9,132 @@ from typing import Sequence
 from urllib.parse import unquote, urlparse
 
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
+
+
+def _esc(value: object) -> str:
+    return html.escape("" if value is None else str(value), quote=True)
+
+
+def render_runs_dashboard(project_root: str | Path) -> str:
+    """Render a human-readable, read-only dashboard for persisted run evidence."""
+
+    summary = RunCatalog(project_root).summary()
+    approval_required = summary.next_action_counts.get("request_human_approval", 0)
+    rows = []
+    for run in summary.runs:
+        risk_class = "needs-approval" if run.next_safe_action == "request_human_approval" else "normal"
+        rows.append(
+            """
+            <tr class="{risk_class}">
+              <td><a href="/runs/{task_id}">{task_id}</a></td>
+              <td>{status}</td>
+              <td>{policy_action}</td>
+              <td>{next_safe_action}</td>
+              <td>{safe_to_retry}</td>
+              <td>{approval_state}</td>
+              <td><a href="/runs/{task_id}/handoff">handoff</a></td>
+            </tr>
+            """.format(
+                risk_class=risk_class,
+                task_id=_esc(run.task_id),
+                status=_esc(run.status),
+                policy_action=_esc(run.policy_action),
+                next_safe_action=_esc(run.next_safe_action),
+                safe_to_retry="yes" if run.safe_to_retry else "no",
+                approval_state="exists" if run.approval_exists else "missing",
+            )
+        )
+
+    next_action_items = "".join(
+        f"<li><span>{_esc(action)}</span><strong>{count}</strong></li>"
+        for action, count in sorted(summary.next_action_counts.items())
+    ) or "<li><span>none</span><strong>0</strong></li>"
+
+    run_rows = "".join(rows) or '<tr><td colspan="7" class="empty">No run evidence found.</td></tr>'
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feiyue Run Dashboard</title>
+  <style>
+    :root {{
+      color-scheme: light;
+      --ink: #111827;
+      --muted: #4b5563;
+      --line: #d1d5db;
+      --panel: #ffffff;
+      --surface: #f8fafc;
+      --accent: #0f766e;
+      --risk: #991b1b;
+    }}
+    * {{ box-sizing: border-box; }}
+    body {{
+      margin: 0;
+      background: var(--surface);
+      color: var(--ink);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }}
+    main {{ max-width: 1180px; margin: 0 auto; padding: 40px 24px; }}
+    header {{ border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 24px; }}
+    .eyebrow {{ text-transform: uppercase; letter-spacing: .14em; font-size: 11px; color: var(--accent); font-weight: 700; }}
+    h1 {{ margin: 8px 0 8px; font-size: 34px; letter-spacing: -.03em; }}
+    p {{ color: var(--muted); margin: 0; line-height: 1.6; }}
+    .cards {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 24px 0; }}
+    .card {{ background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 18px; }}
+    .label {{ color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }}
+    .value {{ display: block; margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 30px; font-weight: 700; }}
+    section {{ background: var(--panel); border: 1px solid var(--line); border-radius: 4px; margin-top: 16px; }}
+    h2 {{ font-size: 15px; margin: 0; padding: 16px 18px; border-bottom: 1px solid var(--line); }}
+    ul {{ margin: 0; padding: 0; list-style: none; }}
+    li {{ display: flex; justify-content: space-between; gap: 20px; padding: 12px 18px; border-top: 1px solid #eef2f7; }}
+    li:first-child {{ border-top: 0; }}
+    table {{ width: 100%; border-collapse: collapse; }}
+    th, td {{ padding: 12px 14px; border-top: 1px solid #eef2f7; text-align: left; font-size: 13px; vertical-align: top; }}
+    th {{ color: var(--muted); text-transform: uppercase; letter-spacing: .10em; font-size: 11px; font-weight: 700; }}
+    a {{ color: var(--accent); text-decoration: none; font-weight: 700; }}
+    a:hover {{ text-decoration: underline; }}
+    .needs-approval td:nth-child(4), .needs-approval td:nth-child(6) {{ color: var(--risk); font-weight: 700; }}
+    .empty {{ color: var(--muted); text-align: center; padding: 28px; }}
+    @media (max-width: 760px) {{ .cards {{ grid-template-columns: 1fr; }} main {{ padding: 24px 12px; }} }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">Read-only evidence surface</div>
+      <h1>Feiyue Run Dashboard</h1>
+      <p>Human-readable inspection for persisted run evidence. This page does not execute work, retry tasks, call providers, or mutate Hermes configuration.</p>
+    </header>
+    <div class="cards" aria-label="Run summary">
+      <div class="card"><span class="label">Total Runs</span><span class="value">{summary.total_runs}</span></div>
+      <div class="card"><span class="label">Safe To Retry</span><span class="value">{summary.safe_to_retry_count}</span></div>
+      <div class="card"><span class="label">Approval Required</span><span class="value">{approval_required}</span></div>
+    </div>
+    <section>
+      <h2>Next Safe Action Distribution</h2>
+      <ul>{next_action_items}</ul>
+    </section>
+    <section>
+      <h2>Run Evidence</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Task</th>
+            <th>Status</th>
+            <th>Policy</th>
+            <th>Next Safe Action</th>
+            <th>Retry</th>
+            <th>Approval</th>
+            <th>Handoff</th>
+          </tr>
+        </thead>
+        <tbody>{run_rows}</tbody>
+      </table>
+    </section>
+  </main>
+</body>
+</html>"""
 
 
 def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHandler]:
@@ -21,6 +148,9 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
         def do_GET(self) -> None:  # noqa: N802 - stdlib handler API
             path = unquote(urlparse(self.path).path).rstrip("/") or "/"
             try:
+                if path in ("/", "/dashboard"):
+                    self._send_text(200, render_runs_dashboard(root), content_type="text/html; charset=utf-8")
+                    return
                 if path == "/runs":
                     self._send_json(200, RunCatalog(root).summary().model_dump(mode="json"))
                     return
