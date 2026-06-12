@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from uuid import uuid4
+import sys
 
 from feiyue_core.sandbox.command_runner import CommandRunner, CommandStatus
 from feiyue_core.schemas import VerificationResult, VerifierType
@@ -12,7 +13,7 @@ class PytestVerifier:
         self.command_runner = command_runner or CommandRunner(default_timeout_seconds=120)
 
     def verify(self, project_dir: str | Path) -> VerificationResult:
-        command = ["python3", "-m", "pytest", "-q"]
+        command = [sys.executable, "-m", "pytest", "-q"]
         result = self.command_runner.run(command, cwd=project_dir)
         passed = result.status == CommandStatus.FINISHED and result.exit_code == 0
         if result.status == CommandStatus.TIMEOUT:
