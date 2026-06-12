@@ -140,6 +140,9 @@ Feiyue/
 
 ### 测试与验收方式
 
+- **Functional Acceptance：功能性测试验收**：验证该 Phase 的用户可见行为、核心流程或恢复/安全行为真的成立。
+- **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：验证代码结构、测试覆盖、lint/type/import、secret scan、文档同步和 git 工作区干净。
+
 - 文档验收：检查 PRD、开发大纲、README 的链接均可解析，章节包含目标、非目标、测试/验收、风险。
 - Git 验收：运行 `git status --short`，确认没有误提交 traces、env、cache、local-notes。
 - Ignore 验收：对 `traces/`、`local-notes/`、`.env` 样例运行 `git check-ignore -v`，确认命中规则。
@@ -211,6 +214,9 @@ Feiyue/
 - 无外部 API 调用。
 
 ### 测试与验收方式
+
+- **Functional Acceptance：功能性测试验收**：验证该 Phase 的用户可见行为、核心流程或恢复/安全行为真的成立。
+- **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：验证代码结构、测试覆盖、lint/type/import、secret scan、文档同步和 git 工作区干净。
 
 - Unit tests：每个 schema 至少覆盖默认值、必填字段、enum 值、JSON round-trip。
 - Contract tests：保存关键 schema 的稳定字段断言，防止后续模块悄悄改名。
@@ -288,6 +294,9 @@ Feiyue/
 - 主仓库 git status 不被污染。
 
 ### 测试与验收方式
+
+- **Functional Acceptance：功能性测试验收**：验证该 Phase 的用户可见行为、核心流程或恢复/安全行为真的成立。
+- **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：验证代码结构、测试覆盖、lint/type/import、secret scan、文档同步和 git 工作区干净。
 
 - Unit tests：command runner 覆盖成功、失败、timeout、stdout/stderr 截断；trace writer 覆盖 JSONL 追加和可读回放。
 - Integration tests：toy repo 中制造 failing test，candidate 写入修复文件后在 worktree 运行 verifier。
@@ -375,6 +384,9 @@ Feiyue/
 
 ### 测试与验收方式
 
+- **Functional Acceptance：功能性测试验收**：验证该 Phase 的用户可见行为、核心流程或恢复/安全行为真的成立。
+- **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：验证代码结构、测试覆盖、lint/type/import、secret scan、文档同步和 git 工作区干净。
+
 - Unit tests：RecoveryManifest、OperationRecord、KnownMistake、RecoveryPromptBuilder 做 JSON round-trip 和 section snapshot。
 - Journal tests：append-only JSONL 顺序读取、忽略空行、manifest 原子写入。
 - Reconciliation tests：pending/unknown → needs_inspection；do_not_repeat → unsafe_to_repeat；file hash/git ref/artifact 检查能确认或阻断重试。
@@ -455,6 +467,9 @@ Feiyue/
 
 ### 测试与验收方式
 
+- **Functional Acceptance：功能性测试验收**：验证该 Phase 的用户可见行为、核心流程或恢复/安全行为真的成立。
+- **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：验证代码结构、测试覆盖、lint/type/import、secret scan、文档同步和 git 工作区干净。
+
 - Unit tests：provider payload、auth header redaction、response parse、retryable/non-retryable error 分类。
 - Contract tests：candidate JSON 必须能 validate 成 Candidate；feedback analyzer 必须引用具体 verifier evidence。
 - Fake-provider integration：用 deterministic fake provider 生成修复候选，跑通 local_loop，不依赖真实 API key。
@@ -525,6 +540,9 @@ Feiyue/
 
 ### 测试与验收方式
 
+- **Functional Acceptance：功能性测试验收**：验证该 Phase 的用户可见行为、核心流程或恢复/安全行为真的成立。
+- **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：验证代码结构、测试覆盖、lint/type/import、secret scan、文档同步和 git 工作区干净。
+
 - Fixture tests：固定 eval task JSONL schema、任务类别、预期 verifier 配置。
 - Runner tests：同一 strategy version 重跑结果结构稳定，记录 task_id、strategy_hash、metrics。
 - Metrics tests：成功率、平均迭代次数、成本、耗时、repeated_mistake_count、regression flag 计算正确。
@@ -591,6 +609,9 @@ Feiyue/
 - Skill candidate 包含来源 trace_id 和验证证据。
 
 ### 测试与验收方式
+
+- **Functional Acceptance：功能性测试验收**：验证该 Phase 的用户可见行为、核心流程或恢复/安全行为真的成立。
+- **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：验证代码结构、测试覆盖、lint/type/import、secret scan、文档同步和 git 工作区干净。
 
 - Unit tests：skill candidate builder 从 trace 中提取 title、applicability、steps、verification evidence。
 - Failure-playbook tests：失败轨迹能生成 do_not_repeat、root cause、safe next action。
@@ -659,6 +680,9 @@ Feiyue/
 - git push/delete/rm -rf 等高风险操作需要 approval。
 
 ### 测试与验收方式
+
+- **Functional Acceptance：功能性测试验收**：验证该 Phase 的用户可见行为、核心流程或恢复/安全行为真的成立。
+- **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：验证代码结构、测试覆盖、lint/type/import、secret scan、文档同步和 git 工作区干净。
 
 - Permission tests：read/write/execute/network/git_push/delete 每类权限都有 allow/deny case。
 - Dangerous-command tests：`rm -rf`、force push、credential dump、delete workspace 等必须默认阻断或审批。
@@ -732,6 +756,9 @@ Feiyue/
 
 ### 测试与验收方式
 
+- **Functional Acceptance：功能性测试验收**：验证该 Phase 的用户可见行为、核心流程或恢复/安全行为真的成立。
+- **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：验证代码结构、测试覆盖、lint/type/import、secret scan、文档同步和 git 工作区干净。
+
 - API tests：`POST /tasks`、`GET /tasks/{id}`、`POST /tasks/{id}/run`、trace/eval/skill endpoints 覆盖 happy path 和权限失败。
 - Contract tests：OpenAPI schema 与 frontend client 类型一致。
 - Dashboard smoke：任务列表、任务详情、候选对比、验证结果、技能审核页面能渲染 fixture 数据。
@@ -796,6 +823,9 @@ Feiyue/
 
 ### 测试与验收方式
 
+- **Functional Acceptance：功能性测试验收**：验证该 Phase 的用户可见行为、核心流程或恢复/安全行为真的成立。
+- **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：验证代码结构、测试覆盖、lint/type/import、secret scan、文档同步和 git 工作区干净。
+
 - Search tests：best-of-N/tree search 在 tiny deterministic fixtures 上选择 verifier 分数最高候选。
 - Bandit tests：策略选择使用固定 seed，指标下降触发 rollback。
 - Retrieval tests：向量记忆只作为提示，不直接触发 side effect；错误召回不会越权执行。
@@ -858,11 +888,31 @@ LLM judge 容易偏差、奖励作弊和幻觉。Feiyue 的核心原则是：LLM
 每个 Phase 必须在进入下一 Phase 前完成以下 gate：
 
 1. **测试计划存在**：该 Phase 的“测试与验收方式”已写明测试类型、命令、人工 checklist 和合格标准。
-2. **RED/GREEN 证据**：新增代码遵循 TDD；关键行为至少有一次先失败再通过的测试记录。
-3. **相关测试通过**：运行该 Phase 指定测试命令，并记录 exit code 与摘要。
-4. **全量回归通过**：核心包至少运行一次 `pytest -q`；文档-only 变更至少运行链接/路径/状态检查。
-5. **验收证据归档**：trace/audit 或文档中记录命令、结果、artifact/hash/manual reviewer。
-6. **安全检查通过**：不提交 secret、trace、local notes；高风险 side effect 有 approval 或被阻断。
+2. **功能性验收存在并通过**：证明需求行为成立，例如 API/CLI 输出、业务流程、恢复路径、权限行为、UI 可见结果。
+3. **代码完整干净度验收存在并通过**：证明实现质量合格，例如测试覆盖、lint/typecheck、架构边界、无死代码/重复代码、无 secret、无临时文件、工作区干净。
+4. **RED/GREEN 证据**：新增代码遵循 TDD；关键行为至少有一次先失败再通过的测试记录。
+5. **相关测试通过**：运行该 Phase 指定测试命令，并记录 exit code 与摘要。
+6. **全量回归通过**：核心包至少运行一次 `pytest -q`；文档-only 变更至少运行链接/路径/状态检查。
+7. **验收证据归档**：trace/audit 或文档中记录命令、结果、artifact/hash/manual reviewer。
+8. **安全检查通过**：不提交 secret、trace、local notes；高风险 side effect 有 approval 或被阻断。
+
+### Two-track Acceptance Model
+
+所有 Phase 和所有任务的验收都分成两条独立 gate：
+
+#### Functional Acceptance：功能性测试验收
+
+- 验证“用户要的功能/行为是否真的成立”。
+- 典型证据：unit/integration/e2e 测试、API/CLI smoke、toy repo loop、fake provider flow、recovery simulation、人工 checklist。
+- 合格标准：核心业务路径可复现；失败有明确分类；输出能追溯到 verifier evidence 或人工 reviewer。
+
+#### Code Quality & Cleanliness Acceptance：代码完整干净度测试验收
+
+- 验证“实现是否完整、干净、可维护、可合并”。
+- 典型证据：lint、typecheck、compile/import check、dead code 检查、重复逻辑检查、架构边界检查、secret scan、git status clean。
+- 合格标准：无新增 lint/type/import 错误；无临时调试代码；无未使用文件；无 secret/raw sensitive dump；没有污染工作区；文档与测试同步更新。
+
+功能性验收通过但代码不干净，不允许合并；代码干净但功能未证明，也不允许合并。
 
 
 ### Unit Tests

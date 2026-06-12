@@ -523,6 +523,10 @@ Feiyue 由以下核心模块组成：
 - 将测试结果纳入 Audit / Replay Store：命令摘要、exit code、报告路径、artifact hash、失败分类、人工验收结论。
 - 对不可自动化判断的文档/研究/UI/技能审核任务，必须生成人工验收 checklist，并记录 reviewer、时间、结论和修改意见。
 - 测试验收不能只看 LLM 自评；LLM 只能辅助解释失败或生成 checklist，最终结果必须来自外部验证器或人工确认。
+- 测试验收必须拆成两条独立 gate：
+  - **Functional Acceptance：功能性测试验收**：证明需求行为真的成立，例如功能输出、业务流程、恢复行为、权限行为、用户可见结果。
+  - **Code Quality & Cleanliness Acceptance：代码完整干净度测试验收**：证明实现没有破坏工程质量，例如测试覆盖、lint/typecheck、架构边界、无死代码/重复代码、无 secret、无临时文件、工作区干净。
+- 两条 gate 都必须通过才算完成；功能通过但代码脏，或代码整洁但功能未验收，都不能进入下一 Phase。
 
 ### 技术栈
 
@@ -543,6 +547,7 @@ Feiyue 由以下核心模块组成：
 ### 验收标准
 
 - 每个 Phase 在开发大纲中都有“测试与验收方式”，不能只写功能清单。
+- 每个 Phase 的验收必须同时包含 Functional Acceptance 和 Code Quality & Cleanliness Acceptance。
 - 每个 PR/commit 前至少运行对应单元/契约测试和相关集成测试；无法运行时必须记录 blocker。
 - 每个成功结论都能追溯到测试命令、结果摘要、artifact/hash 或人工 checklist。
 - 每个失败都必须分类为代码失败、规格失败、环境失败、权限失败、provider 失败或未知状态。
