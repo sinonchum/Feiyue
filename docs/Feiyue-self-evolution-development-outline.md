@@ -749,21 +749,22 @@ M4 后续只做文档 closeout：
 
 ## 当前状态
 
-**Partial Foundation 已完成。**
+**Foundation 已完成。**
 
 本轮并行开发已完成：
 
 - M7.1 Capability Ladder。
 - M7.2 Worker Performance Record。
-- Capability integration smoke：task complexity → reviewed curation evidence → worker performance record。
+- M7.3 Model Capability Profile。
+- M7.4 Promotion/Demotion Recommendation Rules。
+- Capability integration smoke：task complexity → reviewed curation evidence → worker performance records → model capability profile → recommendation。
 
-尚未完成：
+后续增强项：
 
-- Model capability profile。
-- Promotion / demotion rules。
-- Repeated mistake aggregation。
-- Routing recommendation based on capability evidence。
 - Worker boundary report。
+- Routing recommendation adapter（仍不直接修改 routing table）。
+- Cross-model comparison report。
+- 与真实 provider/worker 数据的连接。
 
 ## 新功能范围
 
@@ -1247,7 +1248,7 @@ M5 Project Knowledge
 | M4 Candidate / Feedback / Teacher Loop | Done Foundation | fake provider / toy loop / trace resume 完成 |
 | M5 Workflow Asset Layer | Done Foundation | Project knowledge、task contract、bug dossier、lesson packet、regression eval、routing table 与 integration smoke 已完成；后续批量持久化/学习策略归入 M6/M7 |
 | M6 Curator / Distillation | Done Foundation | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate 与 curation smoke 已完成；promotion writer/dedup 作为后续增强 |
-| M7 Weak Model Capability Expansion | Partial Foundation | CapabilityLadder、TaskComplexity、WorkerPerformanceRecord 与 capability smoke 已完成；profile/promotion/demotion 未完成 |
+| M7 Weak Model Capability Expansion | Done Foundation | CapabilityLadder、TaskComplexity、WorkerPerformanceRecord、ModelCapabilityProfile、recommendation rules 与 capability smoke 已完成；routing adapter/真实数据连接后续增强 |
 | M8 Creative Role Development | Not Started | 依赖 project knowledge，部分可并行 |
 | M9 Strategy/Evaluation Harness | Not Started | toy metrics 可先行，真实评估依赖 M5–M8 |
 | M10 Real Provider Integration | Not Started | 需要授权，不改 Hermes config |
@@ -1260,53 +1261,54 @@ M5 Project Knowledge
 
 # 20. Immediate Next Development Slice
 
-## M7.3 / M7.4：Model Capability Profile + Promotion/Demotion Rules
+## M8.1 / M8.2：Creative Brief + Creative Variant Schema
 
-下一步建议继续 M7，把单条 WorkerPerformanceRecord 聚合为模型能力画像，并基于 verifier/reviewer evidence 生成可解释的升级/降级建议。
+下一步建议进入 M8 Creative Role Development。M5/M6/M7 已经完成 workflow assets、curation/review 和 capability evidence 基础；现在可以开始构建系统内部的创意角色，但仍保持 provider-free、候选式、用户最终选择。
 
 ### Objective
 
-实现 provider-free 的 model capability profile 与 promotion/demotion rule evaluator。系统应能根据多条 worker performance records 判断某个 worker/model 在某个 capability level 上是否稳定、是否需要 teacher、是否反复犯同类错误，并输出 recommendation，而不是直接修改 routing table。
+实现 provider-free 的 creative brief 和 creative variant schema，让系统能把 human seed、project knowledge、design laws、capability constraints 组织成可审核的创意任务输入，并表示 conservative / bold / low-cost / high-impact 等方案变体。此阶段不调用真实模型、不自动生成 PRD、不自动执行代码。
 
 ### Files
 
 Create:
 
-- `packages/feiyue-core/feiyue_core/capability/profile.py`
-- `packages/feiyue-core/feiyue_core/capability/rules.py`
-- `packages/feiyue-core/tests/test_model_capability_profile.py`
-- `packages/feiyue-core/tests/test_capability_rules.py`
+- `packages/feiyue-core/feiyue_core/creative/__init__.py`
+- `packages/feiyue-core/feiyue_core/creative/brief.py`
+- `packages/feiyue-core/feiyue_core/creative/variant.py`
+- `packages/feiyue-core/tests/test_creative_brief.py`
+- `packages/feiyue-core/tests/test_creative_variant.py`
 
 Update:
 
-- `packages/feiyue-core/feiyue_core/capability/__init__.py`
-- Add or extend capability integration smoke.
+- Add provider-free creative integration smoke.
 - `README.md`
 - `docs/Feiyue-self-evolution-development-outline.md`
 
 ### Functional Acceptance
 
-- ModelCapabilityProfile can aggregate records by model_id / capability_level.
-- Profile can report pass rate, teacher call rate, repeated mistake counts, unsafe count, and evidence IDs.
-- Promotion rule requires multiple verifier-backed successes and low/no teacher calls; single success must not promote.
-- Demotion/escalation rule triggers on unsafe results or repeated mistakes.
-- Rules output recommendation objects with rationale and source IDs; they do not mutate routing table.
+- CreativeBrief can represent human seed, project context, design laws, non-goals, constraints, target users, and source IDs.
+- CreativeVariant can represent variant type, pitch, rationale, risks, non-goals, verification idea, required capability level, and source IDs.
+- Creative output remains candidate-only and never auto-promotes to PRD/task.
+- Variants can be rendered deterministically for user review.
+- Capability level references are explicit so creative ideas can be routed to feasible workers later.
 
 ### Code Quality & Cleanliness Acceptance
 
 - Provider-free and deterministic.
-- No LLM self-assessment used as capability evidence.
-- Promotion/demotion thresholds are explicit and tested at boundaries.
+- No real model/provider/network calls.
+- User final selection remains required.
+- No hardcoded project-specific secrets or user data dumps.
 - compileall / pytest / diff-check / secret scan pass.
 
 ### Dependencies
 
-- M7.1 Capability Ladder.
-- M7.2 WorkerPerformanceRecord.
-- M6 review evidence IDs.
+- M5 Project Knowledge.
+- M7 Capability Ladder.
+- M6 curation lessons optional but not required for first slice.
 - Does not depend on real provider / network.
 
 ### Parallelization
 
-可并行：Model Capability Profile 与 Promotion/Demotion Rules 可以分两条 lane 开发。
-必须串行：rules integration smoke 需要 profile API 合并后完成。
+可并行：Creative Brief 与 Creative Variant schema 可以分两条 lane 开发。
+必须串行：creative integration smoke 需要两条 lane 合并后完成。
