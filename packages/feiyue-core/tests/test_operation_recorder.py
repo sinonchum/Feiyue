@@ -188,3 +188,21 @@ def test_operation_recorder_auto_derives_git_remote_ref_check(tmp_path) -> None:
             "expected_sha": "abc123",
         }
     ]
+
+
+def test_operation_recorder_auto_derives_github_ref_check(tmp_path) -> None:
+    journal = SessionJournal(tmp_path / "session.jsonl")
+    recorder = OperationRecorder(journal)
+
+    recorder.register(
+        operation_id="op_github_ref_auto_001",
+        tool="github_api",
+        args={"github_repo": "sinonchum/Feiyue", "ref": "refs/heads/main", "expected_sha": "abc123"},
+        risk_level=OperationRiskLevel.HIGH,
+        preconditions={"request": "sent"},
+    )
+
+    checks = journal.read_manifest().side_effect_checks["op_github_ref_auto_001"]
+    assert checks == [
+        {"type": "github_ref", "repo": "sinonchum/Feiyue", "ref": "refs/heads/main", "expected_sha": "abc123"}
+    ]

@@ -119,3 +119,49 @@ def test_inspect_dispatches_git_remote_ref_specs(tmp_path) -> None:
     )
 
     assert result.status == SideEffectStatus.CONFIRMED
+
+
+class _Completed:
+    def __init__(self, returncode=0, stdout="", stderr=""):
+        self.returncode = returncode
+        self.stdout = stdout
+        self.stderr = stderr
+
+
+def test_github_ref_check_confirms_expected_sha_from_api(monkeypatch) -> None:
+    def fake_run(args, text, capture_output, check):
+        assert args == ["gh", "api", "repos/sinonchum/Feiyue/git/ref/heads/main", "--jq", ".object.sha"]
+        return _Completed(stdout="abc123\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = SideEffectInspector().check_github_ref("sinonchum/Feiyue", "refs/heads/main", expected_sha="abc123")
+
+    assert result.status == SideEffectStatus.CONFIRMED
+    assert result.reason == "github ref matches"
+    assert result.observed["sha"] == "abc123"
+
+
+def test_github_ref_check_marks_mismatch_unsafe_to_repeat(monkeypatch) -> None:
+    def fake_run(args, text, capture_output, check):
+        return _Completed(stdout="def456\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = SideEffectInspector().check_github_ref("sinonchum/Feiyue", "refs/heads/main", expected_sha="abc123")
+
+    assert result.status == SideEffectStatus.UNSAFE_TO_REPEAT
+    assert result.reason == "github ref mismatch"
+
+
+def test_inspect_dispatches_github_ref_specs(monkeypatch) -> None:
+    def fake_run(args, text, capture_output, check):
+        return _Completed(stdout="abc123\n")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    result = SideEffectInspector().inspect(
+        {"type": "github_ref", "repo": "sinonchum/Feiyue", "ref": "refs/heads/main", "expected_sha": "abc123"}
+    )
+
+    assert result.status == SideEffectStatus.CONFIRMED

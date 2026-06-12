@@ -187,3 +187,33 @@ def test_resume_flow_recovers_interrupted_recorded_remote_git_side_effect_after_
     assert "op_git_remote_001" not in persisted.pending_operations
     assert "operation op_git_remote_001 reconciled as confirmed" in persisted.verified_outputs
     assert persisted.next_safe_action == "continue with next planned step"
+
+
+def test_resume_flow_recovers_interrupted_recorded_github_ref_after_restart(tmp_path, monkeypatch) -> None:
+    class Completed:
+        returncode = 0
+        stdout = "abc123\n"
+        stderr = ""
+
+    def fake_run(args, text, capture_output, check):
+        assert args == ["gh", "api", "repos/sinonchum/Feiyue/git/ref/heads/main", "--jq", ".object.sha"]
+        return Completed()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    journal = SessionJournal(tmp_path / "session.jsonl")
+    recorder = OperationRecorder(journal)
+    recorder.register(
+        operation_id="op_github_ref_001",
+        tool="github_api",
+        args={"github_repo": "sinonchum/Feiyue", "ref": "refs/heads/main", "expected_sha": "abc123"},
+        risk_level=OperationRiskLevel.HIGH,
+        preconditions={"request": "sent"},
+    )
+
+    result = ResumeFlow(journal=journal).prepare()
+    persisted = journal.read_manifest()
+
+    assert result.warnings == []
+    assert "op_github_ref_001" not in persisted.pending_operations
+    assert "operation op_github_ref_001 reconciled as confirmed" in persisted.verified_outputs
+    assert persisted.next_safe_action == "continue with next planned step"
