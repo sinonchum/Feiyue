@@ -16,14 +16,22 @@ from feiyue_core.capability.performance_record import (
     WorkerPerformanceRecord,
     WorkerTaskResult,
 )
+from feiyue_core.capability.profile import (
+    CapabilityLevelStats,
+    ModelCapabilityProfile,
+    build_model_capability_profile,
+)
 
 __all__ = [
     "CapabilityLadder",
     "CapabilityLevel",
     "CapabilityLevelDefinition",
+    "CapabilityLevelStats",
+    "ModelCapabilityProfile",
     "TaskComplexity",
     "WorkerPerformanceRecord",
     "WorkerTaskResult",
+    "build_model_capability_profile",
     "compare_levels",
     "default_capability_ladder",
     "get_level_definition",
