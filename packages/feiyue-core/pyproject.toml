@@ -13,6 +13,7 @@ dependencies = [
 
 [project.scripts]
 feiyue-interruption-demo = "feiyue_core.runtime.interruption_simulation:main"
+feiyue-runs = "feiyue_core.workflow.runs_cli:main"
 
 [project.optional-dependencies]
 dev = [
