@@ -1,6 +1,6 @@
 # Feiyue
 
-Feiyue is a private research/design repository for a verifier-driven, system-level self-evolving AI Agent system. Its canonical direction is to help weaker/cheaper student models maintain high-quality outputs through durable strategy assets, sparse teacher-model guidance, external verification, and evaluation-backed evolution.
+Feiyue is a private research/design repository for a Hermes-based Creative Evolution Loop Orchestrator: a self-evolving AI development organization that turns human creative direction into strong-model PRD/spec/task contracts, weak-model execution, tool-grounded verification, teacher-guided repair, and reusable skills/evals/templates/routing rules. Its canonical direction is to make weaker/cheaper student models increasingly reliable, expand their task boundary with evidence, and gradually develop system roles that can contribute creative variants and opportunities under human taste selection.
 
 ## Implementation
 
@@ -22,6 +22,7 @@ python3 -m feiyue_core.runtime.interruption_simulation --root /tmp/feiyue-demo -
 
 ## Documents
 
+- [`docs/Feiyue-master-blueprint.md`](docs/Feiyue-master-blueprint.md) — highest-level canonical blueprint for Feiyue as a Hermes-based Creative Evolution Loop Orchestrator: human creativity, strong-model specification, weak-model execution, tool-grounded verification, teacher-guided repair, asset distillation, weak-model capability expansion, and emerging creative roles.
 - [`docs/Feiyue-system-doctrine.md`](docs/Feiyue-system-doctrine.md) — canonical doctrine for Feiyue's system-level self-evolution, student/teacher model roles, sparse teacher intervention, distillation, and cross-model quality preservation. Future plans and development default to this doctrine unless explicitly overridden.
 - [`docs/Feiyue-self-evolution-development-outline.md`](docs/Feiyue-self-evolution-development-outline.md) — canonical development outline derived from the doctrine, covering features, dependencies, tech stack, parallel/serial work, and two-track acceptance gates for every phase.
 - [`docs/Feiyue-PRD.md`](docs/Feiyue-PRD.md) — product requirements for a verifiable feedback-driven AI self-improvement system.

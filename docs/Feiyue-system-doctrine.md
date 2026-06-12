@@ -2,7 +2,7 @@
 
 > **版本**：v0.1
 > **日期**：2026-06-12
-> **状态**：Canonical reference。后续 Feiyue 的开发、计划、评测与路线调整，默认以本文定义为准；除非用户明确说明，否则不得把 Feiyue 缩窄为单一 runtime、防失忆工具或普通弱模型增强框架。
+> **状态**：Canonical reference。后续 Feiyue 的开发、计划、评测与路线调整，默认以本文和 [`Feiyue-master-blueprint.md`](Feiyue-master-blueprint.md) 定义为准；除非用户明确说明，否则不得把 Feiyue 缩窄为单一 runtime、防失忆工具或普通弱模型增强框架。
 
 ---
 

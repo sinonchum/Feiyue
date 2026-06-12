@@ -2,7 +2,7 @@
 
 > **版本**：v0.1
 > **日期**：2026-06-12
-> **Canonical reference**：[`Feiyue-system-doctrine.md`](Feiyue-system-doctrine.md)
+> **Canonical reference**：[`Feiyue-master-blueprint.md`](Feiyue-master-blueprint.md) 与 [`Feiyue-system-doctrine.md`](Feiyue-system-doctrine.md)
 > **For Hermes**：后续 Feiyue 开发、计划、任务拆分和验收默认以本文与 System Doctrine 为准；除非用户明确说明，不得把 Feiyue 简化成普通弱模型 wrapper、普通 fallback runtime、普通 prompt optimizer 或普通 code repair bot。
 
 ---
