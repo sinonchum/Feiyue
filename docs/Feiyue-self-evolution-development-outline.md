@@ -39,9 +39,9 @@ Feiyue 追求三个战略结果：
 当前代码状态：
 
 - Core package：`packages/feiyue-core`
-- Python source/test 文件：98 个（source 60，tests 38）
-- 当前完整测试：`165 passed`
-- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator input / distillation proposal foundation。
+- Python source/test 文件：持续扩展中（当前 provider-free foundation 覆盖 workflow、curation、capability、creative、evaluation、providers）。
+- 当前完整测试：`316 passed`
+- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation。
 
 ### 1.2 已完成核心资产
 
@@ -112,17 +112,8 @@ Feiyue 追求三个战略结果：
 
 根据 Master Blueprint，以下仍未系统实现：
 
-- Project `.hermes/` knowledge layer。
-- Task contract templates。
-- Bug dossier template/schema。
-- Lesson packet schema and persistence。
-- Regression eval generator。
-- Model routing table with performance learning。
-- Curator distillation loop。
-- Weak model capability ladder tracking / promotion / demotion。
-- Emerging creative role workflow。
-- Strategy scorecards and evaluation harness。
-- Real provider / Hermes profile worker integration。
+- Real provider / Hermes profile worker execution（需明确授权和配置）。
+- OpenAI-compatible HTTP adapter 的真实 provider smoke（需凭据和授权）。
 - Product dashboard / API。
 
 ---
@@ -957,6 +948,25 @@ M4 后续只做文档 closeout：
 
 接入真实模型角色和 Hermes profiles，使强模型/弱模型分工从 fake provider 进入真实可运行环境。
 
+## 当前状态
+
+**Partial Foundation 已完成。**
+
+已完成 provider-free / safe integration 子集：
+
+- `FakeProfileRunner`：以 canned profile response 模拟 Hermes profile，不执行真实 subprocess，不读取或修改 Hermes 配置。
+- `ProviderDiagnostic` / `ProviderFailureKind`：将 provider stderr / exit code / timeout 分类为结构化诊断。
+- `redact_secrets()`：对 API key、token、password、Authorization bearer 做确定性脱敏。
+- `run_profile_with_diagnostic()`：把 fake profile runner、raw result、失败分类、prompt/stderr 脱敏串成 provider integration smoke 边界。
+- `tests/test_provider_integration.py`：验证 success 无 diagnostic、missing profile 失败可分类且脱敏、timeout 优先级高于 auth error。
+
+尚未完成且必须等待授权：
+
+- 真实 Hermes profile runner subprocess invocation。
+- OpenAI-compatible provider adapter 的真实 HTTP smoke。
+- teacher escalation with real model profile。
+- role-bound provider config validation 对真实配置的读取。
+
 ## 新功能范围
 
 - OpenAI-compatible provider adapter。
@@ -978,16 +988,19 @@ M4 后续只做文档 closeout：
 
 ## Functional Acceptance
 
-- fake subprocess provider tests pass。
-- fake HTTP provider tests pass。
+- fake subprocess/profile runner tests pass。
+- provider integration smoke passes without network, credentials, real subprocess, or Hermes config access。
+- failure diagnostics classify exit/timeout/stderr and redact prompt/stderr secrets。
+- fake HTTP provider tests pass（后续）。
 - role routing can select profile without changing global Hermes config。
 - real provider smoke requires explicit user authorization and configured credentials。
 
 ## Code Quality & Cleanliness Acceptance
 
 - 不在 repo 写入 secrets。
-- logs redact API keys/tokens。
+- logs/prompt/stderr diagnostic context redact API keys/tokens/passwords/bearer values。
 - provider failures produce structured diagnostics。
+- fake runner 不读取或修改真实 Hermes 配置。
 - no model/provider changes without user permission。
 
 ## 依赖
