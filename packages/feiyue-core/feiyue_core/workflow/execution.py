@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import shlex
 import subprocess
+import tempfile
 from enum import StrEnum
 from pathlib import Path
 
@@ -26,6 +27,12 @@ class WorkflowExecutionStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class PromotionStatus(StrEnum):
+    PROMOTED = "promoted"
+    BLOCKED = "blocked"
+    FAILED = "failed"
+
+
 class CandidateFileWrite(FeiyueModel):
     """A provider-free candidate side effect for the M11 toy workflow path."""
 
@@ -40,6 +47,18 @@ class TeacherGuidanceEvent(FeiyueModel):
     trigger: str
     guidance: str
     source_bug_dossier_task_id: str
+
+
+class PromotionResult(FeiyueModel):
+    """Result of promoting a verified workflow patch into a target branch."""
+
+    status: PromotionStatus
+    target_branch: str
+    commit_sha: str | None = None
+    promoted_files: list[str] = Field(default_factory=list)
+    reason: str | None = None
+    source_repo_clean: bool
+    promotion_worktree_removed: bool
 
 
 class WorkflowExecutionReport(FeiyueModel):
@@ -178,6 +197,70 @@ class ToyWorkflowExecutor:
             retry.bug_dossier.attempts.append("retry")
         return retry
 
+    def promote_verified_writes(
+        self,
+        *,
+        source_repo: str | Path,
+        report: WorkflowExecutionReport,
+        candidate_writes: list[CandidateFileWrite],
+        target_branch: str,
+        commit_message: str,
+    ) -> PromotionResult:
+        """Promote verifier-approved writes into a dedicated git branch.
+
+        Promotion is deliberately separate from execution. A report must be
+        `promotion_ready`; otherwise no branch/worktree is created. When allowed,
+        writes are applied in a temporary git worktree for `target_branch`,
+        committed there, and the caller's current checkout remains untouched.
+        """
+        source_path = Path(source_repo)
+        if not report.promotion_ready or not report.verification_passed:
+            return PromotionResult(
+                status=PromotionStatus.BLOCKED,
+                target_branch=target_branch,
+                reason="report is not promotion-ready",
+                source_repo_clean=self._source_repo_clean(source_path),
+                promotion_worktree_removed=True,
+            )
+
+        promotion_path = Path(tempfile.mkdtemp(prefix="feiyue-promotion-"))
+        removed = False
+        try:
+            base_sha = self._git("rev-parse", "HEAD", cwd=source_path).strip()
+            self._git("worktree", "add", "-B", target_branch, str(promotion_path), base_sha, cwd=source_path)
+            for write in candidate_writes:
+                self._apply_write(promotion_path, write)
+            self._git("add", *[write.path for write in candidate_writes], cwd=promotion_path)
+            self._git("commit", "-m", commit_message, cwd=promotion_path)
+            commit_sha = self._git("rev-parse", "HEAD", cwd=promotion_path).strip()
+        except Exception as exc:
+            return PromotionResult(
+                status=PromotionStatus.FAILED,
+                target_branch=target_branch,
+                promoted_files=[write.path for write in candidate_writes],
+                reason=str(exc),
+                source_repo_clean=self._source_repo_clean(source_path),
+                promotion_worktree_removed=removed,
+            )
+        finally:
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(promotion_path)],
+                cwd=source_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            removed = not promotion_path.exists()
+
+        return PromotionResult(
+            status=PromotionStatus.PROMOTED,
+            target_branch=target_branch,
+            commit_sha=commit_sha,
+            promoted_files=[write.path for write in candidate_writes],
+            source_repo_clean=self._source_repo_clean(source_path),
+            promotion_worktree_removed=removed,
+        )
+
     def _validate_scope(
         self, contract: TaskContract, candidate_writes: list[CandidateFileWrite]
     ) -> str | None:
@@ -282,6 +365,17 @@ class ToyWorkflowExecutor:
             applies_to=["m11", "workflow-execution", "sandbox-verifier"],
             source_task_id=contract.task_id,
         )
+
+    @staticmethod
+    def _git(*args: str, cwd: Path) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+        return completed.stdout
 
     @staticmethod
     def _source_repo_clean(source_repo: Path) -> bool:

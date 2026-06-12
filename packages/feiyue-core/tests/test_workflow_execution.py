@@ -4,7 +4,12 @@ import subprocess
 from pathlib import Path
 
 from feiyue_core.workflow import TaskContract
-from feiyue_core.workflow.execution import CandidateFileWrite, WorkflowExecutionStatus, ToyWorkflowExecutor
+from feiyue_core.workflow.execution import (
+    CandidateFileWrite,
+    PromotionStatus,
+    WorkflowExecutionStatus,
+    ToyWorkflowExecutor,
+)
 
 
 def _init_toy_repo(path: Path) -> None:
@@ -198,3 +203,91 @@ def test_toy_workflow_teacher_retry_keeps_failure_when_revised_patch_fails(tmp_p
     assert report.regression_check is None
     assert report.source_repo_clean is True
     assert report.sandbox_removed is True
+
+
+
+def test_promotes_verified_patch_to_target_branch_without_mutating_current_checkout(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m11-promotion",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    writes = [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")]
+    executor = ToyWorkflowExecutor()
+    report = executor.execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=writes,
+        project_name="toy-calculator",
+    )
+
+    promotion = executor.promote_verified_writes(
+        source_repo=repo,
+        report=report,
+        candidate_writes=writes,
+        target_branch="feiyue/m11-promotion",
+        commit_message="feat: promote verified calculator fix",
+    )
+
+    assert promotion.status == PromotionStatus.PROMOTED
+    assert promotion.target_branch == "feiyue/m11-promotion"
+    assert promotion.commit_sha
+    assert promotion.promoted_files == ["calc.py"]
+    assert promotion.source_repo_clean is True
+    assert promotion.promotion_worktree_removed is True
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+    branch_content = subprocess.run(
+        ["git", "show", "feiyue/m11-promotion:calc.py"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert branch_content == "def add(a, b):\n    return a + b\n"
+
+
+def test_promotion_blocks_unverified_report_and_leaves_repo_unchanged(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m11-promotion-blocked",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    writes = [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a * b\n")]
+    executor = ToyWorkflowExecutor()
+    report = executor.execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=writes,
+        project_name="toy-calculator",
+    )
+
+    promotion = executor.promote_verified_writes(
+        source_repo=repo,
+        report=report,
+        candidate_writes=writes,
+        target_branch="feiyue/should-not-exist",
+        commit_message="feat: should not promote",
+    )
+
+    assert promotion.status == PromotionStatus.BLOCKED
+    assert promotion.commit_sha is None
+    assert promotion.reason == "report is not promotion-ready"
+    assert promotion.source_repo_clean is True
+    assert promotion.promotion_worktree_removed is True
+    refs = subprocess.run(
+        ["git", "branch", "--list", "feiyue/should-not-exist"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert refs.strip() == ""
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
