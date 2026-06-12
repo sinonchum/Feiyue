@@ -816,6 +816,23 @@ M4 后续只做文档 closeout：
 
 让系统中逐渐形成能做部分创意工作的角色：创意扩展、变体生成、跨项目迁移、机会发现、taste-aware proposal。
 
+## 当前状态
+
+**Partial Foundation 已完成。**
+
+本轮并行开发已完成：
+
+- M8.1 Creative Brief。
+- M8.2 Creative Variant Schema。
+- Creative integration smoke：project knowledge + capability ladder → creative brief → candidate-only variants。
+
+尚未完成：
+
+- Creative critique template。
+- User selection feedback record。
+- Opportunity discovery from lessons / failures。
+- Accepted creative proposal metrics。
+
 ## 新功能范围
 
 - Creative brief schema。
@@ -1249,7 +1266,7 @@ M5 Project Knowledge
 | M5 Workflow Asset Layer | Done Foundation | Project knowledge、task contract、bug dossier、lesson packet、regression eval、routing table 与 integration smoke 已完成；后续批量持久化/学习策略归入 M6/M7 |
 | M6 Curator / Distillation | Done Foundation | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate 与 curation smoke 已完成；promotion writer/dedup 作为后续增强 |
 | M7 Weak Model Capability Expansion | Done Foundation | CapabilityLadder、TaskComplexity、WorkerPerformanceRecord、ModelCapabilityProfile、recommendation rules 与 capability smoke 已完成；routing adapter/真实数据连接后续增强 |
-| M8 Creative Role Development | Not Started | 依赖 project knowledge，部分可并行 |
+| M8 Creative Role Development | Partial Foundation | CreativeBrief、CreativeVariant 与 creative smoke 已完成；critique/selection/opportunity metrics 未完成 |
 | M9 Strategy/Evaluation Harness | Not Started | toy metrics 可先行，真实评估依赖 M5–M8 |
 | M10 Real Provider Integration | Not Started | 需要授权，不改 Hermes config |
 | M11 Real Workflow Execution | Not Started | 依赖 M5/M6/M10，provider-free toy path 可先做 |
@@ -1261,54 +1278,52 @@ M5 Project Knowledge
 
 # 20. Immediate Next Development Slice
 
-## M8.1 / M8.2：Creative Brief + Creative Variant Schema
+## M8.3 / M8.4：Creative Critique + User Selection Feedback
 
-下一步建议进入 M8 Creative Role Development。M5/M6/M7 已经完成 workflow assets、curation/review 和 capability evidence 基础；现在可以开始构建系统内部的创意角色，但仍保持 provider-free、候选式、用户最终选择。
+下一步继续 M8。Creative brief/variant 已能表达候选创意；接下来要让系统能批判候选、记录用户选择反馈，为 taste-aware proposal 和 accepted creative proposal metrics 做基础。
 
 ### Objective
 
-实现 provider-free 的 creative brief 和 creative variant schema，让系统能把 human seed、project knowledge、design laws、capability constraints 组织成可审核的创意任务输入，并表示 conservative / bold / low-cost / high-impact 等方案变体。此阶段不调用真实模型、不自动生成 PRD、不自动执行代码。
+实现 provider-free 的 creative critique 和 user selection feedback schema。每个 creative variant 必须能被批判其风险、违反约束可能性、验证成本和适合度；用户选择/拒绝必须记录 rationale，后续用于 taste-aware learning，但不自动修改 project memory 或 routing。
 
 ### Files
 
 Create:
 
-- `packages/feiyue-core/feiyue_core/creative/__init__.py`
-- `packages/feiyue-core/feiyue_core/creative/brief.py`
-- `packages/feiyue-core/feiyue_core/creative/variant.py`
-- `packages/feiyue-core/tests/test_creative_brief.py`
-- `packages/feiyue-core/tests/test_creative_variant.py`
+- `packages/feiyue-core/feiyue_core/creative/critique.py`
+- `packages/feiyue-core/feiyue_core/creative/selection.py`
+- `packages/feiyue-core/tests/test_creative_critique.py`
+- `packages/feiyue-core/tests/test_creative_selection.py`
 
 Update:
 
-- Add provider-free creative integration smoke.
+- `packages/feiyue-core/feiyue_core/creative/__init__.py`
+- Extend creative integration smoke.
 - `README.md`
 - `docs/Feiyue-self-evolution-development-outline.md`
 
 ### Functional Acceptance
 
-- CreativeBrief can represent human seed, project context, design laws, non-goals, constraints, target users, and source IDs.
-- CreativeVariant can represent variant type, pitch, rationale, risks, non-goals, verification idea, required capability level, and source IDs.
-- Creative output remains candidate-only and never auto-promotes to PRD/task.
-- Variants can be rendered deterministically for user review.
-- Capability level references are explicit so creative ideas can be routed to feasible workers later.
+- CreativeCritique can record variant id, constraint violations, risk assessment, feasibility notes, verification cost, recommendation, and source IDs.
+- UserSelectionFeedback can record accepted/rejected/deferred status, selected variant id, rationale, violated design laws, useful aspects, and source IDs.
+- Feedback remains evidence only; it does not auto-promote variants to PRD/task.
+- Deterministic Markdown render for review.
 
 ### Code Quality & Cleanliness Acceptance
 
 - Provider-free and deterministic.
 - No real model/provider/network calls.
-- User final selection remains required.
-- No hardcoded project-specific secrets or user data dumps.
+- No automatic project memory mutation.
+- Validation rejects empty rationale/source IDs.
 - compileall / pytest / diff-check / secret scan pass.
 
 ### Dependencies
 
-- M5 Project Knowledge.
-- M7 Capability Ladder.
-- M6 curation lessons optional but not required for first slice.
-- Does not depend on real provider / network.
+- M8.1 CreativeBrief.
+- M8.2 CreativeVariant.
+- M5 design laws/project knowledge optional via source IDs.
 
 ### Parallelization
 
-可并行：Creative Brief 与 Creative Variant schema 可以分两条 lane 开发。
-必须串行：creative integration smoke 需要两条 lane 合并后完成。
+可并行：Creative Critique 与 User Selection Feedback 可以分两条 lane 开发。
+必须串行：integration smoke 需要两条 lane 合并后完成。
