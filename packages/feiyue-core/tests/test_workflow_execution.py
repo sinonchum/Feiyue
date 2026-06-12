@@ -18,6 +18,7 @@ from feiyue_core.workflow.execution import (
     PromotionStatus,
     RunEvidenceLoader,
     RunEvidenceNotFoundError,
+    RunCatalog,
     WorkflowExecutionStatus,
     ToyWorkflowExecutor,
     WorkflowReportWriter,
@@ -870,3 +871,60 @@ def test_run_evidence_handoff_marks_missing_approval_explicitly(tmp_path: Path) 
     assert "- approval_exists: False" in summary
     assert "- approval_id: None" in summary
     assert "- approval_applies: False" in summary
+
+
+def test_run_catalog_lists_summaries_and_aggregates_next_actions(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract_block = TaskContract(
+        task_id="m13-catalog-block",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    blocked_report = ToyWorkflowExecutor(policy_governor=PolicyGovernor()).execute(
+        source_repo=repo,
+        contract=contract_block,
+        candidate_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        project_name="toy-calculator",
+        risk_level=RiskLevel.HIGH,
+    )
+    WorkflowReportWriter(repo).write(report=blocked_report)
+
+    contract_verified = TaskContract(
+        task_id="m13-catalog-verified",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    verified_report = ToyWorkflowExecutor(policy_governor=PolicyGovernor()).execute(
+        source_repo=repo,
+        contract=contract_verified,
+        candidate_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        project_name="toy-calculator",
+    )
+    WorkflowReportWriter(repo).write(report=verified_report)
+
+    summary = RunCatalog(repo).summary()
+
+    assert summary.total_runs == 2
+    assert summary.safe_to_retry_count == 0
+    assert summary.next_action_counts == {
+        "promote_verified_patch": 1,
+        "request_human_approval": 1,
+    }
+    assert [run.task_id for run in summary.runs] == ["m13-catalog-block", "m13-catalog-verified"]
+    assert summary.runs[0].status == "blocked"
+    assert summary.runs[0].policy_reason == "high_risk_operation"
+    assert summary.runs[0].approval_exists is False
+
+
+def test_run_catalog_returns_empty_summary_when_no_runs_exist(tmp_path: Path) -> None:
+    summary = RunCatalog(tmp_path).summary()
+
+    assert summary.total_runs == 0
+    assert summary.safe_to_retry_count == 0
+    assert summary.next_action_counts == {}
+    assert summary.runs == []

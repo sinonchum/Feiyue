@@ -5,6 +5,7 @@ import subprocess
 import tempfile
 from enum import StrEnum
 from pathlib import Path
+from collections import Counter
 
 from pydantic import Field
 
@@ -113,6 +114,28 @@ class RunEvidenceIndex(FeiyueModel):
     report_paths: dict[str, str] = Field(default_factory=dict)
 
 
+class RunCatalogItem(FeiyueModel):
+    """Compact run row for dashboards, APIs, and CLI listing."""
+
+    task_id: str
+    status: str
+    policy_action: str | None = None
+    policy_reason: str | None = None
+    safe_to_retry: bool
+    next_safe_action: str
+    approval_exists: bool
+    approval_applies: bool
+
+
+class RunCatalogSummary(FeiyueModel):
+    """Aggregate view over persisted run evidence."""
+
+    total_runs: int
+    safe_to_retry_count: int
+    next_action_counts: dict[str, int] = Field(default_factory=dict)
+    runs: list[RunCatalogItem] = Field(default_factory=list)
+
+
 class RunEvidenceNotFoundError(FileNotFoundError):
     """Raised when a persisted run evidence index is missing."""
 
@@ -189,6 +212,47 @@ class RunEvidenceLoader:
 
     def _evidence_path(self, task_id: str) -> Path:
         return self.project_root / ".hermes" / "runs" / task_id / "run-evidence.json"
+
+
+class RunCatalog:
+    """Provider-free catalog over persisted run evidence for M11 productization."""
+
+    def __init__(self, project_root: str | Path) -> None:
+        self.project_root = Path(project_root)
+        self.loader = RunEvidenceLoader(project_root)
+
+    def summary(self) -> RunCatalogSummary:
+        evidence_items = [self.loader.load(task_id) for task_id in self._list_run_ids()]
+        runs = [
+            RunCatalogItem(
+                task_id=evidence.task_id,
+                status=evidence.status,
+                policy_action=evidence.policy_action,
+                policy_reason=evidence.policy_reason,
+                safe_to_retry=evidence.safe_to_retry,
+                next_safe_action=evidence.next_safe_action,
+                approval_exists=evidence.approval_exists,
+                approval_applies=evidence.approval_applies,
+            )
+            for evidence in evidence_items
+        ]
+        next_action_counts = Counter(run.next_safe_action for run in runs)
+        return RunCatalogSummary(
+            total_runs=len(runs),
+            safe_to_retry_count=sum(1 for run in runs if run.safe_to_retry),
+            next_action_counts=dict(sorted(next_action_counts.items())),
+            runs=runs,
+        )
+
+    def _list_run_ids(self) -> list[str]:
+        runs_dir = self.project_root / ".hermes" / "runs"
+        if not runs_dir.exists():
+            return []
+        return sorted(
+            path.name
+            for path in runs_dir.iterdir()
+            if path.is_dir() and (path / "run-evidence.json").exists()
+        )
 
 
 class WorkflowReportWriter:

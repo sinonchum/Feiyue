@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 from typing import Sequence
 
-from feiyue_core.workflow.execution import RunEvidenceLoader, RunEvidenceNotFoundError
+from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -16,7 +16,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--root", default=".", help="Project root containing .hermes/runs")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("list", help="List persisted run ids")
+    list_parser = subparsers.add_parser("list", help="List persisted run ids")
+    list_parser.add_argument("--json", action="store_true", help="Print catalog summary JSON")
 
     show_parser = subparsers.add_parser("show", help="Print run-evidence.json for a task")
     show_parser.add_argument("task_id")
@@ -30,8 +31,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.command == "list":
-            for task_id in _list_run_ids(root):
-                print(task_id)
+            catalog = RunCatalog(root)
+            if args.json:
+                print(catalog.summary().model_dump_json(indent=2))
+                return 0
+            for run in catalog.summary().runs:
+                print(run.task_id)
             return 0
         if args.command == "show":
             evidence = loader.load(args.task_id)
@@ -44,17 +49,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     return 2
-
-
-def _list_run_ids(root: Path) -> list[str]:
-    runs_dir = root / ".hermes" / "runs"
-    if not runs_dir.exists():
-        return []
-    return sorted(
-        path.name
-        for path in runs_dir.iterdir()
-        if path.is_dir() and (path / "run-evidence.json").exists()
-    )
 
 
 if __name__ == "__main__":

@@ -115,3 +115,21 @@ def test_runs_cli_missing_run_exits_nonzero_with_stable_error(tmp_path) -> None:
     assert completed.returncode == 2
     assert "Run evidence index not found" in completed.stderr
     assert "missing-task" in completed.stderr
+
+
+def test_runs_cli_lists_catalog_summary_as_json(tmp_path) -> None:
+    _write_run_evidence(tmp_path, "m13-cli-catalog")
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "feiyue_core.workflow.runs_cli", "--root", str(tmp_path), "list", "--json"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["total_runs"] == 1
+    assert payload["safe_to_retry_count"] == 0
+    assert payload["next_action_counts"] == {"request_human_approval": 1}
+    assert payload["runs"][0]["task_id"] == "m13-cli-catalog"
+    assert payload["runs"][0]["approval_exists"] is False
