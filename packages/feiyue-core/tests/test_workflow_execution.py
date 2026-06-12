@@ -3,6 +3,13 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from feiyue_core.safety import (
+    GovernanceAction,
+    PolicyDecisionReason,
+    PolicyGovernor,
+    PolicyGovernorConfig,
+    RiskLevel,
+)
 from feiyue_core.workflow import TaskContract
 from feiyue_core.workflow.execution import (
     CandidateFileWrite,
@@ -369,3 +376,111 @@ def test_workflow_report_writer_persists_bug_dossier_for_failed_execution(tmp_pa
     assert "# Bug Dossier" in bug_text
     assert "m11-report-failure" in bug_text
     assert "python -m pytest -q" in bug_text
+
+
+
+def test_policy_governor_allows_low_risk_workflow_execution(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-exec-policy-allow",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+
+    report = ToyWorkflowExecutor(policy_governor=PolicyGovernor()).execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        project_name="toy-calculator",
+        risk_level=RiskLevel.LOW,
+        estimated_tokens=500,
+    )
+
+    assert report.status == WorkflowExecutionStatus.VERIFIED
+    assert report.policy_decision is not None
+    assert report.policy_decision.action == GovernanceAction.ALLOW
+    assert report.policy_decision.reason == PolicyDecisionReason.WITHIN_POLICY
+
+
+def test_policy_governor_blocks_teacher_retry_when_budget_exhausted(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-teacher-policy-block",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    executor = ToyWorkflowExecutor(
+        policy_governor=PolicyGovernor(PolicyGovernorConfig(max_teacher_calls=0))
+    )
+
+    report = executor.execute_with_teacher_retry(
+        source_repo=repo,
+        contract=contract,
+        initial_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a * b\n")],
+        teacher_guidance="This guidance must not be applied when budget is exhausted.",
+        revised_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        project_name="toy-calculator",
+        teacher_calls_used=0,
+    )
+
+    assert report.status == WorkflowExecutionStatus.NEEDS_TEACHER
+    assert report.attempt_count == 1
+    assert report.teacher_guidance_events == []
+    assert report.policy_decision is not None
+    assert report.policy_decision.action == GovernanceAction.BLOCK
+    assert report.policy_decision.reason == PolicyDecisionReason.TEACHER_CALL_BUDGET_EXHAUSTED
+    assert report.bug_dossier is not None
+    assert "policy_gate" in report.bug_dossier.attempts
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+
+
+def test_policy_governor_escalates_high_risk_promotion_before_branch_creation(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-promotion-policy-escalate",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    writes = [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")]
+    executor = ToyWorkflowExecutor(policy_governor=PolicyGovernor())
+    report = executor.execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=writes,
+        project_name="toy-calculator",
+    )
+
+    promotion = executor.promote_verified_writes(
+        source_repo=repo,
+        report=report,
+        candidate_writes=writes,
+        target_branch="feiyue/m12-policy-escalated",
+        commit_message="feat: should require approval",
+        risk_level=RiskLevel.HIGH,
+    )
+
+    assert promotion.status == PromotionStatus.BLOCKED
+    assert promotion.commit_sha is None
+    assert promotion.reason == "high_risk_operation"
+    assert promotion.policy_decision is not None
+    assert promotion.policy_decision.action == GovernanceAction.ESCALATE
+    assert promotion.policy_decision.requires_human_approval is True
+    refs = subprocess.run(
+        ["git", "branch", "--list", "feiyue/m12-policy-escalated"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    assert refs.strip() == ""
+    assert promotion.source_repo_clean is True
+    assert promotion.promotion_worktree_removed is True

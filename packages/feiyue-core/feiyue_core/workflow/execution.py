@@ -8,6 +8,13 @@ from pathlib import Path
 
 from pydantic import Field
 
+from feiyue_core.safety import (
+    GovernanceAction,
+    PolicyDecision,
+    PolicyGovernor,
+    PolicyRequest,
+    RiskLevel,
+)
 from feiyue_core.sandbox import WorktreeSandbox
 from feiyue_core.sandbox.command_runner import CommandRunner, CommandResult, CommandStatus
 from feiyue_core.schemas.common import FeiyueModel
@@ -59,6 +66,7 @@ class PromotionResult(FeiyueModel):
     reason: str | None = None
     source_repo_clean: bool
     promotion_worktree_removed: bool
+    policy_decision: PolicyDecision | None = None
 
 
 class WorkflowExecutionReport(FeiyueModel):
@@ -77,6 +85,7 @@ class WorkflowExecutionReport(FeiyueModel):
     regression_check: RegressionCheck | None = None
     attempt_count: int = 1
     teacher_guidance_events: list[TeacherGuidanceEvent] = Field(default_factory=list)
+    policy_decision: PolicyDecision | None = None
 
 
 class WorkflowReportArtifacts(FeiyueModel):
@@ -223,8 +232,13 @@ class ToyWorkflowExecutor:
     explicit action gated on verifier success.
     """
 
-    def __init__(self, command_runner: CommandRunner | None = None) -> None:
+    def __init__(
+        self,
+        command_runner: CommandRunner | None = None,
+        policy_governor: PolicyGovernor | None = None,
+    ) -> None:
         self.command_runner = command_runner or CommandRunner(default_timeout_seconds=120)
+        self.policy_governor = policy_governor
 
     def execute(
         self,
@@ -233,8 +247,32 @@ class ToyWorkflowExecutor:
         contract: TaskContract,
         candidate_writes: list[CandidateFileWrite],
         project_name: str,
+        risk_level: RiskLevel = RiskLevel.LOW,
+        estimated_tokens: int = 0,
+        contains_sensitive_data: bool = False,
+        privacy_approved: bool = False,
+        worker_retries_used: int = 0,
+        teacher_calls_used: int = 0,
     ) -> WorkflowExecutionReport:
         source_path = Path(source_repo)
+        policy_decision = self._evaluate_policy(
+            task_id=contract.task_id,
+            operation="candidate_execution",
+            risk_level=risk_level,
+            estimated_tokens=estimated_tokens,
+            contains_sensitive_data=contains_sensitive_data,
+            privacy_approved=privacy_approved,
+            worker_retries_used=worker_retries_used,
+            teacher_calls_used=teacher_calls_used,
+        )
+        if policy_decision is not None and policy_decision.action != GovernanceAction.ALLOW:
+            return self._policy_blocked_report(
+                contract=contract,
+                project_name=project_name,
+                changed_files=[write.path for write in candidate_writes],
+                source_repo=source_path,
+                policy_decision=policy_decision,
+            )
         sandbox_path: Path | None = None
         changed_files = [write.path for write in candidate_writes]
         report: WorkflowExecutionReport
@@ -274,6 +312,7 @@ class ToyWorkflowExecutor:
                         verification_command=command,
                         lesson_candidate=lesson,
                         regression_check=regression_check,
+                        policy_decision=policy_decision,
                     )
                 else:
                     report = self._failure_report(
@@ -298,6 +337,11 @@ class ToyWorkflowExecutor:
         teacher_guidance: str,
         revised_writes: list[CandidateFileWrite],
         project_name: str,
+        teacher_calls_used: int = 0,
+        risk_level: RiskLevel = RiskLevel.MEDIUM,
+        estimated_tokens: int = 0,
+        contains_sensitive_data: bool = False,
+        privacy_approved: bool = False,
     ) -> WorkflowExecutionReport:
         """Run one worker attempt, request fake teacher guidance, then retry once.
 
@@ -313,6 +357,23 @@ class ToyWorkflowExecutor:
         )
         if first.status != WorkflowExecutionStatus.NEEDS_TEACHER or first.bug_dossier is None:
             first.attempt_count = 1
+            return first
+
+        teacher_policy_decision = self._evaluate_policy(
+            task_id=contract.task_id,
+            operation="teacher_call",
+            risk_level=risk_level,
+            estimated_tokens=estimated_tokens,
+            contains_sensitive_data=contains_sensitive_data,
+            privacy_approved=privacy_approved,
+            worker_retries_used=1,
+            teacher_calls_used=teacher_calls_used,
+        )
+        if teacher_policy_decision is not None and teacher_policy_decision.action != GovernanceAction.ALLOW:
+            first.attempt_count = 1
+            first.policy_decision = teacher_policy_decision
+            if first.bug_dossier is not None and "policy_gate" not in first.bug_dossier.attempts:
+                first.bug_dossier.attempts.append("policy_gate")
             return first
 
         event = TeacherGuidanceEvent(
@@ -341,6 +402,12 @@ class ToyWorkflowExecutor:
         candidate_writes: list[CandidateFileWrite],
         target_branch: str,
         commit_message: str,
+        risk_level: RiskLevel = RiskLevel.MEDIUM,
+        estimated_tokens: int = 0,
+        contains_sensitive_data: bool = False,
+        privacy_approved: bool = False,
+        worker_retries_used: int = 0,
+        teacher_calls_used: int = 0,
     ) -> PromotionResult:
         """Promote verifier-approved writes into a dedicated git branch.
 
@@ -357,6 +424,26 @@ class ToyWorkflowExecutor:
                 reason="report is not promotion-ready",
                 source_repo_clean=self._source_repo_clean(source_path),
                 promotion_worktree_removed=True,
+            )
+
+        policy_decision = self._evaluate_policy(
+            task_id=report.task_id,
+            operation="promotion",
+            risk_level=risk_level,
+            estimated_tokens=estimated_tokens,
+            contains_sensitive_data=contains_sensitive_data,
+            privacy_approved=privacy_approved,
+            worker_retries_used=worker_retries_used,
+            teacher_calls_used=teacher_calls_used,
+        )
+        if policy_decision is not None and policy_decision.action != GovernanceAction.ALLOW:
+            return PromotionResult(
+                status=PromotionStatus.BLOCKED,
+                target_branch=target_branch,
+                reason=policy_decision.reason.value,
+                source_repo_clean=self._source_repo_clean(source_path),
+                promotion_worktree_removed=True,
+                policy_decision=policy_decision,
             )
 
         promotion_path = Path(tempfile.mkdtemp(prefix="feiyue-promotion-"))
@@ -395,6 +482,64 @@ class ToyWorkflowExecutor:
             promoted_files=[write.path for write in candidate_writes],
             source_repo_clean=self._source_repo_clean(source_path),
             promotion_worktree_removed=removed,
+            policy_decision=policy_decision,
+        )
+
+    def _evaluate_policy(
+        self,
+        *,
+        task_id: str,
+        operation: str,
+        risk_level: RiskLevel,
+        estimated_tokens: int,
+        contains_sensitive_data: bool,
+        privacy_approved: bool,
+        worker_retries_used: int,
+        teacher_calls_used: int,
+    ) -> PolicyDecision | None:
+        if self.policy_governor is None:
+            return None
+        return self.policy_governor.evaluate(
+            PolicyRequest(
+                task_id=task_id,
+                operation=operation,
+                risk_level=risk_level,
+                worker_retries_used=worker_retries_used,
+                teacher_calls_used=teacher_calls_used,
+                estimated_tokens=estimated_tokens,
+                contains_sensitive_data=contains_sensitive_data,
+                privacy_approved=privacy_approved,
+            )
+        )
+
+    def _policy_blocked_report(
+        self,
+        *,
+        contract: TaskContract,
+        project_name: str,
+        changed_files: list[str],
+        source_repo: Path,
+        policy_decision: PolicyDecision,
+    ) -> WorkflowExecutionReport:
+        return WorkflowExecutionReport(
+            task_id=contract.task_id,
+            status=WorkflowExecutionStatus.BLOCKED,
+            changed_files=changed_files,
+            verification_passed=False,
+            promotion_ready=False,
+            source_repo_clean=self._source_repo_clean(source_repo),
+            sandbox_removed=True,
+            policy_decision=policy_decision,
+            bug_dossier=BugDossier(
+                task_id=contract.task_id,
+                original_task=contract.render_markdown(),
+                changed_files=changed_files,
+                failing_command="policy-gate",
+                error_excerpt=policy_decision.message,
+                attempts=["policy_gate"],
+                suspected_cause=f"Policy governor returned {policy_decision.action.value} before execution.",
+                teacher_request=f"Review whether {project_name} task policy should be adjusted or manually approved.",
+            ),
         )
 
     def _validate_scope(
