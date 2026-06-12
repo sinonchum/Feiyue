@@ -40,8 +40,8 @@ Feiyue 追求三个战略结果：
 
 - Core package：`packages/feiyue-core`
 - Python source/test 文件：持续扩展中（当前 provider-free foundation 覆盖 workflow、curation、capability、creative、evaluation、providers）。
-- 当前完整测试：`323 passed`
-- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion foundation。
+- 当前完整测试：`325 passed`
+- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation。
 
 ### 1.2 已完成核心资产
 
@@ -1034,6 +1034,7 @@ M4 后续只做文档 closeout：
 - fake teacher-guided retry：一次 verifier failure 后可记录 `TeacherGuidanceEvent` 并用 revised writes 重试，成功仍由 verifier 判定。
 - success → `LessonPacket` + `RegressionCheck`：成功后生成 lesson/eval candidate。
 - verified branch promotion：`promote_verified_writes()` 只接受 `promotion_ready=True` 的 report，在临时 worktree 中创建/更新目标 branch 并提交 verified writes。
+- workflow report persistence：`WorkflowReportWriter` 将 execution JSON/Markdown、bug dossier、teacher guidance、promotion result 写入 `.hermes/runs/<task_id>/`。
 - source repo clean guarantee：execution 不直接修改 source checkout；promotion 只更新目标 branch ref，当前 checkout 保持 clean。
 - sandbox / promotion rollback：execution worktree 和 promotion worktree 在 run 后被清理。
 
@@ -1041,7 +1042,6 @@ M4 后续只做文档 closeout：
 
 - 真实 worker/provider 生成 patch。
 - 多轮 teacher repair loop（当前只支持 provider-free 单次 fake teacher retry）。
-- worker/teacher markdown reports 的持久化。
 - promotion failure 的更细粒度 rollback report。
 
 ## 新功能范围
@@ -1073,7 +1073,7 @@ M4 后续只做文档 closeout：
 - teacher fake guidance 后 worker retry 成功。
 - verified patch promotion 到目标 branch/worktree。
 - unverified report promotion blocked。
-- worker/teacher persisted reports（后续）。
+- worker/teacher persisted reports。
 - source repo clean guarantee 保持。
 
 ## Code Quality & Cleanliness Acceptance

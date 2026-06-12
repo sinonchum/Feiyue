@@ -9,6 +9,8 @@ from feiyue_core.workflow.execution import (
     ToyWorkflowExecutor,
     WorkflowExecutionReport,
     WorkflowExecutionStatus,
+    WorkflowReportArtifacts,
+    WorkflowReportWriter,
 )
 from feiyue_core.workflow.lesson_packet import LessonPacket
 from feiyue_core.workflow.model_routing_table import (
@@ -60,6 +62,8 @@ __all__ = [
     "UnsafeRegressionCommandError",
     "WorkflowExecutionReport",
     "WorkflowExecutionStatus",
+    "WorkflowReportArtifacts",
+    "WorkflowReportWriter",
     "build_regression_check_from_lesson",
     "build_task_contract",
     "build_worker_context",

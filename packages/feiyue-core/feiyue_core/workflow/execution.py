@@ -79,6 +79,142 @@ class WorkflowExecutionReport(FeiyueModel):
     teacher_guidance_events: list[TeacherGuidanceEvent] = Field(default_factory=list)
 
 
+class WorkflowReportArtifacts(FeiyueModel):
+    """File paths created by WorkflowReportWriter."""
+
+    run_dir: Path
+    execution_json_path: Path
+    execution_markdown_path: Path
+    bug_dossier_markdown_path: Path | None = None
+    teacher_guidance_markdown_path: Path | None = None
+    promotion_json_path: Path | None = None
+    promotion_markdown_path: Path | None = None
+
+
+class WorkflowReportWriter:
+    """Persist M11 workflow reports under .hermes/runs/<task_id>."""
+
+    def __init__(self, project_root: str | Path) -> None:
+        self.project_root = Path(project_root)
+
+    def write(
+        self,
+        *,
+        report: WorkflowExecutionReport,
+        promotion: PromotionResult | None = None,
+    ) -> WorkflowReportArtifacts:
+        run_dir = self.project_root / ".hermes" / "runs" / report.task_id
+        run_dir.mkdir(parents=True, exist_ok=True)
+
+        execution_json_path = run_dir / "execution-report.json"
+        execution_markdown_path = run_dir / "execution-report.md"
+        execution_json_path.write_text(report.model_dump_json(indent=2), encoding="utf-8")
+        execution_markdown_path.write_text(_render_execution_report_markdown(report), encoding="utf-8")
+
+        bug_path: Path | None = None
+        if report.bug_dossier is not None:
+            bug_path = run_dir / "bug-dossier.md"
+            bug_path.write_text(report.bug_dossier.render_markdown(), encoding="utf-8")
+
+        teacher_path: Path | None = None
+        if report.teacher_guidance_events:
+            teacher_path = run_dir / "teacher-guidance.md"
+            teacher_path.write_text(_render_teacher_guidance_markdown(report), encoding="utf-8")
+
+        promotion_json_path: Path | None = None
+        promotion_markdown_path: Path | None = None
+        if promotion is not None:
+            promotion_json_path = run_dir / "promotion-result.json"
+            promotion_markdown_path = run_dir / "promotion-result.md"
+            promotion_json_path.write_text(promotion.model_dump_json(indent=2), encoding="utf-8")
+            promotion_markdown_path.write_text(_render_promotion_markdown(promotion), encoding="utf-8")
+
+        return WorkflowReportArtifacts(
+            run_dir=run_dir,
+            execution_json_path=execution_json_path,
+            execution_markdown_path=execution_markdown_path,
+            bug_dossier_markdown_path=bug_path,
+            teacher_guidance_markdown_path=teacher_path,
+            promotion_json_path=promotion_json_path,
+            promotion_markdown_path=promotion_markdown_path,
+        )
+
+
+def _render_execution_report_markdown(report: WorkflowExecutionReport) -> str:
+    lines = [
+        "# Workflow Execution Report",
+        "",
+        "## Task ID",
+        report.task_id,
+        "",
+        "## Status",
+        report.status.value,
+        "",
+        "## Verification",
+        f"- passed: {report.verification_passed}",
+        f"- promotion_ready: {report.promotion_ready}",
+        f"- command: {report.verification_command or 'None'}",
+        "",
+        "## Changed Files",
+        *_render_bullets(report.changed_files),
+        "",
+        "## Attempts",
+        str(report.attempt_count),
+        "",
+        "## Safety",
+        f"- source_repo_clean: {report.source_repo_clean}",
+        f"- sandbox_removed: {report.sandbox_removed}",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+def _render_teacher_guidance_markdown(report: WorkflowExecutionReport) -> str:
+    lines = ["# Teacher Guidance", ""]
+    for event in report.teacher_guidance_events:
+        lines.extend(
+            [
+                f"## {event.request_id}",
+                f"- trigger: {event.trigger}",
+                f"- source_bug_dossier_task_id: {event.source_bug_dossier_task_id}",
+                "",
+                event.guidance,
+                "",
+            ]
+        )
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _render_promotion_markdown(promotion: PromotionResult) -> str:
+    lines = [
+        "# Promotion Result",
+        "",
+        "## Status",
+        promotion.status.value,
+        "",
+        "## Target Branch",
+        promotion.target_branch,
+        "",
+        "## Commit",
+        promotion.commit_sha or "None",
+        "",
+        "## Promoted Files",
+        *_render_bullets(promotion.promoted_files),
+        "",
+        "## Safety",
+        f"- source_repo_clean: {promotion.source_repo_clean}",
+        f"- promotion_worktree_removed: {promotion.promotion_worktree_removed}",
+    ]
+    if promotion.reason:
+        lines.extend(["", "## Reason", promotion.reason])
+    return "\n".join(lines) + "\n"
+
+
+def _render_bullets(items: list[str]) -> list[str]:
+    if not items:
+        return ["- None"]
+    return [f"- {item}" for item in items]
+
+
 class ToyWorkflowExecutor:
     """Provider-free M11 workflow execution loop for controlled toy repos.
 

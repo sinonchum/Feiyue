@@ -9,6 +9,7 @@ from feiyue_core.workflow.execution import (
     PromotionStatus,
     WorkflowExecutionStatus,
     ToyWorkflowExecutor,
+    WorkflowReportWriter,
 )
 
 
@@ -291,3 +292,80 @@ def test_promotion_blocks_unverified_report_and_leaves_repo_unchanged(tmp_path: 
     ).stdout
     assert refs.strip() == ""
     assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+
+
+
+def test_workflow_report_writer_persists_execution_teacher_and_promotion_artifacts(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m11-report-success",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    writes = [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")]
+    executor = ToyWorkflowExecutor()
+    report = executor.execute_with_teacher_retry(
+        source_repo=repo,
+        contract=contract,
+        initial_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a * b\n")],
+        teacher_guidance="Use addition after verifier failure.",
+        revised_writes=writes,
+        project_name="toy-calculator",
+    )
+    promotion = executor.promote_verified_writes(
+        source_repo=repo,
+        report=report,
+        candidate_writes=writes,
+        target_branch="feiyue/m11-report-success",
+        commit_message="feat: promote report success",
+    )
+
+    artifacts = WorkflowReportWriter(repo).write(report=report, promotion=promotion)
+
+    run_dir = repo / ".hermes" / "runs" / "m11-report-success"
+    assert artifacts.run_dir == run_dir
+    assert artifacts.execution_json_path == run_dir / "execution-report.json"
+    assert artifacts.execution_markdown_path == run_dir / "execution-report.md"
+    assert artifacts.teacher_guidance_markdown_path == run_dir / "teacher-guidance.md"
+    assert artifacts.promotion_json_path == run_dir / "promotion-result.json"
+    assert artifacts.promotion_markdown_path == run_dir / "promotion-result.md"
+    assert artifacts.bug_dossier_markdown_path is None
+    assert artifacts.execution_json_path.exists()
+    assert "m11-report-success" in artifacts.execution_json_path.read_text(encoding="utf-8")
+    assert "# Workflow Execution Report" in artifacts.execution_markdown_path.read_text(encoding="utf-8")
+    assert "Use addition after verifier failure." in artifacts.teacher_guidance_markdown_path.read_text(encoding="utf-8")
+    assert "feiyue/m11-report-success" in artifacts.promotion_markdown_path.read_text(encoding="utf-8")
+
+
+def test_workflow_report_writer_persists_bug_dossier_for_failed_execution(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m11-report-failure",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    report = ToyWorkflowExecutor().execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a * b\n")],
+        project_name="toy-calculator",
+    )
+
+    artifacts = WorkflowReportWriter(repo).write(report=report)
+
+    run_dir = repo / ".hermes" / "runs" / "m11-report-failure"
+    assert artifacts.run_dir == run_dir
+    assert artifacts.bug_dossier_markdown_path == run_dir / "bug-dossier.md"
+    assert artifacts.teacher_guidance_markdown_path is None
+    assert artifacts.promotion_json_path is None
+    assert artifacts.bug_dossier_markdown_path.exists()
+    bug_text = artifacts.bug_dossier_markdown_path.read_text(encoding="utf-8")
+    assert "# Bug Dossier" in bug_text
+    assert "m11-report-failure" in bug_text
+    assert "python -m pytest -q" in bug_text
