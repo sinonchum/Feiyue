@@ -532,7 +532,7 @@ M4 后续只做文档 closeout：
 
 ## 当前状态
 
-**Partial Foundation 已完成。**
+**Foundation 已完成。**
 
 本轮并行开发已完成：
 
@@ -540,14 +540,15 @@ M4 后续只做文档 closeout：
 - M5.2 Task Contract renderer 基础。
 - M5.3 Bug Dossier model 基础。
 - M5.4 Lesson Packet model 基础。
-- 跨 lane workflow asset integration smoke。
-
-尚未完成：
-
 - M5.5 Regression Eval Assets。
 - M5.6 Model Routing Table。
-- `.hermes/lessons/` 持久化 helper。
-- `.hermes/evals/` 自动生成。
+- 跨 lane workflow asset integration smoke：knowledge → routing → task contract → bug dossier → lesson → regression eval。
+
+后续增强项：
+
+- `.hermes/lessons/` 批量持久化 helper。
+- `.hermes/evals/` 多 lesson 合并和去重策略。
+- model routing performance learning 需要 M7 capability evidence。
 
 ## 新功能范围
 
@@ -1207,7 +1208,7 @@ M5 Project Knowledge
 | M2 Local Execution / Verifier | Done MVP | sandbox/verifier/local loop 已有 |
 | M3 Resilient Runtime | Done Foundation | anti-amnesia 基础闭环完成 |
 | M4 Candidate / Feedback / Teacher Loop | Done Foundation | fake provider / toy loop / trace resume 完成 |
-| M5 Workflow Asset Layer | Partial Foundation | Project knowledge、task contract、bug dossier、lesson packet 与 integration smoke 已完成；regression eval / routing table 未完成 |
+| M5 Workflow Asset Layer | Done Foundation | Project knowledge、task contract、bug dossier、lesson packet、regression eval、routing table 与 integration smoke 已完成；后续批量持久化/学习策略归入 M6/M7 |
 | M6 Curator / Distillation | Not Started | 依赖 M5 |
 | M7 Weak Model Capability Expansion | Not Started | 依赖 M5/M6 evidence |
 | M8 Creative Role Development | Not Started | 依赖 project knowledge，部分可并行 |
@@ -1222,55 +1223,51 @@ M5 Project Knowledge
 
 # 20. Immediate Next Development Slice
 
-## M5.5 / M5.6：Regression Eval Assets + Model Routing Table
+## M6.1 / M6.2：Curator Input Bundle + Distillation Proposal
 
-下一步建议继续 M5 Workflow Asset Layer 的剩余两块，而不是进入 M6。
+下一步建议进入 M6 Curator / Distillation System，把 M5 产出的 workflow assets 串成可审核的经验沉淀流程。
 
 ### Objective
 
-实现 provider-free 的 regression eval assets 和 model routing table，让 lesson packet 可以转成低风险检测资产，并让 worker/teacher role routing 有可持久化配置。
+实现 provider-free 的 Curator input bundle 和 lesson/template/eval/routing proposal，让 worker failure、teacher guidance、verifier evidence 可以被整理成可审核的 reusable asset candidates。
 
 ### Files
 
 Create:
 
-- `packages/feiyue-core/feiyue_core/workflow/regression_eval.py`
-- `packages/feiyue-core/feiyue_core/workflow/model_routing_table.py`
-- `packages/feiyue-core/tests/test_regression_eval.py`
-- `packages/feiyue-core/tests/test_model_routing_table.py`
+- `packages/feiyue-core/feiyue_core/curation/__init__.py`
+- `packages/feiyue-core/feiyue_core/curation/curator_input.py`
+- `packages/feiyue-core/feiyue_core/curation/distillation_proposal.py`
+- `packages/feiyue-core/tests/test_curator_input.py`
+- `packages/feiyue-core/tests/test_distillation_proposal.py`
 
 Update:
 
-- `packages/feiyue-core/feiyue_core/workflow/__init__.py`
-- `packages/feiyue-core/tests/test_workflow_assets_integration.py`
+- `packages/feiyue-core/tests/test_workflow_assets_integration.py` or add a dedicated curation integration smoke.
 - `README.md`
 - `docs/Feiyue-self-evolution-development-outline.md`
 
 ### Functional Acceptance
 
-- `LessonPacket` 可以生成 grep-style regression check 候选。
-- `.hermes/evals/forbidden-patterns.txt` 和 `regression-checks.sh` 可以在 tmp project 中安全生成。
-- routing table 可解析 role → primary/fallback/reviewer/teacher。
-- routing table 缺失必填 role 或空 model name 时 fail fast。
-- workflow integration smoke 覆盖 knowledge → task contract → bug dossier → lesson → regression eval → routing table。
+- CuratorInput can bundle task contract, bug dossier, teacher guidance text, verifier evidence summary, lesson packet, regression check, and routing context.
+- DistillationProposal can propose updates to lesson, task template, regression eval, skill candidate, project memory, and routing rule without auto-promoting them.
+- Proposal status must start as review-required/draft, not approved.
+- Integration smoke covers workflow assets → curator input → distillation proposal.
 
 ### Code Quality & Cleanliness Acceptance
 
-- 不写真实用户项目，测试只用 tmp_path。
-- 生成脚本内容 deterministic。
-- regression command 只允许低风险 read-only checks。
-- YAML/JSON 解析错误有明确 diagnostics。
-- compileall / pytest / diff-check / secret scan 通过。
+- Provider-free and deterministic.
+- No raw long logs; evidence excerpts are bounded.
+- All proposals carry provenance/source IDs.
+- compileall / pytest / diff-check / secret scan pass.
 
 ### Dependencies
 
-- M5.1 Project Knowledge Layer。
-- M5.2 Task Contract renderer。
-- M5.3 Bug Dossier。
-- M5.4 Lesson Packet。
-- 不依赖 real provider / network。
+- M5 Workflow Asset Layer foundation.
+- Existing LessonPacket, BugDossier, RegressionCheck, ModelRoutingTable.
+- Does not depend on real provider / network.
 
 ### Parallelization
 
-可并行：Regression Eval Assets 与 Model Routing Table 可以分两条 lane 开发。
-必须串行：最终 workflow integration smoke 需要两条 lane 合并后由 controller 完成。
+可并行：CuratorInput schema 与 DistillationProposal schema 可以分两条 lane 开发。
+必须串行：最终 curation integration smoke 需要两条 lane 合并后由 controller 完成。

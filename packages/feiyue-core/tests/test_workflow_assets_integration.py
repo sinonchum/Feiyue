@@ -3,19 +3,29 @@ from __future__ import annotations
 from feiyue_core.workflow import (
     BugDossier,
     LessonPacket,
+    ModelRoutingTableInitializer,
+    ModelRoutingTableLoader,
     ProjectKnowledgeInitializer,
+    RegressionEvalWriter,
+    build_regression_check_from_lesson,
     build_task_contract,
     build_worker_context,
 )
 
 
-def test_workflow_assets_connect_project_context_task_contract_and_lessons(tmp_path) -> None:
+def test_workflow_assets_connect_project_context_task_contract_lessons_evals_and_routing(tmp_path) -> None:
     ProjectKnowledgeInitializer(tmp_path).initialize()
+    routing_path = ModelRoutingTableInitializer(tmp_path).initialize()
     hermes_dir = tmp_path / ".hermes"
     (hermes_dir / "project-memory.md").write_text("Project uses strict i18n from day one.\n", encoding="utf-8")
     (hermes_dir / "rules.md").write_text("Worker must not expand scope.\n", encoding="utf-8")
     (hermes_dir / "design-laws.md").write_text("No gradients, neon, or warm yellow.\n", encoding="utf-8")
     (hermes_dir / "architecture.md").write_text("Workflow assets live under .hermes/.\n", encoding="utf-8")
+
+    routing_table = ModelRoutingTableLoader(tmp_path).load()
+    assert routing_path == hermes_dir / "model-routing.yaml"
+    assert routing_table.routes["worker"].primary == "default"
+    assert routing_table.routes["teacher_debug"].primary == "default"
 
     worker_context = build_worker_context(tmp_path)
     contract = build_task_contract(
@@ -24,7 +34,7 @@ def test_workflow_assets_connect_project_context_task_contract_and_lessons(tmp_p
         scope="Render project knowledge into a worker-safe task contract.",
         files_to_modify=["packages/feiyue-core/feiyue_core/workflow/project_knowledge.py"],
         files_not_to_touch=["README.md"],
-        context=[worker_context],
+        context=[worker_context, f"Worker route: {routing_table.routes['worker'].primary}"],
         requirements=["Render deterministic Markdown", "Do not call providers"],
         acceptance_criteria=["Targeted workflow tests pass"],
         verification_commands=["python -m pytest tests/test_workflow_assets_integration.py -q"],
@@ -36,6 +46,7 @@ def test_workflow_assets_connect_project_context_task_contract_and_lessons(tmp_p
     assert "Project uses strict i18n from day one." in rendered_contract
     assert "Worker must not expand scope." in rendered_contract
     assert "No gradients, neon, or warm yellow." in rendered_contract
+    assert "Worker route: default" in rendered_contract
 
     dossier = BugDossier(
         task_id=contract.task_id,
@@ -67,3 +78,15 @@ def test_workflow_assets_connect_project_context_task_contract_and_lessons(tmp_p
     assert "# Lesson Packet: workflow-context-required" in rendered_lesson
     assert "Always include Project Knowledge Context" in rendered_lesson
     assert "- task-contract" in rendered_lesson
+
+    check = build_regression_check_from_lesson(lesson)
+    assets = RegressionEvalWriter(tmp_path).write([check])
+    forbidden_patterns = assets.forbidden_patterns_path.read_text(encoding="utf-8")
+    regression_script = assets.regression_checks_path.read_text(encoding="utf-8")
+
+    assert assets.forbidden_patterns_path == hermes_dir / "evals" / "forbidden-patterns.txt"
+    assert assets.regression_checks_path == hermes_dir / "evals" / "regression-checks.sh"
+    assert "workflow-context-required" in forbidden_patterns
+    assert "command: python -m pytest tests/test_workflow_assets_integration.py -q" in forbidden_patterns
+    assert regression_script.startswith("#!/usr/bin/env bash\nset -euo pipefail\n")
+    assert "python -m pytest tests/test_workflow_assets_integration.py -q" in regression_script
