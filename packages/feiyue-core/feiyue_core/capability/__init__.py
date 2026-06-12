@@ -21,12 +21,21 @@ from feiyue_core.capability.profile import (
     ModelCapabilityProfile,
     build_model_capability_profile,
 )
+from feiyue_core.capability.rules import (
+    CapabilityRecommendation,
+    CapabilityRecommendationAction,
+    CapabilityRuleThresholds,
+    evaluate_records_for_capability,
+)
 
 __all__ = [
     "CapabilityLadder",
     "CapabilityLevel",
     "CapabilityLevelDefinition",
     "CapabilityLevelStats",
+    "CapabilityRecommendation",
+    "CapabilityRecommendationAction",
+    "CapabilityRuleThresholds",
     "ModelCapabilityProfile",
     "TaskComplexity",
     "WorkerPerformanceRecord",
@@ -34,6 +43,7 @@ __all__ = [
     "build_model_capability_profile",
     "compare_levels",
     "default_capability_ladder",
+    "evaluate_records_for_capability",
     "get_level_definition",
     "rank_for",
 ]
