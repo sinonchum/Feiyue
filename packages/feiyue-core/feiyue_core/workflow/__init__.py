@@ -3,6 +3,7 @@
 from feiyue_core.workflow.bug_dossier import BugDossier
 from feiyue_core.workflow.execution import (
     CandidateFileWrite,
+    TeacherGuidanceEvent,
     ToyWorkflowExecutor,
     WorkflowExecutionReport,
     WorkflowExecutionStatus,
@@ -50,6 +51,7 @@ __all__ = [
     "RegressionEvalWriter",
     "RoleRoute",
     "TaskContract",
+    "TeacherGuidanceEvent",
     "ToyWorkflowExecutor",
     "UnsafeRegressionCommandError",
     "WorkflowExecutionReport",

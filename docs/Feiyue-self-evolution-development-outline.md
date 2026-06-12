@@ -40,8 +40,8 @@ Feiyue 追求三个战略结果：
 
 - Core package：`packages/feiyue-core`
 - Python source/test 文件：持续扩展中（当前 provider-free foundation 覆盖 workflow、curation、capability、creative、evaluation、providers）。
-- 当前完整测试：`319 passed`
-- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution foundation。
+- 当前完整测试：`321 passed`
+- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry foundation。
 
 ### 1.2 已完成核心资产
 
@@ -1031,6 +1031,7 @@ M4 后续只做文档 closeout：
 - `ToyWorkflowExecutor`：在 detached git worktree sandbox 中应用 candidate file writes。
 - verifier-gated promotion readiness：只有 verification commands 通过时才 `promotion_ready=True`。
 - failure → `BugDossier`：verifier failure 或 scope violation 会生成 teacher handoff。
+- fake teacher-guided retry：一次 verifier failure 后可记录 `TeacherGuidanceEvent` 并用 revised writes 重试，成功仍由 verifier 判定。
 - success → `LessonPacket` + `RegressionCheck`：成功后生成 lesson/eval candidate。
 - source repo clean guarantee：当前 M11 foundation 不直接修改 source repo，promotion 仍是后续显式步骤。
 - sandbox rollback：worktree sandbox 在 run 后被清理。
@@ -1038,7 +1039,7 @@ M4 后续只做文档 closeout：
 尚未完成且后续需要：
 
 - 真实 worker/provider 生成 patch。
-- teacher fake guidance 后自动 retry 成功的完整双轮 loop。
+- 多轮 teacher repair loop（当前只支持 provider-free 单次 fake teacher retry）。
 - verified patch promotion 到目标 branch/worktree。
 - worker/teacher markdown reports 的持久化。
 
@@ -1068,7 +1069,7 @@ M4 后续只做文档 closeout：
 - 失败时生成 bug dossier。
 - scope violation 会被 blocked 且生成 teacher handoff。
 - 成功后生成 lesson candidate 和 regression eval candidate。
-- teacher fake guidance 后 worker retry 成功（后续）。
+- teacher fake guidance 后 worker retry 成功。
 - worker/teacher persisted reports（后续）。
 - source repo clean guarantee 保持。
 

@@ -33,6 +33,15 @@ class CandidateFileWrite(FeiyueModel):
     content: str
 
 
+class TeacherGuidanceEvent(FeiyueModel):
+    """Auditable fake-teacher guidance used between worker attempts."""
+
+    request_id: str
+    trigger: str
+    guidance: str
+    source_bug_dossier_task_id: str
+
+
 class WorkflowExecutionReport(FeiyueModel):
     """Deterministic M11 worker execution report."""
 
@@ -47,6 +56,8 @@ class WorkflowExecutionReport(FeiyueModel):
     bug_dossier: BugDossier | None = None
     lesson_candidate: LessonPacket | None = None
     regression_check: RegressionCheck | None = None
+    attempt_count: int = 1
+    teacher_guidance_events: list[TeacherGuidanceEvent] = Field(default_factory=list)
 
 
 class ToyWorkflowExecutor:
@@ -122,6 +133,50 @@ class ToyWorkflowExecutor:
         report.sandbox_removed = sandbox_path is not None and not sandbox_path.exists()
         report.source_repo_clean = self._source_repo_clean(source_path)
         return report
+
+    def execute_with_teacher_retry(
+        self,
+        *,
+        source_repo: str | Path,
+        contract: TaskContract,
+        initial_writes: list[CandidateFileWrite],
+        teacher_guidance: str,
+        revised_writes: list[CandidateFileWrite],
+        project_name: str,
+    ) -> WorkflowExecutionReport:
+        """Run one worker attempt, request fake teacher guidance, then retry once.
+
+        This is still provider-free: the caller supplies deterministic teacher
+        guidance and revised writes. The method records the teacher event as
+        guidance only; success remains gated by the verifier on the retry.
+        """
+        first = self.execute(
+            source_repo=source_repo,
+            contract=contract,
+            candidate_writes=initial_writes,
+            project_name=project_name,
+        )
+        if first.status != WorkflowExecutionStatus.NEEDS_TEACHER or first.bug_dossier is None:
+            first.attempt_count = 1
+            return first
+
+        event = TeacherGuidanceEvent(
+            request_id=f"teacher-request-{contract.task_id}-1",
+            trigger="verifier_failed",
+            guidance=teacher_guidance,
+            source_bug_dossier_task_id=first.bug_dossier.task_id,
+        )
+        retry = self.execute(
+            source_repo=source_repo,
+            contract=contract,
+            candidate_writes=revised_writes,
+            project_name=project_name,
+        )
+        retry.attempt_count = 2
+        retry.teacher_guidance_events = [event]
+        if retry.bug_dossier is not None and "retry" not in retry.bug_dossier.attempts:
+            retry.bug_dossier.attempts.append("retry")
+        return retry
 
     def _validate_scope(
         self, contract: TaskContract, candidate_writes: list[CandidateFileWrite]
