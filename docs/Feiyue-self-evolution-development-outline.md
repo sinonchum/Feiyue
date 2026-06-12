@@ -40,8 +40,8 @@ Feiyue 追求三个战略结果：
 
 - Core package：`packages/feiyue-core`
 - Python source/test 文件：持续扩展中（当前 provider-free foundation 覆盖 workflow、curation、capability、creative、evaluation、providers）。
-- 当前完整测试：`316 passed`
-- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation。
+- 当前完整测试：`319 passed`
+- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution foundation。
 
 ### 1.2 已完成核心资产
 
@@ -1021,6 +1021,27 @@ M4 后续只做文档 closeout：
 
 把 project workflow assets、worker execution、sandbox verifier 和 promotion/rollback 连接起来，让 Feiyue 能在真实项目中端到端执行一个受控 feature slice。
 
+## 当前状态
+
+**Provider-free Foundation 已完成。**
+
+已完成 toy repo / safe workflow 子集：
+
+- `CandidateFileWrite`：provider-free worker candidate side effect。
+- `ToyWorkflowExecutor`：在 detached git worktree sandbox 中应用 candidate file writes。
+- verifier-gated promotion readiness：只有 verification commands 通过时才 `promotion_ready=True`。
+- failure → `BugDossier`：verifier failure 或 scope violation 会生成 teacher handoff。
+- success → `LessonPacket` + `RegressionCheck`：成功后生成 lesson/eval candidate。
+- source repo clean guarantee：当前 M11 foundation 不直接修改 source repo，promotion 仍是后续显式步骤。
+- sandbox rollback：worktree sandbox 在 run 后被清理。
+
+尚未完成且后续需要：
+
+- 真实 worker/provider 生成 patch。
+- teacher fake guidance 后自动 retry 成功的完整双轮 loop。
+- verified patch promotion 到目标 branch/worktree。
+- worker/teacher markdown reports 的持久化。
+
 ## 新功能范围
 
 - TaskContract → WorkerRun。
@@ -1043,17 +1064,19 @@ M4 后续只做文档 closeout：
 
 ## Functional Acceptance
 
-- 在 toy repo 中从 task contract 到 verified patch 全链路运行。
+- 在 toy repo 中从 task contract 到 sandboxed candidate file write 再到 verifier-gated promotion readiness 全链路运行。
 - 失败时生成 bug dossier。
-- teacher fake guidance 后 worker retry 成功。
-- 成功后生成 worker report、lesson candidate、eval candidate。
+- scope violation 会被 blocked 且生成 teacher handoff。
+- 成功后生成 lesson candidate 和 regression eval candidate。
+- teacher fake guidance 后 worker retry 成功（后续）。
+- worker/teacher persisted reports（后续）。
 - source repo clean guarantee 保持。
 
 ## Code Quality & Cleanliness Acceptance
 
 - 所有 mutating operations 在 sandbox/worktree 中执行。
-- promotion 需要 verifier pass。
-- rollback 测试覆盖。
+- promotion readiness 需要 verifier pass。
+- sandbox rollback 测试覆盖。
 - 无 untracked artifacts 泄漏到 source repo。
 
 ## 依赖

@@ -1,6 +1,12 @@
 """Workflow support utilities for Feiyue."""
 
 from feiyue_core.workflow.bug_dossier import BugDossier
+from feiyue_core.workflow.execution import (
+    CandidateFileWrite,
+    ToyWorkflowExecutor,
+    WorkflowExecutionReport,
+    WorkflowExecutionStatus,
+)
 from feiyue_core.workflow.lesson_packet import LessonPacket
 from feiyue_core.workflow.model_routing_table import (
     MODEL_ROUTING_FILENAME,
@@ -28,6 +34,7 @@ from feiyue_core.workflow.task_contract import TaskContract, build_task_contract
 
 __all__ = [
     "BugDossier",
+    "CandidateFileWrite",
     "KNOWLEDGE_FILENAMES",
     "LessonPacket",
     "MODEL_ROUTING_FILENAME",
@@ -43,7 +50,10 @@ __all__ = [
     "RegressionEvalWriter",
     "RoleRoute",
     "TaskContract",
+    "ToyWorkflowExecutor",
     "UnsafeRegressionCommandError",
+    "WorkflowExecutionReport",
+    "WorkflowExecutionStatus",
     "build_regression_check_from_lesson",
     "build_task_contract",
     "build_worker_context",
