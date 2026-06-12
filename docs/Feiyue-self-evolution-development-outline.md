@@ -39,9 +39,9 @@ Feiyue 追求三个战略结果：
 当前代码状态：
 
 - Core package：`packages/feiyue-core`
-- Python source/test 文件：78 个
-- 当前完整测试：`113 passed`
-- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo。
+- Python source/test 文件：98 个（source 60，tests 38）
+- 当前完整测试：`165 passed`
+- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator input / distillation proposal foundation。
 
 ### 1.2 已完成核心资产
 
