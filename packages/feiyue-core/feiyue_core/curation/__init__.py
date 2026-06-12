@@ -8,6 +8,12 @@ from feiyue_core.curation.distillation_proposal import (
     ProposalStatus,
     build_distillation_proposal,
 )
+from feiyue_core.curation.review_gate import (
+    InvalidReviewTransitionError,
+    ReviewDecision,
+    ReviewDecisionStatus,
+    ReviewGate,
+)
 from feiyue_core.curation.teacher_guidance import (
     TeacherGuidanceSummary,
     normalize_teacher_guidance,
@@ -17,8 +23,12 @@ __all__ = [
     "ALLOWED_ASSET_TYPES",
     "CuratorInput",
     "DistillationProposal",
+    "InvalidReviewTransitionError",
     "ProposalPatch",
     "ProposalStatus",
+    "ReviewDecision",
+    "ReviewDecisionStatus",
+    "ReviewGate",
     "TeacherGuidanceSummary",
     "build_distillation_proposal",
     "normalize_teacher_guidance",
