@@ -16,16 +16,26 @@ from feiyue_core.capability.performance_record import (
     WorkerPerformanceRecord,
     WorkerTaskResult,
 )
+from feiyue_core.capability.rules import (
+    CapabilityRecommendation,
+    CapabilityRecommendationAction,
+    CapabilityRuleThresholds,
+    evaluate_records_for_capability,
+)
 
 __all__ = [
     "CapabilityLadder",
     "CapabilityLevel",
     "CapabilityLevelDefinition",
+    "CapabilityRecommendation",
+    "CapabilityRecommendationAction",
+    "CapabilityRuleThresholds",
     "TaskComplexity",
     "WorkerPerformanceRecord",
     "WorkerTaskResult",
     "compare_levels",
     "default_capability_ladder",
+    "evaluate_records_for_capability",
     "get_level_definition",
     "rank_for",
 ]
