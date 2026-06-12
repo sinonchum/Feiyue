@@ -6,6 +6,8 @@ from uuid import uuid4
 from pydantic import Field
 
 from feiyue_core.audit import JsonlTraceWriter
+from feiyue_core.recovery import OperationRiskLevel, RecoveryManifest
+from feiyue_core.runtime import OperationRecorder, SessionJournal
 from feiyue_core.sandbox import WorktreeSandbox
 from feiyue_core.sandbox.command_runner import CommandRunner
 from feiyue_core.schemas import (
@@ -31,13 +33,25 @@ class LocalLoopResult(FeiyueModel):
 
 
 class LocalLoop:
-    def __init__(self, trace_path: str | Path) -> None:
+    def __init__(self, trace_path: str | Path, journal_path: str | Path | None = None) -> None:
         self.trace_path = Path(trace_path)
         self.trace_writer = JsonlTraceWriter(self.trace_path)
+        self.journal = SessionJournal(journal_path) if journal_path is not None else None
+        self.operation_recorder = OperationRecorder(self.journal) if self.journal is not None else None
         self.command_runner = CommandRunner(default_timeout_seconds=120)
         self.verifier = PytestVerifier(self.command_runner)
 
     def run(self, repo_path: str | Path, task: TaskSpec, candidate: Candidate) -> LocalLoopResult:
+        self._initialize_manifest(task, candidate)
+        operation_id = f"local_loop:{task.id}:{candidate.id}"
+        if self.operation_recorder is not None:
+            self.operation_recorder.register(
+                operation_id=operation_id,
+                tool="local_loop",
+                args={"task_id": task.id, "candidate_id": candidate.id},
+                risk_level=OperationRiskLevel.MEDIUM,
+                preconditions={"repo_path": str(repo_path)},
+            )
         with WorktreeSandbox(repo_path) as sandbox:
             self._write_event(
                 task.id,
@@ -60,6 +74,13 @@ class LocalLoop:
                     "exit_code": execution.exit_code,
                 },
             )
+            if self.operation_recorder is not None:
+                self.operation_recorder.finish(
+                    operation_id=operation_id,
+                    postconditions={"passed": verification.passed, "exit_code": execution.exit_code},
+                    artifact_refs=[str(self.trace_path)],
+                )
+                self._update_manifest_after_result(task, candidate, execution, verification)
             return LocalLoopResult(
                 task=task,
                 candidate=candidate,
@@ -67,6 +88,38 @@ class LocalLoop:
                 verification=verification,
                 trace_refs=[str(self.trace_path)],
             )
+
+    def _initialize_manifest(self, task: TaskSpec, candidate: Candidate) -> None:
+        if self.journal is None:
+            return
+        manifest = RecoveryManifest(
+            session_id=task.id,
+            current_goal=task.goal,
+            task_id=task.id,
+            confirmed_facts=[f"candidate {candidate.id} selected for local verification"],
+            changed_files=sorted(str(path) for path in candidate.metadata.get("file_writes", {}).keys()),
+            next_safe_action="run candidate in isolated worktree and verify with pytest",
+        )
+        self.journal.write_manifest(manifest)
+
+    def _update_manifest_after_result(
+        self,
+        task: TaskSpec,
+        candidate: Candidate,
+        execution: ExecutionRun,
+        verification: VerificationResult,
+    ) -> None:
+        if self.journal is None:
+            return
+        manifest = self.journal.read_manifest()
+        completed = f"candidate {candidate.id} verification completed"
+        if completed not in manifest.completed_steps:
+            manifest.completed_steps.append(completed)
+        manifest.verified_outputs.append(
+            f"operation {execution.id} {'passed' if verification.passed else 'failed'} for candidate {candidate.id}"
+        )
+        manifest.next_safe_action = "promote candidate" if verification.passed else "inspect pytest failure output"
+        self.journal.write_manifest(manifest)
 
     @staticmethod
     def _apply_file_writes(sandbox_path: Path, candidate: Candidate) -> None:
