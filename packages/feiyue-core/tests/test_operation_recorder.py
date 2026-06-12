@@ -63,3 +63,70 @@ def test_operation_recorder_marks_unknown_for_recovery(tmp_path) -> None:
     assert manifest.pending_operations == ["op_api_001"]
     assert "operation op_api_001 unknown: process interrupted" in manifest.open_questions
     assert any(event.type == "tool_operation_unknown" for event in journal.read_all())
+
+
+def test_operation_recorder_persists_side_effect_checks_on_register(tmp_path) -> None:
+    journal = SessionJournal(tmp_path / "session.jsonl")
+    recorder = OperationRecorder(journal)
+    target = tmp_path / "output.txt"
+
+    recorder.register(
+        operation_id="op_file_001",
+        tool="write_file",
+        args={"path": str(target)},
+        risk_level=OperationRiskLevel.MEDIUM,
+        preconditions={"git_status": "clean"},
+        side_effect_checks=[
+            {"type": "file_hash", "path": str(target), "expected_sha256": "abc123"}
+        ],
+    )
+
+    manifest = journal.read_manifest()
+    assert manifest.pending_operations == ["op_file_001"]
+    assert manifest.side_effect_checks == {
+        "op_file_001": [
+            {"type": "file_hash", "path": str(target), "expected_sha256": "abc123"}
+        ]
+    }
+
+
+def test_operation_recorder_auto_derives_file_hash_check_for_write_file_content(tmp_path) -> None:
+    journal = SessionJournal(tmp_path / "session.jsonl")
+    recorder = OperationRecorder(journal)
+    target = tmp_path / "auto.txt"
+
+    recorder.register(
+        operation_id="op_write_auto_001",
+        tool="write_file",
+        args={"path": str(target), "content": "stable output\n"},
+        risk_level=OperationRiskLevel.MEDIUM,
+        preconditions={"git_status": "clean"},
+    )
+
+    checks = journal.read_manifest().side_effect_checks["op_write_auto_001"]
+    assert checks == [
+        {
+            "type": "file_hash",
+            "path": str(target),
+            "expected_sha256": "3eba90a91b7866839db6633908b0c1ed87076e73685e448456af07efb2c2bf5a",
+        }
+    ]
+
+
+def test_operation_recorder_removes_side_effect_checks_after_finish(tmp_path) -> None:
+    journal = SessionJournal(tmp_path / "session.jsonl")
+    recorder = OperationRecorder(journal)
+    target = tmp_path / "finished.txt"
+    recorder.register(
+        operation_id="op_write_finished_001",
+        tool="write_file",
+        args={"path": str(target), "content": "done\n"},
+        risk_level=OperationRiskLevel.MEDIUM,
+        preconditions={"git_status": "clean"},
+    )
+
+    recorder.finish("op_write_finished_001", postconditions={"passed": True})
+
+    manifest = journal.read_manifest()
+    assert manifest.pending_operations == []
+    assert "op_write_finished_001" not in manifest.side_effect_checks

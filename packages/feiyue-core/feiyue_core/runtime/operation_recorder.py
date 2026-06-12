@@ -22,6 +22,7 @@ class OperationRecorder:
         args: dict[str, object],
         risk_level: OperationRiskLevel,
         preconditions: dict[str, object],
+        side_effect_checks: list[dict[str, object]] | None = None,
     ) -> OperationRecord:
         record = OperationRecord(
             operation_id=operation_id,
@@ -35,6 +36,9 @@ class OperationRecorder:
         manifest = self._read_or_create_manifest()
         if operation_id not in manifest.pending_operations:
             manifest.pending_operations.append(operation_id)
+        checks = side_effect_checks or self._derive_side_effect_checks(tool, args)
+        if checks:
+            manifest.side_effect_checks[operation_id] = checks
         self.journal.write_manifest(manifest)
         self._append_event(
             TraceEventType.TOOL_OPERATION_STARTED,
@@ -55,6 +59,7 @@ class OperationRecorder:
         record.artifact_refs = artifact_refs or []
         manifest = self._read_or_create_manifest()
         manifest.pending_operations = [op for op in manifest.pending_operations if op != operation_id]
+        manifest.side_effect_checks.pop(operation_id, None)
         output = f"operation {operation_id} finished"
         if output not in manifest.verified_outputs:
             manifest.verified_outputs.append(output)
@@ -108,3 +113,20 @@ class OperationRecorder:
     def _hash_args(args: dict[str, object]) -> str:
         encoded = json.dumps(args, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
+
+    @staticmethod
+    def _derive_side_effect_checks(tool: str, args: dict[str, object]) -> list[dict[str, object]]:
+        if tool != "write_file":
+            return []
+        path = args.get("path")
+        content = args.get("content")
+        if not isinstance(path, str) or content is None:
+            return []
+        encoded = str(content).encode("utf-8")
+        return [
+            {
+                "type": "file_hash",
+                "path": path,
+                "expected_sha256": hashlib.sha256(encoded).hexdigest(),
+            }
+        ]
