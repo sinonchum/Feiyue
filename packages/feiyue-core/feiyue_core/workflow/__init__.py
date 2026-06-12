@@ -9,6 +9,13 @@ from feiyue_core.workflow.project_knowledge import (
     ProjectKnowledgeLoader,
     build_worker_context,
 )
+from feiyue_core.workflow.regression_eval import (
+    RegressionCheck,
+    RegressionEvalAssets,
+    RegressionEvalWriter,
+    UnsafeRegressionCommandError,
+    build_regression_check_from_lesson,
+)
 from feiyue_core.workflow.task_contract import TaskContract, build_task_contract
 
 __all__ = [
@@ -18,7 +25,12 @@ __all__ = [
     "ProjectKnowledge",
     "ProjectKnowledgeInitializer",
     "ProjectKnowledgeLoader",
+    "RegressionCheck",
+    "RegressionEvalAssets",
+    "RegressionEvalWriter",
     "TaskContract",
+    "UnsafeRegressionCommandError",
+    "build_regression_check_from_lesson",
     "build_task_contract",
     "build_worker_context",
 ]
