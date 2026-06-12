@@ -887,6 +887,23 @@ M4 后续只做文档 closeout：
 
 证明 Feiyue 是否真的让弱模型接近强模型质量，并比较不同策略、模板、路由、teacher policy 的效果。
 
+## 当前状态
+
+**Partial Foundation 已完成。**
+
+本轮并行开发已完成：
+
+- M9.1 Strategy Evaluation Record。
+- M9.2 Strategy Scorecard。
+- Evaluation integration smoke：creative selection evidence → strategy evaluation records → scorecard aggregation。
+
+尚未完成：
+
+- Benchmark task suite。
+- weak-only / weak+task-contract / weak+verifier / weak+sparse-teacher / strong-reference comparison。
+- cost-normalized quality metrics。
+- repeated mistake / distillation gain report。
+
 ## 新功能范围
 
 - StrategyEvaluationRecord。
@@ -1269,7 +1286,7 @@ M5 Project Knowledge
 | M6 Curator / Distillation | Done Foundation | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate 与 curation smoke 已完成；promotion writer/dedup 作为后续增强 |
 | M7 Weak Model Capability Expansion | Done Foundation | CapabilityLadder、TaskComplexity、WorkerPerformanceRecord、ModelCapabilityProfile、recommendation rules 与 capability smoke 已完成；routing adapter/真实数据连接后续增强 |
 | M8 Creative Role Development | Done Foundation | CreativeBrief、CreativeVariant、CreativeCritique、UserSelectionFeedback 与 creative smoke 已完成；opportunity/metrics/real provider 后续增强 |
-| M9 Strategy/Evaluation Harness | Not Started | toy metrics 可先行，真实评估依赖 M5–M8 |
+| M9 Strategy/Evaluation Harness | Partial Foundation | StrategyEvaluationRecord、StrategyScorecard 与 evaluation smoke 已完成；benchmark/comparison runner 未完成 |
 | M10 Real Provider Integration | Not Started | 需要授权，不改 Hermes config |
 | M11 Real Workflow Execution | Not Started | 依赖 M5/M6/M10，provider-free toy path 可先做 |
 | M12 Safety/Budget Governor | Not Started | 依赖 M7/M10/M11 |
@@ -1280,51 +1297,52 @@ M5 Project Knowledge
 
 # 20. Immediate Next Development Slice
 
-## M9.1 / M9.2：Strategy Evaluation Records + Scorecards
+## M9.3 / M9.4：Benchmark Task Suite + Strategy Comparison Report
 
-下一步进入 M9 Strategy / Evaluation Harness。M5-M8 已经形成 workflow、curation、capability、creative evidence；现在需要把这些 evidence 汇总为可比较的 evaluation records 和 scorecards，用来证明 Feiyue 是否真的提升弱模型执行质量和创意候选质量。
+下一步继续 M9。Evaluation records/scorecards 已能聚合单个策略；接下来要建立 provider-free benchmark task suite 和多策略 comparison report，用 fixture records 比较 weak-only / weak+Feiyue / weak+sparse-teacher 等策略。
 
 ### Objective
 
-实现 provider-free 的 strategy evaluation record 和 scorecard schema。先不接真实 provider，不跑真实 benchmark；只定义可验证、可聚合的评价数据结构和 deterministic aggregation。
+实现 deterministic toy benchmark task definitions 与 strategy comparison report。此阶段仍不调用真实 provider，只使用 fixture/evidence records，重点验证 scorecard comparison、cost-normalized quality、teacher-call tradeoff 和 unsafe/repeated-failure visibility。
 
 ### Files
 
 Create:
 
-- `packages/feiyue-core/feiyue_core/evaluation/__init__.py`
-- `packages/feiyue-core/feiyue_core/evaluation/record.py`
-- `packages/feiyue-core/feiyue_core/evaluation/scorecard.py`
-- `packages/feiyue-core/tests/test_strategy_evaluation_record.py`
-- `packages/feiyue-core/tests/test_strategy_scorecard.py`
+- `packages/feiyue-core/feiyue_core/evaluation/benchmark.py`
+- `packages/feiyue-core/feiyue_core/evaluation/comparison.py`
+- `packages/feiyue-core/tests/test_benchmark_suite.py`
+- `packages/feiyue-core/tests/test_strategy_comparison.py`
 
 Update:
 
-- Add provider-free evaluation integration smoke.
+- `packages/feiyue-core/feiyue_core/evaluation/__init__.py`
+- Extend evaluation integration smoke.
 - `README.md`
 - `docs/Feiyue-self-evolution-development-outline.md`
 
 ### Functional Acceptance
 
-- StrategyEvaluationRecord can capture strategy id, model id, task id, capability level, pass/fail outcome, teacher calls, cost units, latency units, creative acceptance status, and source IDs.
-- StrategyScorecard can aggregate records by strategy id.
-- Scorecard reports pass rate, teacher call rate, average cost/latency, accepted creative rate, unsafe count, and source IDs.
-- Aggregation is deterministic and does not use LLM self-assessment.
+- BenchmarkTask can represent task id, required capability level, expected verifier, category, and source IDs.
+- BenchmarkSuite can hold deterministic ordered tasks.
+- StrategyComparisonReport can compare multiple scorecards and identify best pass-rate, lowest cost, lowest teacher-call-rate strategies without hiding unsafe count.
+- Cost-normalized quality is explicit and deterministic.
 
 ### Code Quality & Cleanliness Acceptance
 
 - Provider-free and deterministic.
-- No real model/provider/network calls.
-- Explicit handling of zero-record scorecards.
+- No real benchmark/provider claims.
+- No LLM self-evaluation.
+- Empty/missing strategy edge cases tested.
 - compileall / pytest / diff-check / secret scan pass.
 
 ### Dependencies
 
-- M7 capability records/recommendations.
-- M8 creative selection feedback.
-- M5/M6 evidence IDs.
+- M9.1 StrategyEvaluationRecord.
+- M9.2 StrategyScorecard.
+- M7 capability levels.
 
 ### Parallelization
 
-可并行：StrategyEvaluationRecord 与 StrategyScorecard 可以分两条 lane 开发。
-必须串行：evaluation integration smoke 需要两条 lane 合并后完成。
+可并行：Benchmark Suite 与 Strategy Comparison Report 可以分两条 lane 开发。
+必须串行：comparison integration smoke 需要两条 lane 合并后完成。
