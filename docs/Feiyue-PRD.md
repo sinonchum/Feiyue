@@ -512,6 +512,44 @@ Feiyue 由以下核心模块组成：
 
 ---
 
+
+## 7.14 Testing & Acceptance System：测试验收体系
+
+### 功能
+
+- 为每个 Phase、每个核心模块、每个策略版本定义明确的测试计划和验收门槛。
+- 支持测试类型分层：unit、contract、integration、smoke、regression、recovery、security、manual acceptance checklist。
+- 每个开发任务必须写清楚：测试什么、如何运行、预期输出、失败如何归因、通过后如何归档证据。
+- 将测试结果纳入 Audit / Replay Store：命令摘要、exit code、报告路径、artifact hash、失败分类、人工验收结论。
+- 对不可自动化判断的文档/研究/UI/技能审核任务，必须生成人工验收 checklist，并记录 reviewer、时间、结论和修改意见。
+- 测试验收不能只看 LLM 自评；LLM 只能辅助解释失败或生成 checklist，最终结果必须来自外部验证器或人工确认。
+
+### 技术栈
+
+- Python：pytest、pytest fixtures、coverage（后期）。
+- Contract tests：Pydantic schema round-trip、JSON Schema snapshot、prompt contract snapshot。
+- Integration tests：toy repo、fake provider、fake Git remote、temporary artifact store。
+- Security tests：secret scanner fixtures、permission deny cases、dangerous command deny cases。
+- Manual acceptance：Markdown checklist + structured review metadata。
+- CI（后期）：GitHub Actions 运行 unit/contract/integration smoke gates。
+
+### 依赖
+
+- 依赖 Task Spec Builder 输出 acceptance criteria。
+- 依赖 Verifier Layer 统一输出结构化测试结果。
+- 依赖 Audit / Replay Store 保存验收证据。
+- 依赖 Safety Governor 阻断高风险测试和真实副作用。
+
+### 验收标准
+
+- 每个 Phase 在开发大纲中都有“测试与验收方式”，不能只写功能清单。
+- 每个 PR/commit 前至少运行对应单元/契约测试和相关集成测试；无法运行时必须记录 blocker。
+- 每个成功结论都能追溯到测试命令、结果摘要、artifact/hash 或人工 checklist。
+- 每个失败都必须分类为代码失败、规格失败、环境失败、权限失败、provider 失败或未知状态。
+- 发布策略/技能/恢复机制前，必须跑固定 regression/eval gate，防止重复踩坑和能力回退。
+
+---
+
 ## 8. 推荐技术栈
 
 ### MVP 技术栈
@@ -627,6 +665,8 @@ Feiyue 由以下核心模块组成：
 - 每个任务有完整 trace 和验证证据。
 - 能从一次成功轨迹生成技能候选。
 - 能对两个策略版本跑同一 eval 并比较指标。
+- 每个 Phase 都有可执行测试命令或人工验收 checklist，且验收证据进入 trace/audit。
+- 任何恢复/fallback 场景的成功都必须通过 manifest、journal、side-effect reconciliation 证据确认。
 
 ### 长期指标
 

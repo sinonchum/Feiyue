@@ -138,6 +138,13 @@ Feiyue/
 - README 链接到核心文档。
 - `.gitignore` 覆盖 traces/local-notes/env/cache。
 
+### 测试与验收方式
+
+- 文档验收：检查 PRD、开发大纲、README 的链接均可解析，章节包含目标、非目标、测试/验收、风险。
+- Git 验收：运行 `git status --short`，确认没有误提交 traces、env、cache、local-notes。
+- Ignore 验收：对 `traces/`、`local-notes/`、`.env` 样例运行 `git check-ignore -v`，确认命中规则。
+- 合格标准：文档存在且互链正确；隐私/本地文件目录被 ignore；仓库状态干净。
+
 ---
 
 ## 4. Phase 1：核心 Schema 与项目骨架
@@ -202,6 +209,14 @@ Feiyue/
 - `pytest packages/feiyue-core/tests/test_schemas.py -v` 通过。
 - schema 可 JSON serialize / deserialize。
 - 无外部 API 调用。
+
+### 测试与验收方式
+
+- Unit tests：每个 schema 至少覆盖默认值、必填字段、enum 值、JSON round-trip。
+- Contract tests：保存关键 schema 的稳定字段断言，防止后续模块悄悄改名。
+- Negative tests：缺失必填字段、非法 status/type/risk level 必须 validation fail。
+- 命令：`pytest packages/feiyue-core/tests/test_schemas.py -v`。
+- 合格标准：测试全部通过；schema 输出不包含 secret/raw payload；没有 provider/network 调用。
 
 ---
 
@@ -271,6 +286,14 @@ Feiyue/
 - 用一个 toy repo 跑通失败测试 → 应用修复 → 测试通过。
 - trace 中包含 task_id、candidate_id、command、exit_code、verifier result。
 - 主仓库 git status 不被污染。
+
+### 测试与验收方式
+
+- Unit tests：command runner 覆盖成功、失败、timeout、stdout/stderr 截断；trace writer 覆盖 JSONL 追加和可读回放。
+- Integration tests：toy repo 中制造 failing test，candidate 写入修复文件后在 worktree 运行 verifier。
+- Isolation tests：执行前后对源仓库运行 `git status --short`，必须保持干净。
+- 命令：`pytest packages/feiyue-core/tests/test_worktree_sandbox.py packages/feiyue-core/tests/test_pytest_verifier.py packages/feiyue-core/tests/test_local_loop.py -v`。
+- 合格标准：toy repo 通过；trace 证据完整；任何失败都有 exit code/failure category；主仓库无污染。
 
 ---
 
@@ -350,6 +373,16 @@ Feiyue/
 - repeated_mistake_count 在 eval metrics 中可记录。
 - auxiliary failure 不改变 main manifest。
 
+### 测试与验收方式
+
+- Unit tests：RecoveryManifest、OperationRecord、KnownMistake、RecoveryPromptBuilder 做 JSON round-trip 和 section snapshot。
+- Journal tests：append-only JSONL 顺序读取、忽略空行、manifest 原子写入。
+- Reconciliation tests：pending/unknown → needs_inspection；do_not_repeat → unsafe_to_repeat；file hash/git ref/artifact 检查能确认或阻断重试。
+- Resume tests：confirmed operation 从 pending 清除并写回 manifest；unsafe/unknown 写入 open_questions。
+- End-to-end tests：模拟中断留下 pending operation，再运行 ResumeFlow，确认 next_safe_action 不会重复危险操作。
+- 命令：`pytest packages/feiyue-core/tests/test_recovery_contracts.py packages/feiyue-core/tests/test_journal.py packages/feiyue-core/tests/test_reconciler.py packages/feiyue-core/tests/test_resume_flow.py -v`。
+- 合格标准：fallback prompt 足够新模型无上下文恢复；未知 side effect 不自动重试；确认完成的 side effect 有证据并持久化。
+
 详见：[`docs/resilient-session-runtime.md`](resilient-session-runtime.md)。
 
 ---
@@ -420,6 +453,15 @@ Feiyue/
 - 一个 toy failure 能生成修复候选并通过 verifier。
 - LLM 失败不会破坏 trace、manifest 或 sandbox。
 
+### 测试与验收方式
+
+- Unit tests：provider payload、auth header redaction、response parse、retryable/non-retryable error 分类。
+- Contract tests：candidate JSON 必须能 validate 成 Candidate；feedback analyzer 必须引用具体 verifier evidence。
+- Fake-provider integration：用 deterministic fake provider 生成修复候选，跑通 local_loop，不依赖真实 API key。
+- Failure tests：provider timeout/429/invalid JSON 必须写 model_error event，并触发 recovery runtime clean rebuild。
+- 命令：`pytest packages/feiyue-core/tests/test_provider_payloads.py packages/feiyue-core/tests/test_feedback_taxonomy.py -v`，再跑 toy loop 集成测试。
+- 合格标准：无真实 credential 也能测试；provider failure 不污染 manifest；候选生成结果可验证、可回放。
+
 ---
 
 ## 8. Phase 5：评测基准与策略版本
@@ -481,6 +523,15 @@ Feiyue/
 - 两个策略版本能输出对比报告。
 - 指标下降时标记 regression。
 
+### 测试与验收方式
+
+- Fixture tests：固定 eval task JSONL schema、任务类别、预期 verifier 配置。
+- Runner tests：同一 strategy version 重跑结果结构稳定，记录 task_id、strategy_hash、metrics。
+- Metrics tests：成功率、平均迭代次数、成本、耗时、repeated_mistake_count、regression flag 计算正确。
+- Report tests：Markdown/JSON 对比报告包含 baseline、candidate、delta、pass/fail gate。
+- 命令：`pytest packages/feiyue-core/tests/test_eval_runner.py packages/feiyue-core/tests/test_metrics.py -v`。
+- 合格标准：策略比较可复现；指标下降会阻断发布；报告能定位失败任务和证据。
+
 ---
 
 ## 9. Phase 6：技能与经验沉淀
@@ -538,6 +589,15 @@ Feiyue/
 - 成功任务能生成一份 skill candidate。
 - 失败任务能生成一份 failure playbook。
 - Skill candidate 包含来源 trace_id 和验证证据。
+
+### 测试与验收方式
+
+- Unit tests：skill candidate builder 从 trace 中提取 title、applicability、steps、verification evidence。
+- Failure-playbook tests：失败轨迹能生成 do_not_repeat、root cause、safe next action。
+- Redaction tests：私有路径、token-like 字符串、raw secret 不进入 skill content。
+- Review tests：未审核 candidate 不能进入正式技能库；approve/reject 状态可追踪。
+- 命令：`pytest packages/feiyue-core/tests/test_skill_candidate.py packages/feiyue-core/tests/test_failure_playbook.py -v`。
+- 合格标准：技能是候选而非自动发布；每条经验都有 trace/evidence；敏感信息被 mask。
 
 ---
 
@@ -597,6 +657,15 @@ Feiyue/
 - 未授权写文件被拒绝。
 - `.env`、token-like 字符串能被识别并 mask。
 - git push/delete/rm -rf 等高风险操作需要 approval。
+
+### 测试与验收方式
+
+- Permission tests：read/write/execute/network/git_push/delete 每类权限都有 allow/deny case。
+- Dangerous-command tests：`rm -rf`、force push、credential dump、delete workspace 等必须默认阻断或审批。
+- Secret-scan tests：API key/token/password fixtures 必须 mask；报告不能回显原文。
+- Recovery-safety tests：pending/unknown side effect 未调和前，重复 push/send/delete 被拒绝。
+- 命令：`pytest packages/feiyue-core/tests/test_safety_policy.py packages/feiyue-core/tests/test_secret_scan.py -v`。
+- 合格标准：低风险操作不过度阻塞；高风险操作无审批不执行；审计日志只含脱敏内容。
 
 ---
 
@@ -661,6 +730,15 @@ Feiyue/
 - Dashboard 能查看至少一个完整任务闭环。
 - 技能候选可 approve/reject。
 
+### 测试与验收方式
+
+- API tests：`POST /tasks`、`GET /tasks/{id}`、`POST /tasks/{id}/run`、trace/eval/skill endpoints 覆盖 happy path 和权限失败。
+- Contract tests：OpenAPI schema 与 frontend client 类型一致。
+- Dashboard smoke：任务列表、任务详情、候选对比、验证结果、技能审核页面能渲染 fixture 数据。
+- UX/manual acceptance：用一条完整 toy task 从创建到审核跑完，人工 checklist 记录可理解性和证据可追溯性。
+- 命令：后端 `pytest apps/api/tests -v`；前端 `npm test` / `npm run build` / browser smoke。
+- 合格标准：用户能看到完整证据链；approve/reject 有审计记录；UI 不暴露 raw secret/log dump。
+
 ---
 
 ## 12. Phase 9：高级自我提升能力
@@ -716,6 +794,15 @@ Feiyue/
 - 自动策略选择有回滚机制。
 - 导出数据包包含 license/privacy metadata。
 
+### 测试与验收方式
+
+- Search tests：best-of-N/tree search 在 tiny deterministic fixtures 上选择 verifier 分数最高候选。
+- Bandit tests：策略选择使用固定 seed，指标下降触发 rollback。
+- Retrieval tests：向量记忆只作为提示，不直接触发 side effect；错误召回不会越权执行。
+- Export tests：训练数据导出包含 license/privacy metadata、redaction receipt、trace refs，不包含未授权私有内容。
+- Formal/sandbox tests：Docker/remote/formal verifier adapter 先用 optional dependency unavailable path 测试，再 gate 真实集成。
+- 合格标准：高级能力必须在固定 eval 上证明收益；回滚可用；导出数据可审计且许可明确。
+
 ---
 
 ## 12. 并行开发矩阵
@@ -765,6 +852,18 @@ LLM judge 容易偏差、奖励作弊和幻觉。Feiyue 的核心原则是：LLM
 ---
 
 ## 14. 测试策略
+
+### Phase Acceptance Gates
+
+每个 Phase 必须在进入下一 Phase 前完成以下 gate：
+
+1. **测试计划存在**：该 Phase 的“测试与验收方式”已写明测试类型、命令、人工 checklist 和合格标准。
+2. **RED/GREEN 证据**：新增代码遵循 TDD；关键行为至少有一次先失败再通过的测试记录。
+3. **相关测试通过**：运行该 Phase 指定测试命令，并记录 exit code 与摘要。
+4. **全量回归通过**：核心包至少运行一次 `pytest -q`；文档-only 变更至少运行链接/路径/状态检查。
+5. **验收证据归档**：trace/audit 或文档中记录命令、结果、artifact/hash/manual reviewer。
+6. **安全检查通过**：不提交 secret、trace、local notes；高风险 side effect 有 approval 或被阻断。
+
 
 ### Unit Tests
 
