@@ -40,7 +40,7 @@ Feiyue 追求三个战略结果：
 
 - Core package：`packages/feiyue-core`
 - Python source/test 文件：持续扩展中（当前 provider-free foundation 覆盖 workflow、curation、capability、creative、evaluation、providers）。
-- 当前完整测试：`342 passed`
+- 当前完整测试：`344 passed`
 - 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation。
 
 ### 1.2 已完成核心资产
@@ -1416,6 +1416,7 @@ Functional acceptance：
 - blocked teacher retry records `retry_performed=False` after first execution evidence。
 - blocked/escalated promotion records `side_effect_performed=False` before branch/worktree side effects。
 - `run-evidence.json` records status, policy action/reason, side-effect flags, `safe_to_retry`, `next_safe_action`, and relative report paths。
+- `RunEvidenceLoader` loads persisted evidence and renders compact fallback handoff summaries; missing evidence raises a typed `RunEvidenceNotFoundError`.
 
 Quality acceptance：
 - provider-free deterministic schema。

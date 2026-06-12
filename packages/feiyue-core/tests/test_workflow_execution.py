@@ -15,6 +15,8 @@ from feiyue_core.workflow import TaskContract
 from feiyue_core.workflow.execution import (
     CandidateFileWrite,
     PromotionStatus,
+    RunEvidenceLoader,
+    RunEvidenceNotFoundError,
     WorkflowExecutionStatus,
     ToyWorkflowExecutor,
     WorkflowReportWriter,
@@ -727,3 +729,51 @@ def test_workflow_report_writer_persists_run_evidence_index_for_promoted_patch(t
     assert data["safe_to_retry"] is False
     assert data["next_safe_action"] == "record_lesson_or_continue"
     assert data["report_paths"]["promotion_result"] == "promotion-result.md"
+
+
+
+def test_run_evidence_loader_loads_index_and_renders_fallback_handoff(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-loader-policy-block",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    report = ToyWorkflowExecutor(policy_governor=PolicyGovernor()).execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        project_name="toy-calculator",
+        risk_level=RiskLevel.HIGH,
+    )
+    WorkflowReportWriter(repo).write(report=report)
+
+    loader = RunEvidenceLoader(repo)
+    evidence = loader.load("m12-loader-policy-block")
+    summary = loader.render_handoff_summary("m12-loader-policy-block")
+
+    assert evidence.task_id == "m12-loader-policy-block"
+    assert evidence.safe_to_retry is False
+    assert evidence.next_safe_action == "request_human_approval"
+    assert "# Fallback Handoff Summary" in summary
+    assert "- task_id: m12-loader-policy-block" in summary
+    assert "- safe_to_retry: False" in summary
+    assert "- next_safe_action: request_human_approval" in summary
+    assert "- policy_reason: high_risk_operation" in summary
+    assert "- execution_report: execution-report.md" in summary
+
+
+def test_run_evidence_loader_missing_index_raises_typed_error(tmp_path: Path) -> None:
+    loader = RunEvidenceLoader(tmp_path)
+
+    try:
+        loader.load("missing-task")
+    except RunEvidenceNotFoundError as exc:
+        assert exc.task_id == "missing-task"
+        assert exc.path == tmp_path / ".hermes" / "runs" / "missing-task" / "run-evidence.json"
+        assert "missing-task" in str(exc)
+    else:
+        raise AssertionError("Expected RunEvidenceNotFoundError")

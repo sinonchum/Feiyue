@@ -107,6 +107,15 @@ class RunEvidenceIndex(FeiyueModel):
     report_paths: dict[str, str] = Field(default_factory=dict)
 
 
+class RunEvidenceNotFoundError(FileNotFoundError):
+    """Raised when a persisted run evidence index is missing."""
+
+    def __init__(self, *, task_id: str, path: Path) -> None:
+        self.task_id = task_id
+        self.path = path
+        super().__init__(f"Run evidence index not found for task {task_id}: {path}")
+
+
 class WorkflowReportArtifacts(FeiyueModel):
     """File paths created by WorkflowReportWriter."""
 
@@ -118,6 +127,44 @@ class WorkflowReportArtifacts(FeiyueModel):
     teacher_guidance_markdown_path: Path | None = None
     promotion_json_path: Path | None = None
     promotion_markdown_path: Path | None = None
+
+
+class RunEvidenceLoader:
+    """Load persisted run evidence and render compact fallback handoff summaries."""
+
+    def __init__(self, project_root: str | Path) -> None:
+        self.project_root = Path(project_root)
+
+    def load(self, task_id: str) -> RunEvidenceIndex:
+        path = self._evidence_path(task_id)
+        if not path.exists():
+            raise RunEvidenceNotFoundError(task_id=task_id, path=path)
+        return RunEvidenceIndex.model_validate_json(path.read_text(encoding="utf-8"))
+
+    def render_handoff_summary(self, task_id: str) -> str:
+        evidence = self.load(task_id)
+        lines = [
+            "# Fallback Handoff Summary",
+            "",
+            f"- task_id: {evidence.task_id}",
+            f"- status: {evidence.status}",
+            f"- policy_action: {evidence.policy_action or 'None'}",
+            f"- policy_reason: {evidence.policy_reason or 'None'}",
+            f"- execution_performed: {evidence.execution_performed}",
+            f"- retry_performed: {evidence.retry_performed}",
+            f"- promotion_status: {evidence.promotion_status or 'None'}",
+            f"- promotion_side_effect_performed: {evidence.promotion_side_effect_performed}",
+            f"- safe_to_retry: {evidence.safe_to_retry}",
+            f"- next_safe_action: {evidence.next_safe_action}",
+            "",
+            "## Report Paths",
+        ]
+        for key in sorted(evidence.report_paths):
+            lines.append(f"- {key}: {evidence.report_paths[key]}")
+        return "\n".join(lines) + "\n"
+
+    def _evidence_path(self, task_id: str) -> Path:
+        return self.project_root / ".hermes" / "runs" / task_id / "run-evidence.json"
 
 
 class WorkflowReportWriter:
