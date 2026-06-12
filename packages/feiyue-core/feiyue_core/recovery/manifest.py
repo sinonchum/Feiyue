@@ -18,6 +18,7 @@ class RecoveryManifest(FeiyueModel):
     do_not_repeat: list[str] = Field(default_factory=list)
     completed_steps: list[str] = Field(default_factory=list)
     pending_operations: list[str] = Field(default_factory=list)
+    operation_risk_levels: dict[str, str] = Field(default_factory=dict)
     side_effect_checks: dict[str, list[dict[str, Any]]] = Field(default_factory=dict)
     changed_files: list[str] = Field(default_factory=list)
     verified_outputs: list[str] = Field(default_factory=list)

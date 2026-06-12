@@ -5,6 +5,7 @@ from .interruption_simulation import InterruptionSimulationResult, simulate_inte
 from .operation_recorder import OperationRecorder
 from .reconciler import Reconciler, ReconciliationDecision, ReconciliationItem, ReconciliationReport
 from .recovery_prompt import RecoveryPromptBuilder
+from .recovery_safety_gate import RecoverySafetyDecision, RecoverySafetyGate
 from .resume_flow import ResumeContext, ResumeFlow
 from .side_effect_inspector import SideEffectCheck, SideEffectInspector, SideEffectStatus
 
@@ -16,6 +17,8 @@ __all__ = [
     "ReconciliationItem",
     "ReconciliationReport",
     "RecoveryPromptBuilder",
+    "RecoverySafetyDecision",
+    "RecoverySafetyGate",
     "ResumeContext",
     "ResumeFlow",
     "SessionJournal",

@@ -36,6 +36,7 @@ class OperationRecorder:
         manifest = self._read_or_create_manifest()
         if operation_id not in manifest.pending_operations:
             manifest.pending_operations.append(operation_id)
+        manifest.operation_risk_levels[operation_id] = risk_level.value
         checks = side_effect_checks or self._derive_side_effect_checks(tool, args)
         if checks:
             manifest.side_effect_checks[operation_id] = checks
@@ -59,6 +60,7 @@ class OperationRecorder:
         record.artifact_refs = artifact_refs or []
         manifest = self._read_or_create_manifest()
         manifest.pending_operations = [op for op in manifest.pending_operations if op != operation_id]
+        manifest.operation_risk_levels.pop(operation_id, None)
         manifest.side_effect_checks.pop(operation_id, None)
         output = f"operation {operation_id} finished"
         if output not in manifest.verified_outputs:
