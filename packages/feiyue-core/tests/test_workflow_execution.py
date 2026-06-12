@@ -6,6 +6,7 @@ from pathlib import Path
 
 from feiyue_core.safety import (
     GovernanceAction,
+    HumanApprovalRecord,
     PolicyDecisionReason,
     PolicyGovernor,
     PolicyGovernorConfig,
@@ -777,3 +778,95 @@ def test_run_evidence_loader_missing_index_raises_typed_error(tmp_path: Path) ->
         assert "missing-task" in str(exc)
     else:
         raise AssertionError("Expected RunEvidenceNotFoundError")
+
+
+def test_workflow_report_writer_persists_approval_evidence_for_handoff(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-approval-handoff",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    report = ToyWorkflowExecutor(policy_governor=PolicyGovernor()).execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        project_name="toy-calculator",
+        risk_level=RiskLevel.HIGH,
+    )
+    approval = HumanApprovalRecord(
+        approval_id="approval-m12-001",
+        task_id="m12-approval-handoff",
+        approved_action="candidate_execution",
+        approver="Simon",
+        approved_at="2026-06-13T12:00:00Z",
+        reason="Approve exact blocked candidate execution after review.",
+    )
+
+    artifacts = WorkflowReportWriter(repo).write(report=report, approval=approval)
+
+    assert artifacts.approval_json_path == repo / ".hermes" / "runs" / "m12-approval-handoff" / "approval.json"
+    approval_data = json.loads(artifacts.approval_json_path.read_text(encoding="utf-8"))
+    assert approval_data == {
+        "approval_id": "approval-m12-001",
+        "task_id": "m12-approval-handoff",
+        "approved_action": "candidate_execution",
+        "approver": "Simon",
+        "approved_at": "2026-06-13T12:00:00Z",
+        "reason": "Approve exact blocked candidate execution after review.",
+    }
+    evidence = json.loads(artifacts.run_evidence_json_path.read_text(encoding="utf-8"))
+    assert evidence["approval_exists"] is True
+    assert evidence["approval_id"] == "approval-m12-001"
+    assert evidence["approval_approver"] == "Simon"
+    assert evidence["approval_action"] == "candidate_execution"
+    assert evidence["approval_applies"] is True
+    assert evidence["report_paths"]["approval"] == "approval.json"
+
+    loaded_approval = RunEvidenceLoader(repo).load_approval("m12-approval-handoff")
+    summary = RunEvidenceLoader(repo).render_handoff_summary("m12-approval-handoff")
+
+    assert loaded_approval == approval
+    assert "## Approval Evidence" in summary
+    assert "- approval_exists: True" in summary
+    assert "- approval_id: approval-m12-001" in summary
+    assert "- approval_approver: Simon" in summary
+    assert "- approval_action: candidate_execution" in summary
+    assert "- approval_applies: True" in summary
+    assert "- approval: approval.json" in summary
+
+
+def test_run_evidence_handoff_marks_missing_approval_explicitly(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-approval-missing",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    report = ToyWorkflowExecutor(policy_governor=PolicyGovernor()).execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        project_name="toy-calculator",
+        risk_level=RiskLevel.HIGH,
+    )
+    WorkflowReportWriter(repo).write(report=report)
+
+    loader = RunEvidenceLoader(repo)
+    evidence = loader.load("m12-approval-missing")
+    summary = loader.render_handoff_summary("m12-approval-missing")
+
+    assert evidence.approval_exists is False
+    assert evidence.approval_id is None
+    assert evidence.approval_applies is False
+    assert loader.load_approval("m12-approval-missing") is None
+    assert "## Approval Evidence" in summary
+    assert "- approval_exists: False" in summary
+    assert "- approval_id: None" in summary
+    assert "- approval_applies: False" in summary

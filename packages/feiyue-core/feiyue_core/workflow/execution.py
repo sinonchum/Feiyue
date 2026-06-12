@@ -10,6 +10,7 @@ from pydantic import Field
 
 from feiyue_core.safety import (
     GovernanceAction,
+    HumanApprovalRecord,
     PolicyDecision,
     PolicyGovernor,
     PolicyRequest,
@@ -102,6 +103,11 @@ class RunEvidenceIndex(FeiyueModel):
     retry_performed: bool
     promotion_status: str | None = None
     promotion_side_effect_performed: bool | None = None
+    approval_exists: bool = False
+    approval_id: str | None = None
+    approval_approver: str | None = None
+    approval_action: str | None = None
+    approval_applies: bool = False
     safe_to_retry: bool
     next_safe_action: str
     report_paths: dict[str, str] = Field(default_factory=dict)
@@ -123,6 +129,7 @@ class WorkflowReportArtifacts(FeiyueModel):
     execution_json_path: Path
     execution_markdown_path: Path
     run_evidence_json_path: Path
+    approval_json_path: Path | None = None
     bug_dossier_markdown_path: Path | None = None
     teacher_guidance_markdown_path: Path | None = None
     promotion_json_path: Path | None = None
@@ -141,6 +148,16 @@ class RunEvidenceLoader:
             raise RunEvidenceNotFoundError(task_id=task_id, path=path)
         return RunEvidenceIndex.model_validate_json(path.read_text(encoding="utf-8"))
 
+    def load_approval(self, task_id: str) -> HumanApprovalRecord | None:
+        evidence = self.load(task_id)
+        approval_path = evidence.report_paths.get("approval")
+        if not approval_path:
+            return None
+        path = self.project_root / ".hermes" / "runs" / task_id / approval_path
+        if not path.exists():
+            return None
+        return HumanApprovalRecord.model_validate_json(path.read_text(encoding="utf-8"))
+
     def render_handoff_summary(self, task_id: str) -> str:
         evidence = self.load(task_id)
         lines = [
@@ -156,6 +173,13 @@ class RunEvidenceLoader:
             f"- promotion_side_effect_performed: {evidence.promotion_side_effect_performed}",
             f"- safe_to_retry: {evidence.safe_to_retry}",
             f"- next_safe_action: {evidence.next_safe_action}",
+            "",
+            "## Approval Evidence",
+            f"- approval_exists: {evidence.approval_exists}",
+            f"- approval_id: {evidence.approval_id or 'None'}",
+            f"- approval_approver: {evidence.approval_approver or 'None'}",
+            f"- approval_action: {evidence.approval_action or 'None'}",
+            f"- approval_applies: {evidence.approval_applies}",
             "",
             "## Report Paths",
         ]
@@ -178,6 +202,7 @@ class WorkflowReportWriter:
         *,
         report: WorkflowExecutionReport,
         promotion: PromotionResult | None = None,
+        approval: HumanApprovalRecord | None = None,
     ) -> WorkflowReportArtifacts:
         run_dir = self.project_root / ".hermes" / "runs" / report.task_id
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -205,10 +230,17 @@ class WorkflowReportWriter:
             promotion_json_path.write_text(promotion.model_dump_json(indent=2), encoding="utf-8")
             promotion_markdown_path.write_text(_render_promotion_markdown(promotion), encoding="utf-8")
 
+        approval_json_path: Path | None = None
+        if approval is not None:
+            approval_json_path = run_dir / "approval.json"
+            approval_json_path.write_text(approval.model_dump_json(indent=2), encoding="utf-8")
+
         run_evidence_json_path = run_dir / "run-evidence.json"
         run_evidence = _build_run_evidence_index(
             report=report,
             promotion=promotion,
+            approval=approval,
+            approval_json_path=approval_json_path,
             bug_dossier_markdown_path=bug_path,
             teacher_guidance_markdown_path=teacher_path,
             promotion_markdown_path=promotion_markdown_path,
@@ -220,6 +252,7 @@ class WorkflowReportWriter:
             execution_json_path=execution_json_path,
             execution_markdown_path=execution_markdown_path,
             run_evidence_json_path=run_evidence_json_path,
+            approval_json_path=approval_json_path,
             bug_dossier_markdown_path=bug_path,
             teacher_guidance_markdown_path=teacher_path,
             promotion_json_path=promotion_json_path,
@@ -231,11 +264,18 @@ def _build_run_evidence_index(
     *,
     report: WorkflowExecutionReport,
     promotion: PromotionResult | None,
+    approval: HumanApprovalRecord | None,
+    approval_json_path: Path | None,
     bug_dossier_markdown_path: Path | None,
     teacher_guidance_markdown_path: Path | None,
     promotion_markdown_path: Path | None,
 ) -> RunEvidenceIndex:
     policy_decision = promotion.policy_decision if promotion and promotion.policy_decision else report.policy_decision
+    approval_applies = _approval_applies_to_policy_decision(
+        approval=approval,
+        task_id=report.task_id,
+        policy_decision=policy_decision,
+    )
     report_paths = {"execution_report": "execution-report.md", "execution_json": "execution-report.json"}
     if bug_dossier_markdown_path is not None:
         report_paths["bug_dossier"] = bug_dossier_markdown_path.name
@@ -243,6 +283,8 @@ def _build_run_evidence_index(
         report_paths["teacher_guidance"] = teacher_guidance_markdown_path.name
     if promotion_markdown_path is not None:
         report_paths["promotion_result"] = promotion_markdown_path.name
+    if approval_json_path is not None:
+        report_paths["approval"] = approval_json_path.name
 
     return RunEvidenceIndex(
         task_id=report.task_id,
@@ -253,10 +295,27 @@ def _build_run_evidence_index(
         retry_performed=report.retry_performed,
         promotion_status=promotion.status.value if promotion is not None else None,
         promotion_side_effect_performed=promotion.side_effect_performed if promotion is not None else None,
+        approval_exists=approval is not None,
+        approval_id=approval.approval_id if approval is not None else None,
+        approval_approver=approval.approver if approval is not None else None,
+        approval_action=approval.approved_action if approval is not None else None,
+        approval_applies=approval_applies,
         safe_to_retry=_compute_safe_to_retry(report=report, promotion=promotion),
         next_safe_action=_compute_next_safe_action(report=report, promotion=promotion, policy_decision=policy_decision),
         report_paths=report_paths,
     )
+
+
+def _approval_applies_to_policy_decision(
+    *,
+    approval: HumanApprovalRecord | None,
+    task_id: str,
+    policy_decision: PolicyDecision | None,
+) -> bool:
+    if approval is None or policy_decision is None:
+        return False
+    operation = policy_decision.audit_metadata.get("operation")
+    return approval.task_id == task_id and approval.approved_action == operation
 
 
 def _compute_safe_to_retry(*, report: WorkflowExecutionReport, promotion: PromotionResult | None) -> bool:
