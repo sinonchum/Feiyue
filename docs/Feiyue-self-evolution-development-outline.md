@@ -40,7 +40,7 @@ Feiyue 追求三个战略结果：
 
 - Core package：`packages/feiyue-core`
 - Python source/test 文件：持续扩展中（当前 provider-free foundation 覆盖 workflow、curation、capability、creative、evaluation、providers）。
-- 当前完整测试：`325 passed`
+- 当前完整测试：`332 passed`
 - 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation。
 
 ### 1.2 已完成核心资产
@@ -1389,3 +1389,25 @@ Update:
 
 可并行：Benchmark Suite 与 Strategy Comparison Report 可以分两条 lane 开发。
 必须串行：comparison integration smoke 需要两条 lane 合并后完成。
+
+
+## M12 Safety / Budget / Policy Governor
+
+当前 M12 foundation：
+- `PolicyGovernor`：provider-free allow / block / escalate gate。
+- budget gates：worker retry、teacher call、token budget。
+- risk/privacy gates：high-risk operation escalates；sensitive data requires privacy approval。
+- deterministic audit metadata：用于后续 run report 与 dashboard。
+
+Functional acceptance：
+- low-risk within budget → allow。
+- high-risk operation → escalate with human approval。
+- worker retry budget exhausted → block。
+- teacher call budget exhausted → block。
+- token budget exceeded → block。
+- sensitive data without privacy approval → escalate。
+
+Quality acceptance：
+- provider-free deterministic schema。
+- serializable decision model。
+- no secrets, no real provider calls。
