@@ -747,6 +747,24 @@ M4 后续只做文档 closeout：
 
 显式跟踪弱模型的任务能力边界，并用 verifier/reviewer 证据推进或回退边界。
 
+## 当前状态
+
+**Partial Foundation 已完成。**
+
+本轮并行开发已完成：
+
+- M7.1 Capability Ladder。
+- M7.2 Worker Performance Record。
+- Capability integration smoke：task complexity → reviewed curation evidence → worker performance record。
+
+尚未完成：
+
+- Model capability profile。
+- Promotion / demotion rules。
+- Repeated mistake aggregation。
+- Routing recommendation based on capability evidence。
+- Worker boundary report。
+
 ## 新功能范围
 
 - Capability ladder schema。
@@ -1229,7 +1247,7 @@ M5 Project Knowledge
 | M4 Candidate / Feedback / Teacher Loop | Done Foundation | fake provider / toy loop / trace resume 完成 |
 | M5 Workflow Asset Layer | Done Foundation | Project knowledge、task contract、bug dossier、lesson packet、regression eval、routing table 与 integration smoke 已完成；后续批量持久化/学习策略归入 M6/M7 |
 | M6 Curator / Distillation | Done Foundation | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate 与 curation smoke 已完成；promotion writer/dedup 作为后续增强 |
-| M7 Weak Model Capability Expansion | Not Started | 依赖 M5/M6 evidence |
+| M7 Weak Model Capability Expansion | Partial Foundation | CapabilityLadder、TaskComplexity、WorkerPerformanceRecord 与 capability smoke 已完成；profile/promotion/demotion 未完成 |
 | M8 Creative Role Development | Not Started | 依赖 project knowledge，部分可并行 |
 | M9 Strategy/Evaluation Harness | Not Started | toy metrics 可先行，真实评估依赖 M5–M8 |
 | M10 Real Provider Integration | Not Started | 需要授权，不改 Hermes config |
@@ -1242,53 +1260,53 @@ M5 Project Knowledge
 
 # 20. Immediate Next Development Slice
 
-## M7.1 / M7.2：Capability Ladder + Worker Performance Record
+## M7.3 / M7.4：Model Capability Profile + Promotion/Demotion Rules
 
-下一步建议进入 M7 Weak Model Capability Expansion。M5/M6 已经能形成 workflow assets 和 review-first curation evidence，接下来要把这些 evidence 用来显式跟踪弱模型的任务能力边界。
+下一步建议继续 M7，把单条 WorkerPerformanceRecord 聚合为模型能力画像，并基于 verifier/reviewer evidence 生成可解释的升级/降级建议。
 
 ### Objective
 
-实现 provider-free 的 capability ladder 和 worker performance record，让系统能记录某个模型/worker 在某类任务上的成功、失败、重复错误、teacher 介入和 verifier 结果，为后续 promotion/demotion/routing recommendation 做基础。
+实现 provider-free 的 model capability profile 与 promotion/demotion rule evaluator。系统应能根据多条 worker performance records 判断某个 worker/model 在某个 capability level 上是否稳定、是否需要 teacher、是否反复犯同类错误，并输出 recommendation，而不是直接修改 routing table。
 
 ### Files
 
 Create:
 
-- `packages/feiyue-core/feiyue_core/capability/__init__.py`
-- `packages/feiyue-core/feiyue_core/capability/ladder.py`
-- `packages/feiyue-core/feiyue_core/capability/performance_record.py`
-- `packages/feiyue-core/tests/test_capability_ladder.py`
-- `packages/feiyue-core/tests/test_worker_performance_record.py`
+- `packages/feiyue-core/feiyue_core/capability/profile.py`
+- `packages/feiyue-core/feiyue_core/capability/rules.py`
+- `packages/feiyue-core/tests/test_model_capability_profile.py`
+- `packages/feiyue-core/tests/test_capability_rules.py`
 
 Update:
 
-- Add a provider-free capability integration smoke.
+- `packages/feiyue-core/feiyue_core/capability/__init__.py`
+- Add or extend capability integration smoke.
 - `README.md`
 - `docs/Feiyue-self-evolution-development-outline.md`
 
 ### Functional Acceptance
 
-- Capability ladder defines ordered levels from read-only audit to teacher-assisted complex repair / creative variants.
-- Task complexity can be represented deterministically.
-- WorkerPerformanceRecord can capture worker/model id, task id, capability level, result status, verifier result, teacher calls, repeated mistake category, curation evidence IDs, and review decision IDs.
-- Records can render deterministic Markdown/JSON-friendly summaries.
-- No capability promotion yet; this slice only records evidence.
+- ModelCapabilityProfile can aggregate records by model_id / capability_level.
+- Profile can report pass rate, teacher call rate, repeated mistake counts, unsafe count, and evidence IDs.
+- Promotion rule requires multiple verifier-backed successes and low/no teacher calls; single success must not promote.
+- Demotion/escalation rule triggers on unsafe results or repeated mistakes.
+- Rules output recommendation objects with rationale and source IDs; they do not mutate routing table.
 
 ### Code Quality & Cleanliness Acceptance
 
 - Provider-free and deterministic.
 - No LLM self-assessment used as capability evidence.
-- Evidence source IDs are explicit.
+- Promotion/demotion thresholds are explicit and tested at boundaries.
 - compileall / pytest / diff-check / secret scan pass.
 
 ### Dependencies
 
-- M5 workflow assets.
-- M6 curation/review evidence.
-- Existing verification result concepts.
+- M7.1 Capability Ladder.
+- M7.2 WorkerPerformanceRecord.
+- M6 review evidence IDs.
 - Does not depend on real provider / network.
 
 ### Parallelization
 
-可并行：Capability Ladder 与 Worker Performance Record 可以分两条 lane 开发。
-必须串行：最终 capability integration smoke 需要两条 lane 合并后由 controller 完成。
+可并行：Model Capability Profile 与 Promotion/Demotion Rules 可以分两条 lane 开发。
+必须串行：rules integration smoke 需要 profile API 合并后完成。
