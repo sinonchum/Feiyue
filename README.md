@@ -23,6 +23,7 @@ python3 -m feiyue_core.runtime.interruption_simulation --root /tmp/feiyue-demo -
 ## Documents
 
 - [`docs/Feiyue-system-doctrine.md`](docs/Feiyue-system-doctrine.md) — canonical doctrine for Feiyue's system-level self-evolution, student/teacher model roles, sparse teacher intervention, distillation, and cross-model quality preservation. Future plans and development default to this doctrine unless explicitly overridden.
+- [`docs/Feiyue-self-evolution-development-outline.md`](docs/Feiyue-self-evolution-development-outline.md) — canonical development outline derived from the doctrine, covering features, dependencies, tech stack, parallel/serial work, and two-track acceptance gates for every phase.
 - [`docs/Feiyue-PRD.md`](docs/Feiyue-PRD.md) — product requirements for a verifiable feedback-driven AI self-improvement system.
 - [`docs/Feiyue-development-outline.md`](docs/Feiyue-development-outline.md) — detailed development outline, dependencies, parallelization plan, serial blockers, risks, and solution paths.
 - [`docs/resilient-session-runtime.md`](docs/resilient-session-runtime.md) — feature design for anti-amnesia runtime recovery across model fallback, network/power loss, and unknown side effects.

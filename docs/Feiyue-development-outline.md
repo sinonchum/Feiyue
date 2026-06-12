@@ -6,6 +6,8 @@
 >
 > **Canonical reference:** 后续开发和计划默认以 [`Feiyue-system-doctrine.md`](Feiyue-system-doctrine.md) 为准；除非用户特别说明，不得把 Feiyue 简化为普通弱模型 wrapper、普通 fallback runtime 或普通 code repair bot。
 >
+> **Updated canonical outline:** 最新开发大纲以 [`Feiyue-self-evolution-development-outline.md`](Feiyue-self-evolution-development-outline.md) 为准；本文保留为早期开发大纲与历史阶段记录。
+>
 > **Architecture:** 先实现本地可运行的单机 MVP：FastAPI + Python orchestrator + Git worktree sandbox + pytest-style verifier + JSONL traces。待闭环跑通后，再扩展 Dashboard、队列、数据库、向量检索、远程沙箱和训练数据导出。
 >
 > **Tech Stack:** Python 3.11+, FastAPI, Pydantic v2, PostgreSQL/SQLite, Git worktree, pytest, JSONL trace, Next.js/TypeScript later, Docker later.

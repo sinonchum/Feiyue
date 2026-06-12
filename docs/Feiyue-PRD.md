@@ -5,6 +5,7 @@
 > **仓库**：Feiyue
 > **定位**：一个面向代码、推理、研究与工具型任务的“工程化自我提升”系统；它通过系统层自我进化、弱/强模型角色协作、外部验证器、教师指导蒸馏和持久化质量约束，让 mimo-v2.5-pro、deepseek-v4-pro 等 student models 在模型切换和低强模型调用条件下尽量获得接近 Opus、Fable、GPT-5.5 等 teacher models 的输出质量。
 > **Canonical reference**：后续开发与计划必须以 [`Feiyue-system-doctrine.md`](Feiyue-system-doctrine.md) 为准；除非另有明确说明，不得把 Feiyue 简化成普通弱模型 wrapper、普通 fallback runtime 或普通 code repair bot。
+> **Canonical development outline**：阶段开发、依赖、并行/串行关系与双轨验收以 [`Feiyue-self-evolution-development-outline.md`](Feiyue-self-evolution-development-outline.md) 为准。
 
 ---
 
