@@ -551,3 +551,105 @@ def test_workflow_report_writer_persists_promotion_policy_decision_markdown(tmp_
     assert "- reason: high_risk_operation" in markdown
     assert "- operation: promotion" in markdown
     assert "- requires_human_approval: True" in markdown
+
+
+
+def test_policy_blocked_candidate_execution_records_no_execution_side_effect(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-evidence-execution-block",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+
+    report = ToyWorkflowExecutor(policy_governor=PolicyGovernor()).execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        project_name="toy-calculator",
+        risk_level=RiskLevel.HIGH,
+    )
+
+    assert report.status == WorkflowExecutionStatus.BLOCKED
+    assert report.execution_performed is False
+    assert report.retry_performed is False
+    assert report.sandbox_removed is True
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+    artifacts = WorkflowReportWriter(repo).write(report=report)
+    markdown = artifacts.execution_markdown_path.read_text(encoding="utf-8")
+    assert "## Action Evidence" in markdown
+    assert "- execution_performed: False" in markdown
+    assert "- retry_performed: False" in markdown
+
+
+def test_policy_blocked_teacher_retry_records_retry_not_performed(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-evidence-teacher-block",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    executor = ToyWorkflowExecutor(
+        policy_governor=PolicyGovernor(PolicyGovernorConfig(max_teacher_calls=0))
+    )
+
+    report = executor.execute_with_teacher_retry(
+        source_repo=repo,
+        contract=contract,
+        initial_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a * b\n")],
+        teacher_guidance="Do not apply when blocked.",
+        revised_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        project_name="toy-calculator",
+    )
+
+    assert report.status == WorkflowExecutionStatus.NEEDS_TEACHER
+    assert report.execution_performed is True
+    assert report.retry_performed is False
+    artifacts = WorkflowReportWriter(repo).write(report=report)
+    markdown = artifacts.execution_markdown_path.read_text(encoding="utf-8")
+    assert "## Action Evidence" in markdown
+    assert "- execution_performed: True" in markdown
+    assert "- retry_performed: False" in markdown
+
+
+def test_policy_escalated_promotion_records_no_side_effect_performed(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-evidence-promotion-block",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    writes = [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")]
+    executor = ToyWorkflowExecutor(policy_governor=PolicyGovernor())
+    report = executor.execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=writes,
+        project_name="toy-calculator",
+    )
+
+    promotion = executor.promote_verified_writes(
+        source_repo=repo,
+        report=report,
+        candidate_writes=writes,
+        target_branch="feiyue/m12-evidence-promotion-block",
+        commit_message="feat: should not promote",
+        risk_level=RiskLevel.HIGH,
+    )
+
+    assert promotion.status == PromotionStatus.BLOCKED
+    assert promotion.side_effect_performed is False
+    assert promotion.promotion_worktree_removed is True
+    artifacts = WorkflowReportWriter(repo).write(report=report, promotion=promotion)
+    markdown = artifacts.promotion_markdown_path.read_text(encoding="utf-8")
+    assert "## Action Evidence" in markdown
+    assert "- side_effect_performed: False" in markdown

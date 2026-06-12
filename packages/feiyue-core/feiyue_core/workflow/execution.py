@@ -67,6 +67,7 @@ class PromotionResult(FeiyueModel):
     source_repo_clean: bool
     promotion_worktree_removed: bool
     policy_decision: PolicyDecision | None = None
+    side_effect_performed: bool = False
 
 
 class WorkflowExecutionReport(FeiyueModel):
@@ -86,6 +87,8 @@ class WorkflowExecutionReport(FeiyueModel):
     attempt_count: int = 1
     teacher_guidance_events: list[TeacherGuidanceEvent] = Field(default_factory=list)
     policy_decision: PolicyDecision | None = None
+    execution_performed: bool = True
+    retry_performed: bool = False
 
 
 class WorkflowReportArtifacts(FeiyueModel):
@@ -174,6 +177,10 @@ def _render_execution_report_markdown(report: WorkflowExecutionReport) -> str:
     lines.extend(_render_policy_decision_section(report.policy_decision))
     lines.extend(
         [
+            "## Action Evidence",
+            f"- execution_performed: {report.execution_performed}",
+            f"- retry_performed: {report.retry_performed}",
+            "",
             "## Safety",
             f"- source_repo_clean: {report.source_repo_clean}",
             f"- sandbox_removed: {report.sandbox_removed}",
@@ -213,6 +220,9 @@ def _render_promotion_markdown(promotion: PromotionResult) -> str:
         "",
         "## Promoted Files",
         *_render_bullets(promotion.promoted_files),
+        "",
+        "## Action Evidence",
+        f"- side_effect_performed: {promotion.side_effect_performed}",
         "",
         "## Safety",
         f"- source_repo_clean: {promotion.source_repo_clean}",
@@ -412,6 +422,7 @@ class ToyWorkflowExecutor:
             project_name=project_name,
         )
         retry.attempt_count = 2
+        retry.retry_performed = True
         retry.teacher_guidance_events = [event]
         if retry.bug_dossier is not None and "retry" not in retry.bug_dossier.attempts:
             retry.bug_dossier.attempts.append("retry")
@@ -506,6 +517,7 @@ class ToyWorkflowExecutor:
             source_repo_clean=self._source_repo_clean(source_path),
             promotion_worktree_removed=removed,
             policy_decision=policy_decision,
+            side_effect_performed=True,
         )
 
     def _evaluate_policy(
@@ -553,6 +565,8 @@ class ToyWorkflowExecutor:
             source_repo_clean=self._source_repo_clean(source_repo),
             sandbox_removed=True,
             policy_decision=policy_decision,
+            execution_performed=False,
+            retry_performed=False,
             bug_dossier=BugDossier(
                 task_id=contract.task_id,
                 original_task=contract.render_markdown(),
