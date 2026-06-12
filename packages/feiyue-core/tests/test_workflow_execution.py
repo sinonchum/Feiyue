@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -653,3 +654,76 @@ def test_policy_escalated_promotion_records_no_side_effect_performed(tmp_path: P
     markdown = artifacts.promotion_markdown_path.read_text(encoding="utf-8")
     assert "## Action Evidence" in markdown
     assert "- side_effect_performed: False" in markdown
+
+
+
+def test_workflow_report_writer_persists_run_evidence_index_for_policy_block(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-index-policy-block",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    report = ToyWorkflowExecutor(policy_governor=PolicyGovernor()).execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        project_name="toy-calculator",
+        risk_level=RiskLevel.HIGH,
+    )
+
+    artifacts = WorkflowReportWriter(repo).write(report=report)
+
+    assert artifacts.run_evidence_json_path == repo / ".hermes" / "runs" / "m12-index-policy-block" / "run-evidence.json"
+    data = json.loads(artifacts.run_evidence_json_path.read_text(encoding="utf-8"))
+    assert data["task_id"] == "m12-index-policy-block"
+    assert data["status"] == "blocked"
+    assert data["policy_action"] == "escalate"
+    assert data["policy_reason"] == "high_risk_operation"
+    assert data["execution_performed"] is False
+    assert data["retry_performed"] is False
+    assert data["promotion_side_effect_performed"] is None
+    assert data["safe_to_retry"] is False
+    assert data["next_safe_action"] == "request_human_approval"
+    assert data["report_paths"]["execution_report"] == "execution-report.md"
+
+
+def test_workflow_report_writer_persists_run_evidence_index_for_promoted_patch(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m12-index-promoted",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    writes = [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")]
+    executor = ToyWorkflowExecutor(policy_governor=PolicyGovernor())
+    report = executor.execute(
+        source_repo=repo,
+        contract=contract,
+        candidate_writes=writes,
+        project_name="toy-calculator",
+    )
+    promotion = executor.promote_verified_writes(
+        source_repo=repo,
+        report=report,
+        candidate_writes=writes,
+        target_branch="feiyue/m12-index-promoted",
+        commit_message="feat: promote indexed patch",
+    )
+
+    artifacts = WorkflowReportWriter(repo).write(report=report, promotion=promotion)
+
+    data = json.loads(artifacts.run_evidence_json_path.read_text(encoding="utf-8"))
+    assert data["task_id"] == "m12-index-promoted"
+    assert data["status"] == "verified"
+    assert data["promotion_status"] == "promoted"
+    assert data["promotion_side_effect_performed"] is True
+    assert data["safe_to_retry"] is False
+    assert data["next_safe_action"] == "record_lesson_or_continue"
+    assert data["report_paths"]["promotion_result"] == "promotion-result.md"
