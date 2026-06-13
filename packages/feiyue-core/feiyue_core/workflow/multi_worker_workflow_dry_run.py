@@ -68,6 +68,51 @@ class MultiWorkerWorkflowDryRunAuthorization(FeiyueModel):
         return scope in set(self.scopes)
 
 
+class MultiWorkerTeacherEscalationAuthorization(FeiyueModel):
+    """Separate exact approval for fake teacher guidance plus worker retry."""
+
+    authorization_id: str
+    authorized_by: str
+    plan_id: str
+    task_id: str
+    approved_action: str = "execute_multi_worker_teacher_escalation_retry"
+    worker_profile_id: str
+    teacher_profile_id: str
+    scopes: list[str]
+    max_profile_calls: int = Field(default=3, ge=0)
+    dry_run_only: bool = True
+    approved_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    reason: str
+
+    @field_validator(
+        "authorization_id",
+        "authorized_by",
+        "plan_id",
+        "task_id",
+        "approved_action",
+        "worker_profile_id",
+        "teacher_profile_id",
+        "reason",
+    )
+    @classmethod
+    def _required_string(cls, value: str) -> str:
+        normalized = str(value).strip()
+        if not normalized:
+            raise ValueError("teacher escalation authorization text fields must be non-empty")
+        return normalized
+
+    @field_validator("scopes")
+    @classmethod
+    def _required_scopes(cls, value: list[str]) -> list[str]:
+        normalized = [str(item).strip() for item in value]
+        if not normalized or any(not item for item in normalized):
+            raise ValueError("teacher escalation authorization scopes must contain non-empty strings")
+        return normalized
+
+    def allows(self, scope: str) -> bool:
+        return scope in set(self.scopes)
+
+
 def multi_worker_dry_run_approval_path(project_root: str | Path, plan_id: str) -> Path:
     return Path(project_root) / ".hermes" / "multi-worker-plans" / plan_id / "approval.json"
 
@@ -102,6 +147,8 @@ class MultiWorkerWorkflowDryRunReport(FeiyueModel):
     routing_apply_evidence_id: str | None = None
     workflow_report: WorkflowExecutionReport | None = None
     dry_run_report: RealProfileWorkflowRunReport | None = None
+    teacher_guidance_events: list[dict[str, object]] = Field(default_factory=list)
+    retry_performed: bool = False
 
     @field_validator("run_id", "task_id", "plan_id", "route_plan_status")
     @classmethod
@@ -135,6 +182,7 @@ class MultiWorkerWorkflowDryRunOrchestrator:
         plan: MultiWorkerOrchestrationPlan,
         authorization: MultiWorkerWorkflowDryRunAuthorization | None,
         run_id: str,
+        teacher_escalation_authorization: MultiWorkerTeacherEscalationAuthorization | None = None,
     ) -> MultiWorkerWorkflowDryRunReport:
         project_root_path = Path(project_root)
         block_reasons = _authorization_block_reasons(plan=plan, contract=contract, authorization=authorization)
@@ -147,7 +195,17 @@ class MultiWorkerWorkflowDryRunOrchestrator:
 
         assert authorization is not None
         worker_profile = plan.route.worker_profile_ids[0]
-        teacher_profile = plan.route.teacher_profile_id if authorization.allows("teacher_escalation") else None
+        teacher_profile = _authorized_teacher_profile(
+            plan=plan,
+            contract=contract,
+            worker_profile=worker_profile,
+            authorization=teacher_escalation_authorization,
+        )
+        max_profile_calls = (
+            teacher_escalation_authorization.max_profile_calls
+            if teacher_profile is not None and teacher_escalation_authorization is not None
+            else authorization.max_profile_calls
+        )
         dry_run = RealProfileWorkflowRunner(profile_runner=self._profile_runner).run(
             source_repo=source_repo,
             contract=contract,
@@ -155,15 +213,16 @@ class MultiWorkerWorkflowDryRunOrchestrator:
             worker_profile=worker_profile,
             teacher_profile=teacher_profile,
             authorization=RealProfileWorkflowAuthorization(
-                scopes=_real_profile_scopes(authorization),
-                max_profile_calls=authorization.max_profile_calls,
+                scopes=_real_profile_scopes(teacher_profile is not None),
+                max_profile_calls=max_profile_calls,
                 dry_run_only=True,
                 allow_real_project=True,
             ),
             evidence_root=project_root_path,
             run_id=run_id,
         )
-        status = _map_status(dry_run.status)
+        missing_teacher_auth = dry_run.status == RealProfileWorkflowStatus.NEEDS_TEACHER and teacher_profile is None
+        status = MultiWorkerWorkflowDryRunStatus.BLOCKED if missing_teacher_auth else _map_status(dry_run.status)
         report = MultiWorkerWorkflowDryRunReport(
             run_id=run_id,
             task_id=contract.task_id,
@@ -176,6 +235,7 @@ class MultiWorkerWorkflowDryRunOrchestrator:
                 "multi_worker_plan_authorization_applies",
                 "multi_worker_workflow_dry_run_only",
                 *plan.reason_codes,
+                *(["teacher_escalation_authorization_missing"] if missing_teacher_auth else []),
                 *dry_run.reason_codes,
             ]),
             dry_run_only=True,
@@ -185,6 +245,8 @@ class MultiWorkerWorkflowDryRunOrchestrator:
             routing_apply_evidence_id=plan.routing_apply_evidence_id,
             workflow_report=dry_run.workflow_report,
             dry_run_report=dry_run,
+            teacher_guidance_events=dry_run.teacher_guidance_events,
+            retry_performed=dry_run.retry_performed,
         )
         self._write_evidence(report, project_root_path)
         return report
@@ -250,9 +312,39 @@ def _blocked_report(
     )
 
 
-def _real_profile_scopes(authorization: MultiWorkerWorkflowDryRunAuthorization) -> list[str]:
+def _authorized_teacher_profile(
+    *,
+    plan: MultiWorkerOrchestrationPlan,
+    contract: TaskContract,
+    worker_profile: str,
+    authorization: MultiWorkerTeacherEscalationAuthorization | None,
+) -> str | None:
+    teacher_profile = plan.route.teacher_profile_id or _available_teacher_profile(plan)
+    if teacher_profile is None or authorization is None:
+        return None
+    if authorization.plan_id != plan.plan_id:
+        return None
+    if authorization.task_id != contract.task_id or authorization.task_id != plan.task_id:
+        return None
+    if authorization.approved_action != "execute_multi_worker_teacher_escalation_retry":
+        return None
+    if authorization.worker_profile_id != worker_profile or authorization.teacher_profile_id != teacher_profile:
+        return None
+    if not authorization.dry_run_only or authorization.max_profile_calls < 3:
+        return None
+    if not authorization.allows("teacher_escalation"):
+        return None
+    return teacher_profile
+
+
+def _available_teacher_profile(plan: MultiWorkerOrchestrationPlan) -> str | None:
+    value = plan.audit_metadata.get("available_teacher_profile_id")
+    return value if isinstance(value, str) and value.strip() else None
+
+
+def _real_profile_scopes(teacher_escalation_authorized: bool) -> list[str]:
     scopes = ["real_profile_workflow_execute"]
-    if authorization.allows("teacher_escalation"):
+    if teacher_escalation_authorized:
         scopes.append("teacher_escalation")
     return scopes
 
@@ -279,6 +371,8 @@ def _render_markdown_report(report: MultiWorkerWorkflowDryRunReport) -> str:
             f"dry_run_only: {str(report.dry_run_only).lower()}",
             f"promotion_attempted: {str(report.promotion_attempted).lower()}",
             f"global_hermes_config_mutated: {str(report.global_hermes_config_mutated).lower()}",
+            f"retry_performed: {str(report.retry_performed).lower()}",
+            f"teacher_guidance_events: {len(report.teacher_guidance_events)}",
             "",
             "## Reason codes",
             *[f"- {reason}" for reason in report.reason_codes],

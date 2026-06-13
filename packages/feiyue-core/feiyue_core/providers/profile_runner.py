@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import subprocess
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -63,17 +63,21 @@ class FakeProfileRunner:
     stdout response so higher-level Lane V code can be tested deterministically.
     """
 
-    def __init__(self, responses: Mapping[str, str]) -> None:
-        self._responses = dict(responses)
+    def __init__(self, responses: Mapping[str, str | Sequence[str]]) -> None:
+        self._responses: dict[str, list[str]] = {
+            profile: [response] if isinstance(response, str) else list(response)
+            for profile, response in responses.items()
+        }
 
     def run(self, request: ProfileRunRequest) -> ProfileRunResult:
-        response = self._responses.get(request.profile)
-        if response is None:
+        responses = self._responses.get(request.profile)
+        if not responses:
             return ProfileRunResult(
                 stdout="",
                 stderr=f"profile '{request.profile}' is not configured for FakeProfileRunner",
                 exit_code=127,
             )
+        response = responses.pop(0) if len(responses) > 1 else responses[0]
 
         return ProfileRunResult(stdout=response, stderr="", exit_code=0)
 

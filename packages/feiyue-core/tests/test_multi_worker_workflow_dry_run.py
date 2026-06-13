@@ -14,6 +14,7 @@ from feiyue_core.workflow.multi_worker_workflow_dry_run import (
     MultiWorkerWorkflowDryRunAuthorization,
     MultiWorkerWorkflowDryRunOrchestrator,
     MultiWorkerWorkflowDryRunStatus,
+    MultiWorkerTeacherEscalationAuthorization,
 )
 from feiyue_core.workflow.task_contract import TaskContract
 
@@ -94,6 +95,22 @@ def _exact_authorization(plan_id: str = "wave4-5b-plan") -> MultiWorkerWorkflowD
     )
 
 
+def _teacher_authorization(plan_id: str = "wave4-5b-plan") -> MultiWorkerTeacherEscalationAuthorization:
+    return MultiWorkerTeacherEscalationAuthorization(
+        authorization_id="auth.teacher.wave4-5b",
+        authorized_by="test-suite",
+        plan_id=plan_id,
+        task_id="task.wave4-5b",
+        approved_action="execute_multi_worker_teacher_escalation_retry",
+        worker_profile_id="steady-4c",
+        teacher_profile_id="teacher-strong",
+        scopes=["teacher_escalation"],
+        max_profile_calls=3,
+        dry_run_only=True,
+        reason="Approve fake teacher guidance and one fake worker retry after verifier failure.",
+    )
+
+
 def test_approved_multi_worker_dry_run_executes_selected_worker_without_promotion(tmp_path: Path) -> None:
     repo = tmp_path / "toy-repo"
     _init_toy_repo(repo)
@@ -128,6 +145,75 @@ def test_approved_multi_worker_dry_run_executes_selected_worker_without_promotio
     payload = json.loads(evidence_path.read_text(encoding="utf-8"))
     assert payload["status"] == "verified"
     assert payload["promotion_attempted"] is False
+
+
+def test_multi_worker_dry_run_blocks_teacher_repair_without_separate_escalation_authorization(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    plan = _plan(tmp_path)
+    runner = FakeProfileRunner(
+        {"steady-4c": json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a - b\n"}]})}
+    )
+
+    report = MultiWorkerWorkflowDryRunOrchestrator(profile_runner=runner).run(
+        project_root=tmp_path,
+        source_repo=repo,
+        contract=_contract(),
+        project_name="toy-calculator",
+        plan=plan,
+        authorization=_exact_authorization(),
+        run_id="wave4-5b-missing-teacher-repair-auth",
+    )
+
+    assert report.status == MultiWorkerWorkflowDryRunStatus.BLOCKED
+    assert report.provider_call_count == 1
+    assert report.teacher_profile is None
+    assert report.teacher_guidance_events == []
+    assert report.retry_performed is False
+    assert "teacher_escalation_authorization_missing" in report.reason_codes
+    assert "needs_teacher_without_authorized_teacher_escalation" in report.reason_codes
+    evidence_path = tmp_path / ".hermes" / "multi-worker-workflows" / "wave4-5b-missing-teacher-repair-auth" / "evidence.json"
+    payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert payload["provider_call_count"] == 1
+    assert payload["retry_performed"] is False
+    assert payload["teacher_guidance_events"] == []
+
+
+def test_multi_worker_dry_run_uses_authorized_fake_teacher_guidance_and_worker_retry(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    plan = _plan(tmp_path)
+    runner = FakeProfileRunner(
+        {
+            "steady-4c": [
+                json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a - b\n"}]}),
+                json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a + b\n"}]}),
+            ],
+            "teacher-strong": json.dumps({"guidance": "Use addition instead of subtraction."}),
+        }
+    )
+
+    report = MultiWorkerWorkflowDryRunOrchestrator(profile_runner=runner).run(
+        project_root=tmp_path,
+        source_repo=repo,
+        contract=_contract(),
+        project_name="toy-calculator",
+        plan=plan,
+        authorization=_exact_authorization(),
+        teacher_escalation_authorization=_teacher_authorization(),
+        run_id="wave4-5b-authorized-teacher-repair",
+    )
+
+    assert report.status == MultiWorkerWorkflowDryRunStatus.VERIFIED
+    assert report.provider_call_count == 3
+    assert report.teacher_profile == "teacher-strong"
+    assert report.retry_performed is True
+    assert len(report.teacher_guidance_events) == 1
+    assert report.workflow_report is not None
+    assert report.workflow_report.verification_passed is True
+    assert "teacher_escalation_authorized" in report.reason_codes
+    assert "teacher_escalation_authorization_missing" not in report.reason_codes
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
 
 
 class RecordingProfileRunner:

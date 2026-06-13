@@ -52,6 +52,8 @@ class RealProfileWorkflowRunReport(FeiyueModel):
     source_repo_clean: bool
     workflow_report: WorkflowExecutionReport | None = None
     teacher_guidance_redacted: str | None = None
+    teacher_guidance_events: list[dict[str, object]] = Field(default_factory=list)
+    retry_performed: bool = False
     stdout_redacted: list[str] = Field(default_factory=list)
     stderr_redacted: list[str] = Field(default_factory=list)
 
@@ -226,6 +228,8 @@ class RealProfileWorkflowRunner:
             source_repo_clean=self._source_repo_clean(source_path),
             workflow_report=workflow_report,
             teacher_guidance_redacted=teacher_guidance_redacted,
+            teacher_guidance_events=[event.model_dump(mode="json") for event in workflow_report.teacher_guidance_events],
+            retry_performed=workflow_report.retry_performed,
             stdout_redacted=stdout_redacted,
             stderr_redacted=stderr_redacted,
         )
