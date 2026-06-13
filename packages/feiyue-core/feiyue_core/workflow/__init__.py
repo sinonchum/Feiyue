@@ -29,6 +29,13 @@ from feiyue_core.workflow.model_routing_table import (
     ModelRoutingTableLoader,
     RoleRoute,
 )
+from feiyue_core.workflow.promotion_lifecycle import (
+    PromotionLifecycleStatus,
+    PromotionPRPlan,
+    RollbackSandboxEvidence,
+    create_promotion_pr_plan,
+    simulate_rollback_sandbox,
+)
 from feiyue_core.workflow.project_knowledge import (
     KNOWLEDGE_FILENAMES,
     ProjectKnowledge,
@@ -58,6 +65,8 @@ __all__ = [
     "ProjectKnowledgeInitializer",
     "ProjectKnowledgeLoader",
     "ProductionPromotionRequest",
+    "PromotionLifecycleStatus",
+    "PromotionPRPlan",
     "PromotionResult",
     "PromotionSafetyReport",
     "PromotionStatus",
@@ -66,6 +75,7 @@ __all__ = [
     "RegressionEvalAssets",
     "RegressionEvalWriter",
     "RoleRoute",
+    "RollbackSandboxEvidence",
     "RunCatalog",
     "RunCatalogItem",
     "RunCatalogSummary",
@@ -83,4 +93,6 @@ __all__ = [
     "build_regression_check_from_lesson",
     "build_task_contract",
     "build_worker_context",
+    "create_promotion_pr_plan",
+    "simulate_rollback_sandbox",
 ]
