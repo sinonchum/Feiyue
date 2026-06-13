@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install package
+        working-directory: packages/feiyue-core
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Compile package
+        working-directory: packages/feiyue-core
+        run: python -m compileall -q feiyue_core
+
+      - name: Run tests
+        working-directory: packages/feiyue-core
+        run: python -m pytest -q
+
+      - name: Static export-all smoke
+        working-directory: packages/feiyue-core
+        run: |
+          set -euo pipefail
+          TMP=$(mktemp -d)
+          mkdir -p "$TMP/project/.hermes/runs/ci-smoke"
+          python - "$TMP/project" <<'PY'
+          import json, sys
+          from pathlib import Path
+          root = Path(sys.argv[1])
+          run = root / '.hermes' / 'runs' / 'ci-smoke' / 'run-evidence.json'
+          run.write_text(json.dumps({
+              'task_id': 'ci-smoke',
+              'status': 'blocked',
+              'policy_action': 'escalate',
+              'policy_reason': 'high_risk_operation',
+              'execution_performed': False,
+              'retry_performed': False,
+              'promotion_status': None,
+              'promotion_side_effect_performed': None,
+              'approval_exists': False,
+              'approval_id': None,
+              'approval_approver': None,
+              'approval_action': None,
+              'approval_applies': False,
+              'safe_to_retry': False,
+              'next_safe_action': 'request_human_approval',
+              'report_paths': {'execution_report': 'execution-report.md'},
+          }), encoding='utf-8')
+          PY
+          python -m feiyue_core.workflow.runs_export_all --root "$TMP/project" --out "$TMP/report" --bundle "$TMP/report.zip" | tee "$TMP/export-all.out"
+          grep -q "STATIC_EXPORT_ALL_OK" "$TMP/export-all.out"
+          test -f "$TMP/report/index.html"
+          test -f "$TMP/report/manifest.json"
+          test -f "$TMP/report/runs/ci-smoke.html"
+          test -f "$TMP/report.zip"
+          test -f "$TMP/report.extracted/manifest.json"
+
+      - name: Secret scan
+        run: |
+          set -euo pipefail
+          ! git grep -I -n -E '(sk-[A-Za-z0-9]{20,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|xox[baprs]-[A-Za-z0-9-]{20,}|-----BEGIN (RSA |OPENSSH |EC |DSA )?PRIVATE KEY-----)' -- . ':!*.pyc' ':!.git'
+          echo SECRET_SCAN_OK

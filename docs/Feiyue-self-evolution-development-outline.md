@@ -40,8 +40,8 @@ Feiyue 追求三个战略结果：
 
 - Core package：`packages/feiyue-core`
 - Python source/test 文件：持续扩展中（当前 provider-free foundation 覆盖 workflow、curation、capability、creative、evaluation、providers）。
-- 当前完整测试：`378 passed`
-- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation、M12 policy governor / run evidence / YAML policy config / human approval primitive / approval evidence handoff / run catalog / `feiyue-runs` local inspection CLI / read-only local API/dashboard/static export manifest+verify+bundle+all-in-one pipeline foundation。
+- 当前完整测试：`381 passed`
+- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation、M12 policy governor / run evidence / YAML policy config / human approval primitive / approval evidence handoff / run catalog / `feiyue-runs` local inspection CLI / read-only local API/dashboard/static export manifest+verify+bundle+all-in-one pipeline foundation，以及 GitHub Actions CI contract foundation。
 
 ### 1.2 已完成核心资产
 
@@ -1402,6 +1402,7 @@ Update:
 - run catalog：`RunCatalog.summary()` 提供 dashboard/API 前置的 typed aggregate：total runs、safe-to-retry count、next-action counts、compact run rows。
 - read-only local API/dashboard：`create_runs_api_handler(root)` / `feiyue-runs-api` 暴露 `GET /`、`GET /dashboard`、`GET /dashboard/runs/{task_id}`、`GET /runs`、`GET /runs/{task_id}`、`GET /runs/{task_id}/handoff`，拒绝 write methods；dashboard 以 human-readable HTML 展示 total runs、safe-to-retry、approval required、next-safe-action distribution 和 run rows；drill-down 页以 human-readable HTML 展示单个 run 的 policy decision、action evidence、approval evidence 和 report paths。
 - static report export/verify/bundle/all-in-one：`export_static_runs_report(project_root, output_dir)` / `feiyue-runs-export` 将 dashboard 与 run detail 产出为离线 HTML 文件（`index.html` + `manifest.json` + `runs/<task_id>.html`），用于无本地 server 的 fallback/human review；manifest 记录 schema version、generated_at、source evidence path/hash、导出 HTML path/hash；`verify_static_runs_report(manifest_path)` / `feiyue-runs-export-verify` 可离线检测导出 HTML 或 source evidence 是否被篡改；`pack_static_runs_report(report_dir, bundle_path)` / `feiyue-runs-export-bundle` 将报告目录打包为便携 ZIP，但不包含 `.hermes` source evidence 原文；`export_static_runs_report_all(root, out, bundle)` / `feiyue-runs-export-all` 一次完成 export、verify、bundle、extract、verify。
+- CI workflow contract：`.github/workflows/ci.yml` 在 push/PR 上运行 editable install、compileall、pytest、static export-all smoke 和 secret scan；`tests/test_ci_workflow.py` 固化 workflow contract，防止 CI gate 被误删或降级。
 - budget gates：worker retry、teacher call、token budget。
 - risk/privacy gates：high-risk operation escalates；sensitive data requires privacy approval。
 - workflow integration：candidate execution、teacher retry、verified promotion 已可接入 policy gate。
