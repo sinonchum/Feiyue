@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`491 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, and Wave4-3A dry-run/no-promotion contract；remote CI mirrors provider-free smokes）。Current verified baseline: `491 passed`.
+> **Verified baseline**：`495 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, and Wave4-3B approval-gated promotion contracts；remote CI mirrors provider-free smokes）。Current verified baseline: `495 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`491 passed`。
+- `python -m pytest -q`：`495 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1625,9 +1625,24 @@ Wave4-2C proves the first real teacher retry bridge on a controlled toy workflow
 - A verifier-backed workflow can become promotion_ready, but the productized runner still does not call promotion APIs or mutate the source checkout.
 - This creates the safe entry point for evaluating real project tasks before Wave4-3B human-approved promotion.
 
-### Wave4-3B entry condition
+## Completed Slice: Wave4-3B-1 / Wave4-3B-2 Approval-gated Promotion
 
-Wave4-3B should add exact human approval records for promotion, bind approval to run_id/task_id/changed_files/target_branch, and only then call the existing verifier-gated promotion path. Until that exists, Wave4-3A remains dry-run only.
+### Wave4-3B-1 completed
+
+- Added `RealProfilePromotionApproval` as the exact approval record for promoting a verified real-profile dry run.
+- Approval binding covers run_id, task_id, changed_files, target_branch, source_commit_sha, workflow_report_hash, approver, approved_at, and approved_action.
+- `compute_workflow_report_hash` pins approval to the verifier-backed dry-run report rather than model self-report.
+
+### Wave4-3B-2 completed
+
+- Added `RealProfilePromotionGate` as the fail-closed promotion boundary.
+- Missing approval returns `missing_promotion_approval`, promotion_attempted: false, approval_applies: false, and writes `promotion-evidence.json` without branch side effects.
+- Exact approval returns `promotion_approval_applies`, then calls the existing verifier-gated promotion path into an isolated target branch.
+- Added `feiyue-runs workflow-promotion <run_id>` for promotion evidence inspection.
+
+### Wave4-3B remaining scope
+
+The approval gate exists and is tested with a toy real-project-style repo. The next safe step is Wave4-3B-3: run one explicit low-risk real-project promotion smoke only after naming the target task, changed files, target branch, and approval record.
 
 ## Recommended Next Slice
 

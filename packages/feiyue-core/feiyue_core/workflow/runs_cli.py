@@ -29,6 +29,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     workflow_smoke_parser = subparsers.add_parser("workflow-smoke", help="Print real profile workflow smoke evidence JSON")
     workflow_smoke_parser.add_argument("run_id")
 
+    workflow_promotion_parser = subparsers.add_parser("workflow-promotion", help="Print real profile workflow promotion evidence JSON")
+    workflow_promotion_parser.add_argument("run_id")
+
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
     loader = RunEvidenceLoader(root)
@@ -53,6 +56,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             evidence_path = root / ".hermes" / "workflow-smokes" / args.run_id / "evidence.json"
             if not evidence_path.exists():
                 print(f"Workflow smoke evidence not found for run_id: {args.run_id}", file=sys.stderr)
+                return 2
+            print(json.dumps(json.loads(evidence_path.read_text(encoding="utf-8")), indent=2, sort_keys=True))
+            return 0
+        if args.command == "workflow-promotion":
+            evidence_path = root / ".hermes" / "workflow-promotions" / args.run_id / "promotion-evidence.json"
+            if not evidence_path.exists():
+                print(f"Workflow promotion evidence not found for run_id: {args.run_id}", file=sys.stderr)
                 return 2
             print(json.dumps(json.loads(evidence_path.read_text(encoding="utf-8")), indent=2, sort_keys=True))
             return 0

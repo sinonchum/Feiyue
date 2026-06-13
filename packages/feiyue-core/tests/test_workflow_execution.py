@@ -33,6 +33,12 @@ from feiyue_core.workflow.real_profile_workflow_runner import (
     RealProfileWorkflowRunner,
     RealProfileWorkflowStatus,
 )
+from feiyue_core.workflow.real_profile_promotion import (
+    RealProfilePromotionApproval,
+    RealProfilePromotionGate,
+    RealProfilePromotionStatus,
+    compute_workflow_report_hash,
+)
 from feiyue_core.providers.profile_runner import FakeProfileRunner, ProfileRunResult
 
 
@@ -1238,4 +1244,104 @@ def test_real_project_dry_run_blocks_promotion_even_when_verified(tmp_path: Path
     assert report.promotion_attempted is False
     assert report.reason_codes == ["real_profile_workflow_execute_authorized", "dry_run_no_promotion"]
     assert report.source_repo_clean is True
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+
+
+def _verified_real_profile_dry_run(repo: Path, tmp_path: Path):
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="w43b-approval-promotion",
+        title="Approval gated calculator promotion",
+        scope="Verify a dry-run patch before human-approved promotion.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+        escalation_rule="Promotion requires exact approval after dry-run verification.",
+    )
+    profile_runner = FakeProfileRunner(
+        {"weak": json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a + b\n"}]})}
+    )
+    report = RealProfileWorkflowRunner(profile_runner=profile_runner).run(
+        source_repo=repo,
+        contract=contract,
+        project_name="approval-promotion",
+        worker_profile="weak",
+        teacher_profile=None,
+        authorization=RealProfileWorkflowAuthorization(
+            scopes=["real_profile_workflow_execute"],
+            max_profile_calls=1,
+            dry_run_only=True,
+            allow_real_project=True,
+        ),
+        evidence_root=tmp_path,
+        run_id="w43b-dry-run",
+    )
+    return contract, report, [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")]
+
+
+def test_real_profile_promotion_gate_blocks_without_exact_approval(tmp_path: Path) -> None:
+    repo = tmp_path / "real-project"
+    contract, dry_run_report, candidate_writes = _verified_real_profile_dry_run(repo, tmp_path)
+
+    result = RealProfilePromotionGate().promote_verified_dry_run(
+        source_repo=repo,
+        dry_run_report=dry_run_report,
+        candidate_writes=candidate_writes,
+        target_branch="feiyue/w43b-approved-promotion",
+        commit_message="fix: approved calculator promotion",
+        approval=None,
+        evidence_root=tmp_path,
+    )
+
+    assert result.status == RealProfilePromotionStatus.BLOCKED
+    assert result.approval_applies is False
+    assert result.promotion_attempted is False
+    assert result.reason_codes == ["missing_promotion_approval"]
+    assert result.promotion_result is None
+    assert result.source_repo_clean is True
+    evidence_path = tmp_path / ".hermes" / "workflow-promotions" / dry_run_report.run_id / "promotion-evidence.json"
+    assert evidence_path.exists()
+    payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert payload["promotion_attempted"] is False
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+
+
+def test_real_profile_promotion_gate_promotes_only_with_exact_approval(tmp_path: Path) -> None:
+    repo = tmp_path / "real-project"
+    contract, dry_run_report, candidate_writes = _verified_real_profile_dry_run(repo, tmp_path)
+    assert dry_run_report.workflow_report is not None
+    target_branch = "feiyue/w43b-approved-promotion"
+    approval = RealProfilePromotionApproval(
+        approval_id="approval-w43b-001",
+        approved_by="Simon",
+        run_id=dry_run_report.run_id,
+        task_id=contract.task_id,
+        approved_action="promote_verified_dry_run",
+        changed_files=["calc.py"],
+        target_branch=target_branch,
+        source_commit_sha=subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, text=True, capture_output=True, check=True).stdout.strip(),
+        workflow_report_hash=compute_workflow_report_hash(dry_run_report.workflow_report),
+        approved_at="2026-06-13T19:40:00Z",
+        reason="Approve verifier-backed dry-run promotion to isolated branch.",
+    )
+
+    result = RealProfilePromotionGate().promote_verified_dry_run(
+        source_repo=repo,
+        dry_run_report=dry_run_report,
+        candidate_writes=candidate_writes,
+        target_branch=target_branch,
+        commit_message="fix: approved calculator promotion",
+        approval=approval,
+        evidence_root=tmp_path,
+    )
+
+    assert result.status == RealProfilePromotionStatus.PROMOTED
+    assert result.approval_applies is True
+    assert result.promotion_attempted is True
+    assert result.promotion_result is not None
+    assert result.promotion_result.side_effect_performed is True
+    assert result.promotion_result.target_branch == target_branch
+    assert result.promotion_result.promoted_files == ["calc.py"]
+    assert result.source_repo_clean is True
+    promoted_content = subprocess.run(["git", "show", f"{target_branch}:calc.py"], cwd=repo, text=True, capture_output=True, check=True).stdout
+    assert promoted_content == "def add(a, b):\n    return a + b\n"
     assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"

@@ -164,3 +164,34 @@ def test_runs_cli_shows_real_profile_workflow_smoke_evidence(tmp_path) -> None:
     assert payload["status"] == "verified"
     assert payload["dry_run_only"] is True
     assert payload["promotion_attempted"] is False
+
+
+def test_runs_cli_shows_workflow_promotion_evidence(tmp_path) -> None:
+    promotion_dir = tmp_path / ".hermes" / "workflow-promotions" / "w43b-dry-run"
+    promotion_dir.mkdir(parents=True)
+    (promotion_dir / "promotion-evidence.json").write_text(
+        json.dumps(
+            {
+                "run_id": "w43b-dry-run",
+                "status": "blocked",
+                "approval_applies": False,
+                "promotion_attempted": False,
+                "reason_codes": ["missing_promotion_approval"],
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "feiyue_core.workflow.runs_cli", "--root", str(tmp_path), "workflow-promotion", "w43b-dry-run"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["run_id"] == "w43b-dry-run"
+    assert payload["approval_applies"] is False
+    assert payload["promotion_attempted"] is False
+    assert payload["reason_codes"] == ["missing_promotion_approval"]
