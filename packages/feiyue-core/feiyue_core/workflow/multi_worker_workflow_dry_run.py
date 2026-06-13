@@ -68,6 +68,24 @@ class MultiWorkerWorkflowDryRunAuthorization(FeiyueModel):
         return scope in set(self.scopes)
 
 
+def multi_worker_dry_run_approval_path(project_root: str | Path, plan_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "multi-worker-plans" / plan_id / "approval.json"
+
+
+def write_multi_worker_dry_run_approval(authorization: MultiWorkerWorkflowDryRunAuthorization, project_root: str | Path) -> Path:
+    path = multi_worker_dry_run_approval_path(project_root, authorization.plan_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(authorization.model_dump_json(indent=2), encoding="utf-8")
+    return path
+
+
+def read_multi_worker_dry_run_approval(project_root: str | Path, plan_id: str) -> MultiWorkerWorkflowDryRunAuthorization:
+    path = multi_worker_dry_run_approval_path(project_root, plan_id)
+    if not path.exists():
+        raise FileNotFoundError(f"Multi-worker dry-run approval not found for plan_id: {plan_id}")
+    return MultiWorkerWorkflowDryRunAuthorization.model_validate_json(path.read_text(encoding="utf-8"))
+
+
 class MultiWorkerWorkflowDryRunReport(FeiyueModel):
     run_id: str
     task_id: str

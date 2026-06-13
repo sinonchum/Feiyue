@@ -29,7 +29,15 @@ from feiyue_core.workflow.routing_proposal import (
     write_routing_proposal_approval,
 )
 from feiyue_core.workflow.real_profile_workflow_runner import RealProfileWorkflowRunReport
-from feiyue_core.workflow.multi_worker_orchestration import MultiWorkerOrchestrationPlanner, MultiWorkerPlanError
+from feiyue_core.workflow.multi_worker_orchestration import MultiWorkerOrchestrationPlan, MultiWorkerOrchestrationPlanner, MultiWorkerPlanError
+from feiyue_core.workflow.multi_worker_workflow_dry_run import (
+    MultiWorkerWorkflowDryRunAuthorization,
+    MultiWorkerWorkflowDryRunOrchestrator,
+    read_multi_worker_dry_run_approval,
+    write_multi_worker_dry_run_approval,
+)
+from feiyue_core.providers.profile_runner import FakeProfileRunner
+from feiyue_core.workflow.task_contract import TaskContract
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -97,6 +105,27 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     multi_worker_workflow_parser = subparsers.add_parser("multi-worker-workflow", help="Print multi-worker workflow dry-run evidence JSON")
     multi_worker_workflow_parser.add_argument("run_id")
+
+    approve_multi_worker_parser = subparsers.add_parser("approve-multi-worker-dry-run", help="Create exact approval evidence for a multi-worker dry-run plan")
+    approve_multi_worker_parser.add_argument("--plan-id", required=True)
+    approve_multi_worker_parser.add_argument("--approved-by", required=True)
+    approve_multi_worker_parser.add_argument("--approval-id", required=True)
+    approve_multi_worker_parser.add_argument("--reason", required=True)
+    approve_multi_worker_parser.add_argument("--max-profile-calls", type=int, default=1)
+
+    run_multi_worker_parser = subparsers.add_parser("run-approved-multi-worker-dry-run", help="Run an approved multi-worker workflow dry-run with an explicit fake profile response")
+    run_multi_worker_parser.add_argument("--plan-id", required=True)
+    run_multi_worker_parser.add_argument("--run-id", required=True)
+    run_multi_worker_parser.add_argument("--source-repo", required=True)
+    run_multi_worker_parser.add_argument("--project-name", required=True)
+    run_multi_worker_parser.add_argument("--task-id", required=True)
+    run_multi_worker_parser.add_argument("--title", required=True)
+    run_multi_worker_parser.add_argument("--scope", required=True)
+    run_multi_worker_parser.add_argument("--file-to-modify", action="append", required=True, dest="files_to_modify")
+    run_multi_worker_parser.add_argument("--verification-command", action="append", required=True, dest="verification_commands")
+    run_multi_worker_parser.add_argument("--acceptance-criterion", action="append", default=[], dest="acceptance_criteria")
+    run_multi_worker_parser.add_argument("--escalation-rule", default="Approved multi-worker dry-run only.")
+    run_multi_worker_parser.add_argument("--fake-worker-response-json", required=True)
 
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
@@ -223,7 +252,50 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 2
             print(json.dumps(json.loads(evidence_path.read_text(encoding="utf-8")), indent=2, sort_keys=True))
             return 0
-    except (RunEvidenceNotFoundError, RoutingProposalError, MultiWorkerPlanError) as exc:
+        if args.command == "approve-multi-worker-dry-run":
+            plan = _read_multi_worker_plan(root, args.plan_id)
+            approval = MultiWorkerWorkflowDryRunAuthorization(
+                authorization_id=args.approval_id,
+                authorized_by=args.approved_by,
+                plan_id=plan.plan_id,
+                task_id=plan.task_id,
+                approved_action="execute_multi_worker_workflow_dry_run",
+                worker_profile_ids=plan.route.worker_profile_ids,
+                scopes=["multi_worker_workflow_execute"],
+                max_profile_calls=args.max_profile_calls,
+                dry_run_only=True,
+                approved_at=datetime.now(UTC).isoformat(),
+                reason=args.reason,
+            )
+            write_multi_worker_dry_run_approval(approval, root)
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "run-approved-multi-worker-dry-run":
+            plan = _read_multi_worker_plan(root, args.plan_id)
+            approval = read_multi_worker_dry_run_approval(root, args.plan_id)
+            worker_profile = plan.route.worker_profile_ids[0]
+            contract = TaskContract(
+                task_id=args.task_id,
+                title=args.title,
+                scope=args.scope,
+                files_to_modify=args.files_to_modify,
+                acceptance_criteria=args.acceptance_criteria,
+                verification_commands=args.verification_commands,
+                escalation_rule=args.escalation_rule,
+            )
+            runner = FakeProfileRunner({worker_profile: args.fake_worker_response_json})
+            result = MultiWorkerWorkflowDryRunOrchestrator(profile_runner=runner).run(
+                project_root=root,
+                source_repo=Path(args.source_repo),
+                contract=contract,
+                project_name=args.project_name,
+                plan=plan,
+                authorization=approval,
+                run_id=args.run_id,
+            )
+            print(result.model_dump_json(indent=2))
+            return 0
+    except (RunEvidenceNotFoundError, RoutingProposalError, MultiWorkerPlanError, FileNotFoundError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     return 2
@@ -236,6 +308,13 @@ def _load_workflow_smoke_report(root: Path, run_id: str) -> RealProfileWorkflowR
     payload = json.loads(evidence_path.read_text(encoding="utf-8"))
     payload.pop("written_at", None)
     return RealProfileWorkflowRunReport.model_validate(payload)
+
+
+def _read_multi_worker_plan(root: Path, plan_id: str) -> MultiWorkerOrchestrationPlan:
+    plan_path = root / ".hermes" / "multi-worker-plans" / plan_id / "plan.json"
+    if not plan_path.exists():
+        raise FileNotFoundError(f"Multi-worker plan evidence not found for plan_id: {plan_id}")
+    return MultiWorkerOrchestrationPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
 
 
 def _extract_latest_candidate_writes(report: RealProfileWorkflowRunReport):

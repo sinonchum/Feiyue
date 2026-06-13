@@ -233,6 +233,85 @@ def test_runs_cli_shows_multi_worker_workflow_evidence(tmp_path: Path) -> None:
     assert payload["promotion_attempted"] is False
 
 
+def test_runs_cli_approves_and_runs_multi_worker_dry_run_with_fake_profile(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _plan(tmp_path)
+
+    approve = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "approve-multi-worker-dry-run",
+            "--plan-id",
+            "wave4-5b-plan",
+            "--approved-by",
+            "test-suite",
+            "--approval-id",
+            "auth.wave4-5c-cli",
+            "--reason",
+            "Approve productized fake dry-run execution.",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert approve.returncode == 0, approve.stderr
+    approval = json.loads(approve.stdout)
+    assert approval["plan_id"] == "wave4-5b-plan"
+    assert approval["approved_action"] == "execute_multi_worker_workflow_dry_run"
+    assert approval["worker_profile_ids"] == ["steady-4c"]
+    assert (tmp_path / ".hermes" / "multi-worker-plans" / "wave4-5b-plan" / "approval.json").exists()
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "run-approved-multi-worker-dry-run",
+            "--plan-id",
+            "wave4-5b-plan",
+            "--run-id",
+            "wave4-5c-cli-dry-run",
+            "--source-repo",
+            str(repo),
+            "--project-name",
+            "toy-calculator",
+            "--task-id",
+            "task.wave4-5b",
+            "--title",
+            "Fix calculator add",
+            "--scope",
+            "Make add return a sum.",
+            "--file-to-modify",
+            "calc.py",
+            "--verification-command",
+            "python -m pytest -q",
+            "--fake-worker-response-json",
+            json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a + b\n"}]}),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+
+    assert run.returncode == 0, run.stderr
+    payload = json.loads(run.stdout)
+    assert payload["run_id"] == "wave4-5c-cli-dry-run"
+    assert payload["status"] == "verified"
+    assert payload["worker_profile"] == "steady-4c"
+    assert payload["provider_call_count"] == 1
+    assert payload["promotion_attempted"] is False
+    assert payload["global_hermes_config_mutated"] is False
+    assert "multi_worker_plan_authorization_applies" in payload["reason_codes"]
+
+
 def test_multi_worker_dry_run_rejects_mismatched_plan_authorization(tmp_path: Path) -> None:
     repo = tmp_path / "toy-repo"
     _init_toy_repo(repo)
