@@ -14,3 +14,4 @@ traces/
 artifacts/
 local-notes/
 .hermes/provider-runs/
+.hermes/live-benchmarks/
