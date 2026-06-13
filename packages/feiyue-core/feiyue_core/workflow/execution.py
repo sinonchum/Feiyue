@@ -48,6 +48,35 @@ class CandidateFileWrite(FeiyueModel):
     path: str
     content: str
 
+class ProductionPromotionRequest(FeiyueModel):
+    """Explicit authorization boundary for production promotion side effects."""
+
+    task_id: str
+    target_branch: str
+    allowed_target_branches: list[str] = Field(default_factory=list)
+    rollback_plan: str
+    approval_record: HumanApprovalRecord | None = None
+
+    @property
+    def required_approval_action(self) -> str:
+        return f"production_promotion:{self.target_branch}"
+
+class PromotionSafetyReport(FeiyueModel):
+    """Pre/post safety evidence for a production promotion attempt."""
+
+    authorized: bool
+    reasons: list[str] = Field(default_factory=list)
+    requested_target_branch: str
+    actual_target_branch: str
+    approval_applies: bool = False
+    rollback_plan_recorded: bool = False
+    rollback_plan: str | None = None
+    rollback_ref: str | None = None
+    source_repo_clean_before: bool | None = None
+    source_repo_clean_after: bool | None = None
+    promoted_ref: str | None = None
+    target_ref_verified: bool = False
+    promotion_worktree_removed: bool = True
 
 class TeacherGuidanceEvent(FeiyueModel):
     """Auditable fake-teacher guidance used between worker attempts."""
@@ -82,6 +111,9 @@ class PromotionResult(FeiyueModel):
     promotion_worktree_removed: bool
     policy_decision: PolicyDecision | None = None
     side_effect_performed: bool = False
+    rollback_plan: str | None = None
+    rollback_ref: str | None = None
+    safety_report: PromotionSafetyReport | None = None
 
 
 class WorkflowExecutionReport(FeiyueModel):
@@ -522,6 +554,35 @@ def _render_promotion_markdown(promotion: PromotionResult) -> str:
         f"- source_repo_clean: {promotion.source_repo_clean}",
         f"- promotion_worktree_removed: {promotion.promotion_worktree_removed}",
     ]
+    if promotion.rollback_plan or promotion.rollback_ref:
+        lines.extend(
+            [
+                "",
+                "## Rollback Plan",
+                f"- rollback_ref: {promotion.rollback_ref or 'None'}",
+                f"- plan: {promotion.rollback_plan or 'None'}",
+            ]
+        )
+    if promotion.safety_report is not None:
+        safety = promotion.safety_report
+        lines.extend(
+            [
+                "",
+                "## Promotion Safety Report",
+                f"- authorized: {safety.authorized}",
+                f"- reasons: {', '.join(safety.reasons) if safety.reasons else 'None'}",
+                f"- requested_target_branch: {safety.requested_target_branch}",
+                f"- actual_target_branch: {safety.actual_target_branch}",
+                f"- approval_applies: {safety.approval_applies}",
+                f"- rollback_plan_recorded: {safety.rollback_plan_recorded}",
+                f"- rollback_ref: {safety.rollback_ref or 'None'}",
+                f"- source_repo_clean_before: {safety.source_repo_clean_before}",
+                f"- source_repo_clean_after: {safety.source_repo_clean_after}",
+                f"- promoted_ref: {safety.promoted_ref or 'None'}",
+                f"- target_ref_verified: {safety.target_ref_verified}",
+                f"- promotion_worktree_removed: {safety.promotion_worktree_removed}",
+            ]
+        )
     if promotion.reason:
         lines.extend(["", "## Reason", promotion.reason])
     lines.extend(_render_policy_decision_section(promotion.policy_decision))
@@ -827,6 +888,7 @@ class ToyWorkflowExecutor:
         privacy_approved: bool = False,
         worker_retries_used: int = 0,
         teacher_calls_used: int = 0,
+        production_request: ProductionPromotionRequest | None = None,
     ) -> PromotionResult:
         """Promote verifier-approved writes into a dedicated git branch.
 
@@ -834,8 +896,28 @@ class ToyWorkflowExecutor:
         `promotion_ready`; otherwise no branch/worktree is created. When allowed,
         writes are applied in a temporary git worktree for `target_branch`,
         committed there, and the caller's current checkout remains untouched.
+        Production promotions opt into an additional fail-closed safety contract
+        that records rollback evidence before any git side effect.
         """
         source_path = Path(source_repo)
+        safety_report = self._build_initial_promotion_safety_report(
+            source_repo=source_path,
+            report=report,
+            target_branch=target_branch,
+            production_request=production_request,
+        )
+        if safety_report is not None and not safety_report.authorized:
+            return PromotionResult(
+                status=PromotionStatus.BLOCKED,
+                target_branch=target_branch,
+                reason=", ".join(safety_report.reasons),
+                source_repo_clean=bool(safety_report.source_repo_clean_before),
+                promotion_worktree_removed=True,
+                rollback_plan=safety_report.rollback_plan,
+                rollback_ref=safety_report.rollback_ref,
+                safety_report=safety_report,
+            )
+
         if not report.promotion_ready or not report.verification_passed:
             return PromotionResult(
                 status=PromotionStatus.BLOCKED,
@@ -863,26 +945,53 @@ class ToyWorkflowExecutor:
                 source_repo_clean=self._source_repo_clean(source_path),
                 promotion_worktree_removed=True,
                 policy_decision=policy_decision,
+                rollback_plan=safety_report.rollback_plan if safety_report else None,
+                rollback_ref=safety_report.rollback_ref if safety_report else None,
+                safety_report=safety_report,
             )
 
         promotion_path = Path(tempfile.mkdtemp(prefix="feiyue-promotion-"))
         removed = False
+        commit_sha: str | None = None
         try:
-            base_sha = self._git("rev-parse", "HEAD", cwd=source_path).strip()
+            base_sha = safety_report.rollback_ref if safety_report and safety_report.rollback_ref else self._git("rev-parse", "HEAD", cwd=source_path).strip()
             self._git("worktree", "add", "-B", target_branch, str(promotion_path), base_sha, cwd=source_path)
             for write in candidate_writes:
                 self._apply_write(promotion_path, write)
             self._git("add", *[write.path for write in candidate_writes], cwd=promotion_path)
             self._git("commit", "-m", commit_message, cwd=promotion_path)
             commit_sha = self._git("rev-parse", "HEAD", cwd=promotion_path).strip()
+            if safety_report is not None:
+                promoted_ref = self._git("rev-parse", target_branch, cwd=source_path).strip()
+                safety_report.promoted_ref = promoted_ref
+                safety_report.target_ref_verified = promoted_ref == commit_sha
+                if not safety_report.target_ref_verified:
+                    safety_report.reasons.append("target_ref_verification_failed")
+                    safety_report.authorized = False
+                    raise RuntimeError("post-promotion target ref verification failed")
         except Exception as exc:
+            subprocess.run(
+                ["git", "worktree", "remove", "--force", str(promotion_path)],
+                cwd=source_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            removed = not promotion_path.exists()
+            if safety_report is not None:
+                safety_report.source_repo_clean_after = self._source_repo_clean(source_path)
+                safety_report.promotion_worktree_removed = removed
             return PromotionResult(
                 status=PromotionStatus.FAILED,
                 target_branch=target_branch,
+                commit_sha=commit_sha,
                 promoted_files=[write.path for write in candidate_writes],
                 reason=str(exc),
                 source_repo_clean=self._source_repo_clean(source_path),
                 promotion_worktree_removed=removed,
+                rollback_plan=safety_report.rollback_plan if safety_report else None,
+                rollback_ref=safety_report.rollback_ref if safety_report else None,
+                safety_report=safety_report,
             )
         finally:
             subprocess.run(
@@ -893,6 +1002,9 @@ class ToyWorkflowExecutor:
                 check=False,
             )
             removed = not promotion_path.exists()
+            if safety_report is not None:
+                safety_report.promotion_worktree_removed = removed
+                safety_report.source_repo_clean_after = self._source_repo_clean(source_path)
 
         return PromotionResult(
             status=PromotionStatus.PROMOTED,
@@ -903,8 +1015,63 @@ class ToyWorkflowExecutor:
             promotion_worktree_removed=removed,
             policy_decision=policy_decision,
             side_effect_performed=True,
+            rollback_plan=safety_report.rollback_plan if safety_report else None,
+            rollback_ref=safety_report.rollback_ref if safety_report else None,
+            safety_report=safety_report,
         )
 
+    def _build_initial_promotion_safety_report(
+        self,
+        *,
+        source_repo: Path,
+        report: WorkflowExecutionReport,
+        target_branch: str,
+        production_request: ProductionPromotionRequest | None,
+    ) -> PromotionSafetyReport | None:
+        if production_request is None:
+            return None
+
+        reasons: list[str] = []
+        source_clean_before = self._source_repo_clean(source_repo)
+        rollback_plan = production_request.rollback_plan.strip()
+        rollback_ref: str | None = None
+        if source_clean_before:
+            rollback_ref = self._git("rev-parse", "HEAD", cwd=source_repo).strip()
+
+        if production_request.task_id != report.task_id:
+            reasons.append("task_id_mismatch")
+        if not report.promotion_ready or not report.verification_passed:
+            reasons.append("report_not_promotion_ready")
+        if production_request.target_branch != target_branch:
+            reasons.append("target_branch_mismatch")
+        if production_request.allowed_target_branches and target_branch not in production_request.allowed_target_branches:
+            reasons.append("target_branch_not_allowed")
+        if not source_clean_before:
+            reasons.append("source_repo_dirty_before")
+        if not rollback_plan:
+            reasons.append("rollback_plan_missing")
+
+        approval = production_request.approval_record
+        approval_applies = (
+            approval is not None
+            and approval.task_id == report.task_id
+            and approval.approved_action == production_request.required_approval_action
+        )
+        if not approval_applies:
+            reasons.append("missing_or_mismatched_human_approval")
+
+        return PromotionSafetyReport(
+            authorized=not reasons,
+            reasons=reasons,
+            requested_target_branch=production_request.target_branch,
+            actual_target_branch=target_branch,
+            approval_applies=approval_applies,
+            rollback_plan_recorded=bool(rollback_plan and rollback_ref),
+            rollback_plan=rollback_plan or None,
+            rollback_ref=rollback_ref,
+            source_repo_clean_before=source_clean_before,
+            promotion_worktree_removed=True,
+        )
     def _evaluate_policy(
         self,
         *,
