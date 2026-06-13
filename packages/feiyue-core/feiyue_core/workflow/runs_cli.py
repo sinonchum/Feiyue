@@ -31,12 +31,15 @@ from feiyue_core.workflow.routing_proposal import (
 from feiyue_core.workflow.real_profile_workflow_runner import RealProfileWorkflowRunReport
 from feiyue_core.workflow.multi_worker_orchestration import MultiWorkerOrchestrationPlan, MultiWorkerOrchestrationPlanner, MultiWorkerPlanError
 from feiyue_core.workflow.multi_worker_workflow_dry_run import (
+    MultiWorkerProfileRunnerSelectionError,
     MultiWorkerWorkflowDryRunAuthorization,
     MultiWorkerWorkflowDryRunOrchestrator,
+    MultiWorkerWorkflowDryRunReport,
+    MultiWorkerWorkflowDryRunStatus,
+    build_multi_worker_profile_runner,
     read_multi_worker_dry_run_approval,
     write_multi_worker_dry_run_approval,
 )
-from feiyue_core.providers.profile_runner import FakeProfileRunner
 from feiyue_core.workflow.task_contract import TaskContract
 
 
@@ -113,7 +116,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     approve_multi_worker_parser.add_argument("--reason", required=True)
     approve_multi_worker_parser.add_argument("--max-profile-calls", type=int, default=1)
 
-    run_multi_worker_parser = subparsers.add_parser("run-approved-multi-worker-dry-run", help="Run an approved multi-worker workflow dry-run with an explicit fake profile response")
+    run_multi_worker_parser = subparsers.add_parser("run-approved-multi-worker-dry-run", help="Run an approved multi-worker workflow dry-run with an explicit profile runner")
     run_multi_worker_parser.add_argument("--plan-id", required=True)
     run_multi_worker_parser.add_argument("--run-id", required=True)
     run_multi_worker_parser.add_argument("--source-repo", required=True)
@@ -125,7 +128,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_multi_worker_parser.add_argument("--verification-command", action="append", required=True, dest="verification_commands")
     run_multi_worker_parser.add_argument("--acceptance-criterion", action="append", default=[], dest="acceptance_criteria")
     run_multi_worker_parser.add_argument("--escalation-rule", default="Approved multi-worker dry-run only.")
-    run_multi_worker_parser.add_argument("--fake-worker-response-json", required=True)
+    run_multi_worker_parser.add_argument("--profile-runner", choices=["fake", "hermes"], default="fake")
+    run_multi_worker_parser.add_argument("--fake-worker-response-json")
+    run_multi_worker_parser.add_argument("--hermes-run-record", help="Path to a persisted AuthorizedProviderRunRecord JSON for the selected worker")
 
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
@@ -283,7 +288,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                 verification_commands=args.verification_commands,
                 escalation_rule=args.escalation_rule,
             )
-            runner = FakeProfileRunner({worker_profile: args.fake_worker_response_json})
+            try:
+                runner = build_multi_worker_profile_runner(
+                    mode=args.profile_runner,
+                    project_root=root,
+                    worker_profile=worker_profile,
+                    fake_worker_response_json=args.fake_worker_response_json,
+                    hermes_run_record_path=args.hermes_run_record,
+                )
+            except MultiWorkerProfileRunnerSelectionError as exc:
+                result = _profile_runner_selection_blocked_report(
+                    root=root,
+                    run_id=args.run_id,
+                    contract=contract,
+                    plan=plan,
+                    reason=str(exc),
+                )
+                print(result.model_dump_json(indent=2))
+                return 2
             result = MultiWorkerWorkflowDryRunOrchestrator(profile_runner=runner).run(
                 project_root=root,
                 source_repo=Path(args.source_repo),
@@ -315,6 +337,33 @@ def _read_multi_worker_plan(root: Path, plan_id: str) -> MultiWorkerOrchestratio
     if not plan_path.exists():
         raise FileNotFoundError(f"Multi-worker plan evidence not found for plan_id: {plan_id}")
     return MultiWorkerOrchestrationPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
+
+
+def _profile_runner_selection_blocked_report(
+    *,
+    root: Path,
+    run_id: str,
+    contract: TaskContract,
+    plan: MultiWorkerOrchestrationPlan,
+    reason: str,
+) -> MultiWorkerWorkflowDryRunReport:
+    report = MultiWorkerWorkflowDryRunReport(
+        run_id=run_id,
+        task_id=contract.task_id,
+        plan_id=plan.plan_id,
+        status=MultiWorkerWorkflowDryRunStatus.BLOCKED,
+        worker_profile=plan.route.worker_profile_ids[0] if plan.route.worker_profile_ids else None,
+        teacher_profile=plan.route.teacher_profile_id,
+        provider_call_count=0,
+        reason_codes=["profile_runner_selection_failed", reason],
+        dry_run_only=True,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        route_plan_status=str(plan.route.status),
+        routing_apply_evidence_id=plan.routing_apply_evidence_id,
+    )
+    MultiWorkerWorkflowDryRunOrchestrator._write_evidence(report, root)
+    return report
 
 
 def _extract_latest_candidate_writes(report: RealProfileWorkflowRunReport):

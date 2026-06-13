@@ -15,6 +15,8 @@ from pathlib import Path
 
 from pydantic import Field, field_validator
 
+from feiyue_core.providers.authorization import AuthorizedProviderRunRecord
+from feiyue_core.providers.profile_runner import FakeProfileRunner, HermesProfileSubprocessRunner
 from feiyue_core.routing.multi_worker_gate import RouteStatus
 from feiyue_core.schemas.common import FeiyueModel
 from feiyue_core.workflow.execution import WorkflowExecutionReport
@@ -33,6 +35,15 @@ class MultiWorkerWorkflowDryRunStatus(StrEnum):
     VERIFIED = "verified"
     NEEDS_TEACHER = "needs_teacher"
     BLOCKED = "blocked"
+
+
+class MultiWorkerProfileRunnerMode(StrEnum):
+    FAKE = "fake"
+    HERMES = "hermes"
+
+
+class MultiWorkerProfileRunnerSelectionError(ValueError):
+    """Raised before any profile call when the requested runner is not authorized."""
 
 
 class MultiWorkerWorkflowDryRunAuthorization(FeiyueModel):
@@ -84,6 +95,52 @@ def read_multi_worker_dry_run_approval(project_root: str | Path, plan_id: str) -
     if not path.exists():
         raise FileNotFoundError(f"Multi-worker dry-run approval not found for plan_id: {plan_id}")
     return MultiWorkerWorkflowDryRunAuthorization.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def build_multi_worker_profile_runner(
+    *,
+    mode: MultiWorkerProfileRunnerMode | str,
+    project_root: str | Path,
+    worker_profile: str,
+    fake_worker_response_json: str | None = None,
+    hermes_run_record_path: str | Path | None = None,
+) -> ProfileRunnerLike:
+    """Build the selected runner, failing closed before provider/profile calls.
+
+    ``fake`` remains the deterministic provider-free path. ``hermes`` is a real
+    profile subprocess seam only when supplied with a persisted, exact provider
+    run authorization record; otherwise it raises before execution.
+    """
+
+    selected_mode = MultiWorkerProfileRunnerMode(mode)
+    if selected_mode == MultiWorkerProfileRunnerMode.FAKE:
+        if fake_worker_response_json is None:
+            raise MultiWorkerProfileRunnerSelectionError(
+                "--fake-worker-response-json is required when --profile-runner=fake"
+            )
+        return FakeProfileRunner({worker_profile: fake_worker_response_json})
+
+    if hermes_run_record_path is None:
+        raise MultiWorkerProfileRunnerSelectionError(
+            "--hermes-run-record is required when --profile-runner=hermes"
+        )
+    record_path = Path(hermes_run_record_path)
+    if not record_path.exists():
+        raise MultiWorkerProfileRunnerSelectionError(f"Hermes profile run record not found: {record_path}")
+    try:
+        run_record = AuthorizedProviderRunRecord.model_validate_json(record_path.read_text(encoding="utf-8"))
+    except Exception as exc:  # pydantic/json parsing errors fail closed at the selection gate.
+        raise MultiWorkerProfileRunnerSelectionError(
+            f"Hermes profile run record is invalid: {exc}"
+        ) from exc
+    if run_record.authorization.provider_or_profile != worker_profile:
+        raise MultiWorkerProfileRunnerSelectionError(
+            "Hermes profile run record profile does not match selected worker"
+        )
+    try:
+        return HermesProfileSubprocessRunner(run_record=run_record, project_root=project_root)
+    except ValueError as exc:
+        raise MultiWorkerProfileRunnerSelectionError(str(exc)) from exc
 
 
 class MultiWorkerWorkflowDryRunReport(FeiyueModel):
