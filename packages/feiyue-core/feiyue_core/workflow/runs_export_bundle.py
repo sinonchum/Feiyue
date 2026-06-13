@@ -15,6 +15,9 @@ class StaticRunsReportBundle:
 
 def _bundle_entries(report_dir: Path) -> list[Path]:
     entries = [report_dir / "index.html", report_dir / "manifest.json"]
+    assets_dir = report_dir / "assets"
+    if assets_dir.exists():
+        entries.extend(sorted(path for path in assets_dir.rglob("*") if path.is_file()))
     runs_dir = report_dir / "runs"
     if runs_dir.exists():
         entries.extend(sorted(runs_dir.glob("*.html")))

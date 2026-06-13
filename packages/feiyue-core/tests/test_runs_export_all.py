@@ -46,7 +46,7 @@ def test_export_static_runs_report_all_exports_verifies_bundles_and_verifies_ext
     assert result.report.manifest_path == output_dir / "manifest.json"
     assert result.initial_verification.valid is True
     assert result.bundle.bundle_path == bundle_path
-    assert result.bundle.entries == ["index.html", "manifest.json", "runs/all-demo.html"]
+    assert result.bundle.entries == ["index.html", "manifest.json", "assets/index.html", "runs/all-demo.html"]
     assert result.extracted_verification.valid is True
     assert result.extracted_dir.exists()
     assert (result.extracted_dir / "manifest.json").exists()

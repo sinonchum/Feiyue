@@ -60,6 +60,26 @@ def test_export_static_runs_report_writes_offline_dashboard_and_detail(tmp_path)
     assert "JSON.stringify" not in index_html + detail_html
 
 
+def test_export_static_runs_report_writes_asset_catalog_page_and_manifest_entry(tmp_path) -> None:
+    (tmp_path / ".hermes" / "lessons").mkdir(parents=True)
+    (tmp_path / ".hermes" / "lessons" / "lesson-export.md").write_text(
+        "# Exported Lesson\n\nsecret=SHOULD_NOT_LEAK\n", encoding="utf-8"
+    )
+    output_dir = tmp_path / "report"
+
+    result = export_static_runs_report(tmp_path, output_dir)
+
+    assets_path = output_dir / "assets" / "index.html"
+    assert assets_path.exists()
+    assets_html = assets_path.read_text(encoding="utf-8")
+    assert "Feiyue Asset Catalog" in assets_html
+    assert "Exported Lesson" in assets_html
+    assert "SHOULD_NOT_LEAK" not in assets_html
+
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+    assert any(file["path"] == "assets/index.html" for file in manifest["files"])
+
+
 def test_export_static_runs_report_writes_manifest_with_hashes_and_sources(tmp_path) -> None:
     _write_run_evidence(tmp_path, "m13-export-demo")
     output_dir = tmp_path / "report"

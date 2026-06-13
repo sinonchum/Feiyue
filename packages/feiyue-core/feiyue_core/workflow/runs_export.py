@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Sequence
 
 from feiyue_core.workflow.execution import RunCatalog
-from feiyue_core.workflow.runs_api import render_run_detail, render_runs_dashboard
+from feiyue_core.workflow.runs_api import render_assets_dashboard, render_run_detail, render_runs_dashboard
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,7 @@ class StaticRunsReportExport:
     index_path: Path
     detail_paths: dict[str, Path]
     manifest_path: Path
+    assets_index_path: Path | None = None
 
 
 def _sha256(path: Path) -> str:
@@ -53,6 +54,15 @@ def export_static_runs_report(project_root: str | Path, output_dir: str | Path) 
     index_path = out / "index.html"
     index_path.write_text(index_html, encoding="utf-8")
 
+    assets_dir = out / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    assets_html = render_assets_dashboard(root)
+    assets_html = assets_html.replace('href="/dashboard"', 'href="../index.html"')
+    assets_html = assets_html.replace('href="/assets"', 'href="#asset-json-unavailable-offline"')
+    assets_html = assets_html.replace("Read-only asset surface", "Offline read-only asset surface")
+    assets_index_path = assets_dir / "index.html"
+    assets_index_path.write_text(assets_html, encoding="utf-8")
+
     detail_paths: dict[str, Path] = {}
     for task_id, filename in filename_by_task.items():
         detail_html = render_run_detail(root, task_id)
@@ -74,7 +84,11 @@ def export_static_runs_report(project_root: str | Path, output_dir: str | Path) 
             {
                 "path": _relative_posix(index_path, out),
                 "sha256": _sha256(index_path),
-            }
+            },
+            {
+                "path": _relative_posix(assets_index_path, out),
+                "sha256": _sha256(assets_index_path),
+            },
         ],
         "runs": [],
     }
@@ -91,7 +105,12 @@ def export_static_runs_report(project_root: str | Path, output_dir: str | Path) 
         )
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
-    return StaticRunsReportExport(index_path=index_path, detail_paths=detail_paths, manifest_path=manifest_path)
+    return StaticRunsReportExport(
+        index_path=index_path,
+        detail_paths=detail_paths,
+        manifest_path=manifest_path,
+        assets_index_path=assets_index_path,
+    )
 
 
 def main(argv: Sequence[str] | None = None) -> int:
