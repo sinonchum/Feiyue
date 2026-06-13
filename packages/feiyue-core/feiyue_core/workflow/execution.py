@@ -53,9 +53,21 @@ class TeacherGuidanceEvent(FeiyueModel):
     """Auditable fake-teacher guidance used between worker attempts."""
 
     request_id: str
+    attempt_index: int = 2
     trigger: str
     guidance: str
     source_bug_dossier_task_id: str
+
+
+class AttemptEvidence(FeiyueModel):
+    """Verifier-gated evidence for one provider-free worker attempt."""
+
+    attempt_index: int
+    changed_files: list[str] = Field(default_factory=list)
+    verification_command: str | None = None
+    verification_passed: bool
+    failure_reason: str | None = None
+    teacher_request_id: str | None = None
 
 
 class PromotionResult(FeiyueModel):
@@ -88,6 +100,7 @@ class WorkflowExecutionReport(FeiyueModel):
     regression_check: RegressionCheck | None = None
     attempt_count: int = 1
     teacher_guidance_events: list[TeacherGuidanceEvent] = Field(default_factory=list)
+    attempt_evidence: list[AttemptEvidence] = Field(default_factory=list)
     policy_decision: PolicyDecision | None = None
     execution_performed: bool = True
     retry_performed: bool = False
@@ -444,6 +457,23 @@ def _render_execution_report_markdown(report: WorkflowExecutionReport) -> str:
             f"- execution_performed: {report.execution_performed}",
             f"- retry_performed: {report.retry_performed}",
             "",
+        ]
+    )
+    if report.attempt_evidence:
+        lines.extend(["## Attempt Evidence"])
+        for attempt in report.attempt_evidence:
+            lines.extend(
+                [
+                    f"- attempt_index: {attempt.attempt_index}",
+                    f"  - verification_passed: {attempt.verification_passed}",
+                    f"  - verification_command: {attempt.verification_command or 'None'}",
+                    f"  - teacher_request_id: {attempt.teacher_request_id or 'None'}",
+                    f"  - failure_reason: {attempt.failure_reason or 'None'}",
+                ]
+            )
+        lines.append("")
+    lines.extend(
+        [
             "## Safety",
             f"- source_repo_clean: {report.source_repo_clean}",
             f"- sandbox_removed: {report.sandbox_removed}",
@@ -458,6 +488,7 @@ def _render_teacher_guidance_markdown(report: WorkflowExecutionReport) -> str:
         lines.extend(
             [
                 f"## {event.request_id}",
+                f"- attempt_index: {event.attempt_index}",
                 f"- trigger: {event.trigger}",
                 f"- source_bug_dossier_task_id: {event.source_bug_dossier_task_id}",
                 "",
@@ -630,66 +661,157 @@ class ToyWorkflowExecutor:
         source_repo: str | Path,
         contract: TaskContract,
         initial_writes: list[CandidateFileWrite],
-        teacher_guidance: str,
-        revised_writes: list[CandidateFileWrite],
+        teacher_guidance: str | list[str],
+        revised_writes: list[CandidateFileWrite] | list[list[CandidateFileWrite]],
         project_name: str,
+        max_attempts: int = 2,
         teacher_calls_used: int = 0,
         risk_level: RiskLevel = RiskLevel.MEDIUM,
         estimated_tokens: int = 0,
         contains_sensitive_data: bool = False,
         privacy_approved: bool = False,
     ) -> WorkflowExecutionReport:
-        """Run one worker attempt, request fake teacher guidance, then retry once.
+        """Run bounded provider-free worker attempts with fake teacher guidance.
 
-        This is still provider-free: the caller supplies deterministic teacher
-        guidance and revised writes. The method records the teacher event as
-        guidance only; success remains gated by the verifier on the retry.
+        The default remains the legacy single retry: one initial attempt plus
+        one teacher-guided revised attempt. Callers can supply guidance/writes
+        sequences and raise ``max_attempts`` to allow additional bounded rounds.
+        Teacher guidance is recorded as evidence only; a report becomes
+        promotion-ready only when a verifier-backed attempt passes.
         """
-        first = self.execute(
+        max_attempts = max(1, max_attempts)
+        guidance_rounds = self._normalize_teacher_guidance(teacher_guidance)
+        write_rounds = self._normalize_revised_writes(revised_writes)
+        teacher_events: list[TeacherGuidanceEvent] = []
+        attempt_evidence: list[AttemptEvidence] = []
+
+        current = self.execute(
             source_repo=source_repo,
             contract=contract,
             candidate_writes=initial_writes,
             project_name=project_name,
         )
-        if first.status != WorkflowExecutionStatus.NEEDS_TEACHER or first.bug_dossier is None:
-            first.attempt_count = 1
-            return first
+        current.attempt_count = 1
+        attempt_evidence.append(self._build_attempt_evidence(current, attempt_index=1))
+        if current.status != WorkflowExecutionStatus.NEEDS_TEACHER or current.bug_dossier is None:
+            current.attempt_evidence = attempt_evidence
+            return current
 
-        teacher_policy_decision = self._evaluate_policy(
-            task_id=contract.task_id,
-            operation="teacher_call",
-            risk_level=risk_level,
-            estimated_tokens=estimated_tokens,
-            contains_sensitive_data=contains_sensitive_data,
-            privacy_approved=privacy_approved,
-            worker_retries_used=1,
-            teacher_calls_used=teacher_calls_used,
-        )
-        if teacher_policy_decision is not None and teacher_policy_decision.action != GovernanceAction.ALLOW:
-            first.attempt_count = 1
-            first.policy_decision = teacher_policy_decision
-            if first.bug_dossier is not None and "policy_gate" not in first.bug_dossier.attempts:
-                first.bug_dossier.attempts.append("policy_gate")
-            return first
+        source_bug_dossier_task_id = current.bug_dossier.task_id
+        last = current
+        retry_budget = max_attempts - 1
+        available_retry_rounds = min(retry_budget, len(guidance_rounds), len(write_rounds))
 
-        event = TeacherGuidanceEvent(
-            request_id=f"teacher-request-{contract.task_id}-1",
-            trigger="verifier_failed",
-            guidance=teacher_guidance,
-            source_bug_dossier_task_id=first.bug_dossier.task_id,
+        for retry_index in range(1, available_retry_rounds + 1):
+            attempt_index = retry_index + 1
+            teacher_policy_decision = self._evaluate_policy(
+                task_id=contract.task_id,
+                operation="teacher_call",
+                risk_level=risk_level,
+                estimated_tokens=estimated_tokens,
+                contains_sensitive_data=contains_sensitive_data,
+                privacy_approved=privacy_approved,
+                worker_retries_used=retry_index,
+                teacher_calls_used=teacher_calls_used + len(teacher_events),
+            )
+            if teacher_policy_decision is not None and teacher_policy_decision.action != GovernanceAction.ALLOW:
+                last.attempt_count = attempt_index - 1
+                last.retry_performed = bool(teacher_events)
+                last.policy_decision = teacher_policy_decision
+                last.teacher_guidance_events = teacher_events
+                last.attempt_evidence = attempt_evidence
+                if last.bug_dossier is not None and "policy_gate" not in last.bug_dossier.attempts:
+                    last.bug_dossier.attempts.append("policy_gate")
+                return last
+
+            event = TeacherGuidanceEvent(
+                request_id=f"teacher-request-{contract.task_id}-{retry_index}",
+                attempt_index=attempt_index,
+                trigger="verifier_failed",
+                guidance=guidance_rounds[retry_index - 1],
+                source_bug_dossier_task_id=source_bug_dossier_task_id,
+            )
+            teacher_events.append(event)
+            last = self.execute(
+                source_repo=source_repo,
+                contract=contract,
+                candidate_writes=write_rounds[retry_index - 1],
+                project_name=project_name,
+            )
+            last.attempt_count = attempt_index
+            last.retry_performed = True
+            last.teacher_guidance_events = list(teacher_events)
+            attempt_evidence.append(
+                self._build_attempt_evidence(
+                    last,
+                    attempt_index=attempt_index,
+                    teacher_request_id=event.request_id,
+                )
+            )
+            last.attempt_evidence = list(attempt_evidence)
+            if last.status != WorkflowExecutionStatus.NEEDS_TEACHER or last.bug_dossier is None:
+                return last
+            retry_label = "retry" if retry_index == 1 else f"retry_{retry_index}"
+            if retry_label not in last.bug_dossier.attempts:
+                last.bug_dossier.attempts.append(retry_label)
+            numbered_retry_label = f"retry_{retry_index}"
+            if numbered_retry_label not in last.bug_dossier.attempts:
+                last.bug_dossier.attempts.append(numbered_retry_label)
+
+        last.attempt_count = len(attempt_evidence)
+        last.retry_performed = bool(teacher_events)
+        last.teacher_guidance_events = teacher_events
+        last.attempt_evidence = attempt_evidence
+        if last.bug_dossier is not None:
+            for retry_index in range(1, len(teacher_events) + 1):
+                retry_label = "retry" if retry_index == 1 else f"retry_{retry_index}"
+                if retry_label not in last.bug_dossier.attempts:
+                    last.bug_dossier.attempts.append(retry_label)
+                numbered_retry_label = f"retry_{retry_index}"
+                if numbered_retry_label not in last.bug_dossier.attempts:
+                    last.bug_dossier.attempts.append(numbered_retry_label)
+        if last.bug_dossier is not None and available_retry_rounds >= retry_budget:
+            last.bug_dossier.teacher_request = (
+                f"Diagnose the failed {project_name} worker patch; maximum fake teacher retry attempts exhausted. "
+                "Next safe action: hand off bug dossier for human or teacher review without promotion."
+            )
+        return last
+
+    @staticmethod
+    def _normalize_teacher_guidance(teacher_guidance: str | list[str]) -> list[str]:
+        if isinstance(teacher_guidance, str):
+            return [teacher_guidance]
+        return list(teacher_guidance)
+
+    @staticmethod
+    def _normalize_revised_writes(
+        revised_writes: list[CandidateFileWrite] | list[list[CandidateFileWrite]],
+    ) -> list[list[CandidateFileWrite]]:
+        if not revised_writes:
+            return []
+        first_write = revised_writes[0]
+        if isinstance(first_write, CandidateFileWrite):
+            return [list(revised_writes)]  # type: ignore[list-item]
+        return [list(round_writes) for round_writes in revised_writes]  # type: ignore[union-attr]
+
+    @staticmethod
+    def _build_attempt_evidence(
+        report: WorkflowExecutionReport,
+        *,
+        attempt_index: int,
+        teacher_request_id: str | None = None,
+    ) -> AttemptEvidence:
+        failure_reason = None
+        if not report.verification_passed:
+            failure_reason = report.bug_dossier.error_excerpt if report.bug_dossier is not None else report.status.value
+        return AttemptEvidence(
+            attempt_index=attempt_index,
+            changed_files=list(report.changed_files),
+            verification_command=report.verification_command,
+            verification_passed=report.verification_passed,
+            failure_reason=failure_reason,
+            teacher_request_id=teacher_request_id,
         )
-        retry = self.execute(
-            source_repo=source_repo,
-            contract=contract,
-            candidate_writes=revised_writes,
-            project_name=project_name,
-        )
-        retry.attempt_count = 2
-        retry.retry_performed = True
-        retry.teacher_guidance_events = [event]
-        if retry.bug_dossier is not None and "retry" not in retry.bug_dossier.attempts:
-            retry.bug_dossier.attempts.append("retry")
-        return retry
 
     def promote_verified_writes(
         self,
