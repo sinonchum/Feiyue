@@ -1,19 +1,23 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
-from feiyue_core.providers.profile_runner import FakeProfileRunner, ProfileRunRequest, ProfileRunResult
+from feiyue_core.providers.authorization import AuthorizedProviderRunRecord, AuthorizedScope, RealProviderAuthorization
+from feiyue_core.providers.profile_runner import FakeProfileRunner, HermesProfileSubprocessRunner, ProfileRunRequest, ProfileRunResult
 from feiyue_core.workflow.model_routing_table import ModelRoutingTable, ModelRoutingTableInitializer
 from feiyue_core.workflow.multi_worker_orchestration import MultiWorkerOrchestrationPlanner
 from feiyue_core.workflow.multi_worker_workflow_dry_run import (
     MultiWorkerWorkflowDryRunAuthorization,
     MultiWorkerWorkflowDryRunOrchestrator,
     MultiWorkerWorkflowDryRunStatus,
+    build_multi_worker_profile_runner,
 )
 from feiyue_core.workflow.task_contract import TaskContract
 
@@ -79,6 +83,13 @@ def _contract() -> TaskContract:
     )
 
 
+def _cli_env() -> dict[str, str]:
+    env = os.environ.copy()
+    source_path = str(Path(__file__).resolve().parents[1])
+    env["PYTHONPATH"] = f"{source_path}{os.pathsep}{env.get('PYTHONPATH', '')}" if env.get("PYTHONPATH") else source_path
+    return env
+
+
 def _exact_authorization(plan_id: str = "wave4-5b-plan") -> MultiWorkerWorkflowDryRunAuthorization:
     return MultiWorkerWorkflowDryRunAuthorization(
         authorization_id="auth.wave4-5b",
@@ -92,6 +103,51 @@ def _exact_authorization(plan_id: str = "wave4-5b-plan") -> MultiWorkerWorkflowD
         scopes=["multi_worker_workflow_execute"],
         reason="Approve provider-free routed dry-run execution with fake runner.",
     )
+
+
+def _provider_run_record(profile: str = "steady-4c") -> AuthorizedProviderRunRecord:
+    auth = RealProviderAuthorization(
+        approved_by="test-suite",
+        authorized_scope=AuthorizedScope.HERMES_PROFILE_SUBPROCESS,
+        provider_or_profile=profile,
+        command=("hermes", "run", "--profile", profile),
+        cwd="/tmp/hermes-profile-dry-run",
+        max_requests=1,
+        timeout_seconds=5,
+        budget_ceiling="0.01 USD",
+        network_scope="operator-approved provider endpoint only",
+        evidence_retention=".hermes/provider-runs retained locally",
+        no_global_config_mutation=True,
+        approved_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    return AuthorizedProviderRunRecord(run_id="run-hermes-seam", authorization=auth)
+
+
+def test_build_multi_worker_profile_runner_can_construct_authorized_hermes_seam_without_running(tmp_path: Path) -> None:
+    record_path = tmp_path / "provider-run-record.json"
+    record_path.write_text(_provider_run_record().model_dump_json(indent=2), encoding="utf-8")
+
+    runner = build_multi_worker_profile_runner(
+        mode="hermes",
+        project_root=tmp_path,
+        worker_profile="steady-4c",
+        hermes_run_record_path=record_path,
+    )
+
+    assert isinstance(runner, HermesProfileSubprocessRunner)
+
+
+def test_build_multi_worker_profile_runner_rejects_mismatched_hermes_record_before_run(tmp_path: Path) -> None:
+    record_path = tmp_path / "provider-run-record.json"
+    record_path.write_text(_provider_run_record(profile="other-profile").model_dump_json(indent=2), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="does not match selected worker"):
+        build_multi_worker_profile_runner(
+            mode="hermes",
+            project_root=tmp_path,
+            worker_profile="steady-4c",
+            hermes_run_record_path=record_path,
+        )
 
 
 def test_approved_multi_worker_dry_run_executes_selected_worker_without_promotion(tmp_path: Path) -> None:
@@ -310,6 +366,150 @@ def test_runs_cli_approves_and_runs_multi_worker_dry_run_with_fake_profile(tmp_p
     assert payload["promotion_attempted"] is False
     assert payload["global_hermes_config_mutated"] is False
     assert "multi_worker_plan_authorization_applies" in payload["reason_codes"]
+
+
+def test_runs_cli_hermes_profile_runner_requires_persisted_run_record_without_profile_call(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _plan(tmp_path)
+
+    approve = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "approve-multi-worker-dry-run",
+            "--plan-id",
+            "wave4-5b-plan",
+            "--approved-by",
+            "test-suite",
+            "--approval-id",
+            "auth.wave4-5d-cli",
+            "--reason",
+            "Approve multi-worker dry-run; real profile runner still needs exact provider run record.",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=_cli_env(),
+    )
+    assert approve.returncode == 0, approve.stderr
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "run-approved-multi-worker-dry-run",
+            "--plan-id",
+            "wave4-5b-plan",
+            "--run-id",
+            "wave4-5d-hermes-missing-record",
+            "--source-repo",
+            str(repo),
+            "--project-name",
+            "toy-calculator",
+            "--task-id",
+            "task.wave4-5b",
+            "--title",
+            "Fix calculator add",
+            "--scope",
+            "Make add return a sum.",
+            "--file-to-modify",
+            "calc.py",
+            "--verification-command",
+            "python -m pytest -q",
+            "--profile-runner",
+            "hermes",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=_cli_env(),
+    )
+
+    assert run.returncode == 2
+    assert run.stderr == ""
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "blocked"
+    assert payload["provider_call_count"] == 0
+    assert payload["dry_run_only"] is True
+    assert payload["promotion_attempted"] is False
+    assert payload["global_hermes_config_mutated"] is False
+    assert "profile_runner_selection_failed" in payload["reason_codes"]
+    assert any("--hermes-run-record is required" in reason for reason in payload["reason_codes"])
+
+
+def test_runs_cli_fake_profile_runner_requires_fake_response_without_profile_call(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _plan(tmp_path)
+    approve = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "approve-multi-worker-dry-run",
+            "--plan-id",
+            "wave4-5b-plan",
+            "--approved-by",
+            "test-suite",
+            "--approval-id",
+            "auth.wave4-5d-fake-cli",
+            "--reason",
+            "Approve fake runner contract test.",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=_cli_env(),
+    )
+    assert approve.returncode == 0, approve.stderr
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "run-approved-multi-worker-dry-run",
+            "--plan-id",
+            "wave4-5b-plan",
+            "--run-id",
+            "wave4-5d-fake-missing-response",
+            "--source-repo",
+            str(repo),
+            "--project-name",
+            "toy-calculator",
+            "--task-id",
+            "task.wave4-5b",
+            "--title",
+            "Fix calculator add",
+            "--scope",
+            "Make add return a sum.",
+            "--file-to-modify",
+            "calc.py",
+            "--verification-command",
+            "python -m pytest -q",
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=_cli_env(),
+    )
+
+    assert run.returncode == 2
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "blocked"
+    assert payload["provider_call_count"] == 0
+    assert any("--fake-worker-response-json is required" in reason for reason in payload["reason_codes"])
 
 
 def test_multi_worker_dry_run_rejects_mismatched_plan_authorization(tmp_path: Path) -> None:
