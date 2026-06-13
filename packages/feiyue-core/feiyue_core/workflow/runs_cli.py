@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Sequence
 
 from feiyue_core.workflow.capability_feedback import CapabilityFeedbackAggregator
+from feiyue_core.workflow.capability_history import CapabilityHistoryCollector
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
 from feiyue_core.workflow.profile_worker_bridge import _parse_candidate_writes
 from feiyue_core.workflow.real_profile_promotion import (
@@ -77,6 +78,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     feedback_parser = subparsers.add_parser("capability-feedback", help="Summarize workflow evidence into audit-only capability metrics")
     feedback_parser.add_argument("--write-report", action="store_true", help="Persist latest.json and latest.md under .hermes/capability-feedback")
+
+    history_parser = subparsers.add_parser("capability-history", help="Collect workflow evidence into provider-free longitudinal capability history")
+    history_parser.add_argument("--write-report", action="store_true", help="Persist history.jsonl, latest.json, and latest.md under .hermes/capability-history")
 
     proposal_parser = subparsers.add_parser("routing-proposal", help="Generate a human-reviewed routing update proposal from capability feedback")
     proposal_parser.add_argument("--proposal-id", required=True)
@@ -200,6 +204,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "capability-feedback":
             aggregator = CapabilityFeedbackAggregator(root)
             report = aggregator.write_report() if args.write_report else aggregator.build_report()
+            print(report.model_dump_json(indent=2))
+            return 0
+        if args.command == "capability-history":
+            collector = CapabilityHistoryCollector(root)
+            report = collector.write_report() if args.write_report else collector.build_report()
             print(report.model_dump_json(indent=2))
             return 0
         if args.command == "routing-proposal":
