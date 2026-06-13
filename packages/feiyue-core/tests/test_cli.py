@@ -133,3 +133,34 @@ def test_runs_cli_lists_catalog_summary_as_json(tmp_path) -> None:
     assert payload["next_action_counts"] == {"request_human_approval": 1}
     assert payload["runs"][0]["task_id"] == "m13-cli-catalog"
     assert payload["runs"][0]["approval_exists"] is False
+
+
+def test_runs_cli_shows_real_profile_workflow_smoke_evidence(tmp_path) -> None:
+    smoke_dir = tmp_path / ".hermes" / "workflow-smokes" / "w43a-dry-run"
+    smoke_dir.mkdir(parents=True)
+    (smoke_dir / "evidence.json").write_text(
+        json.dumps(
+            {
+                "run_id": "w43a-dry-run",
+                "status": "verified",
+                "provider_call_count": 1,
+                "dry_run_only": True,
+                "promotion_attempted": False,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+    completed = subprocess.run(
+        [sys.executable, "-m", "feiyue_core.workflow.runs_cli", "--root", str(tmp_path), "workflow-smoke", "w43a-dry-run"],
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["run_id"] == "w43a-dry-run"
+    assert payload["status"] == "verified"
+    assert payload["dry_run_only"] is True
+    assert payload["promotion_attempted"] is False

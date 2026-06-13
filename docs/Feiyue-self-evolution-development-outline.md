@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`487 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, and Wave4-2C real teacher retry smoke status contract；remote CI mirrors provider-free smokes）。Current verified baseline: `487 passed`.
+> **Verified baseline**：`491 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, and Wave4-3A dry-run/no-promotion contract；remote CI mirrors provider-free smokes）。Current verified baseline: `491 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`487 passed`。
+- `python -m pytest -q`：`491 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1605,6 +1605,29 @@ Wave4-2B proves the first real worker-profile bridge: TaskContract → real weak
 ### Wave4-2C scope note
 
 Wave4-2C proves the first real teacher retry bridge on a controlled toy workflow: real weak worker failure → verifier-backed bug dossier → real strong teacher guidance → real weak worker retry → verifier-backed success. It does not yet include multi-worker orchestration or real-project production promotion.
+
+## Completed Slice: Wave4-2D Productized Real Profile Workflow Runner
+
+### Wave4-2D completed
+
+- Added `RealProfileWorkflowRunner` as the reusable SDK boundary for worker profile calls, optional teacher escalation, retry, verifier-backed workflow reports, dry-run semantics, source cleanliness checks, and redacted `.hermes/workflow-smokes/<run_id>/` evidence.
+- Added `RealProfileWorkflowAuthorization` with explicit scopes, max_profile_calls, dry_run_only, and real-project allowance flags.
+- Added `feiyue-runs workflow-smoke <run_id>` for JSON inspection of productized workflow-smoke evidence.
+- Fake-first contracts cover worker failure → teacher guidance → worker retry → verified report, provider_call_count: 3, retry audit event, and no source mutation.
+
+## Completed Slice: Wave4-3A Real-Project Dry-run Boundary
+
+### Wave4-3A completed
+
+- Added a real-project-style dry-run/no-promotion contract through `RealProfileWorkflowRunner`.
+- dry_run_only: true。
+- promotion_attempted: false。
+- A verifier-backed workflow can become promotion_ready, but the productized runner still does not call promotion APIs or mutate the source checkout.
+- This creates the safe entry point for evaluating real project tasks before Wave4-3B human-approved promotion.
+
+### Wave4-3B entry condition
+
+Wave4-3B should add exact human approval records for promotion, bind approval to run_id/task_id/changed_files/target_branch, and only then call the existing verifier-gated promotion path. Until that exists, Wave4-3A remains dry-run only.
 
 ## Recommended Next Slice
 

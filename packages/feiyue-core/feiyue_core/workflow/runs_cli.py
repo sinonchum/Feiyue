@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -25,6 +26,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     handoff_parser = subparsers.add_parser("handoff", help="Render compact fallback handoff summary")
     handoff_parser.add_argument("task_id")
 
+    workflow_smoke_parser = subparsers.add_parser("workflow-smoke", help="Print real profile workflow smoke evidence JSON")
+    workflow_smoke_parser.add_argument("run_id")
+
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
     loader = RunEvidenceLoader(root)
@@ -44,6 +48,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "handoff":
             print(loader.render_handoff_summary(args.task_id), end="")
+            return 0
+        if args.command == "workflow-smoke":
+            evidence_path = root / ".hermes" / "workflow-smokes" / args.run_id / "evidence.json"
+            if not evidence_path.exists():
+                print(f"Workflow smoke evidence not found for run_id: {args.run_id}", file=sys.stderr)
+                return 2
+            print(json.dumps(json.loads(evidence_path.read_text(encoding="utf-8")), indent=2, sort_keys=True))
             return 0
     except RunEvidenceNotFoundError as exc:
         print(str(exc), file=sys.stderr)

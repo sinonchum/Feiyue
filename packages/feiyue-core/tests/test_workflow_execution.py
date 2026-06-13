@@ -28,7 +28,12 @@ from feiyue_core.workflow.profile_worker_bridge import (
     ProfileWorkflowBridgeAuthorization,
     ProfileWorkflowBridgeStatus,
 )
-from feiyue_core.providers.profile_runner import FakeProfileRunner
+from feiyue_core.workflow.real_profile_workflow_runner import (
+    RealProfileWorkflowAuthorization,
+    RealProfileWorkflowRunner,
+    RealProfileWorkflowStatus,
+)
+from feiyue_core.providers.profile_runner import FakeProfileRunner, ProfileRunResult
 
 
 def _init_toy_repo(path: Path) -> None:
@@ -1123,3 +1128,114 @@ def test_profile_workflow_bridge_blocks_when_profile_output_is_not_candidate_wri
     assert bridge_report.workflow_report is None
     assert bridge_report.reason_codes == ["profile_output_parse_failed"]
     assert "not json" in bridge_report.stdout_redacted
+
+
+class SequencedProfileRunner:
+    def __init__(self, responses: list[tuple[str, str]]) -> None:
+        self.responses = list(responses)
+        self.requests = []
+
+    def run(self, request):
+        self.requests.append(request)
+        if not self.responses:
+            return ProfileRunResult(stdout="", stderr="unexpected extra call", exit_code=127)
+        expected_profile, stdout = self.responses.pop(0)
+        if request.profile != expected_profile:
+            return ProfileRunResult(stdout="", stderr=f"expected {expected_profile}, got {request.profile}", exit_code=126)
+        return ProfileRunResult(stdout=stdout, stderr="", exit_code=0)
+
+
+def test_real_profile_workflow_runner_productizes_worker_teacher_retry_evidence(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="w42d-productized-teacher-retry",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+        escalation_rule="Call teacher once after verifier failure, then retry worker once.",
+    )
+    profile_runner = SequencedProfileRunner(
+        [
+            ("weak", json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a * b\n"}]})),
+            ("teacher", json.dumps({"guidance": "Use addition exactly: return a + b."})),
+            ("weak", json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a + b\n"}]})),
+        ]
+    )
+
+    report = RealProfileWorkflowRunner(profile_runner=profile_runner).run(
+        source_repo=repo,
+        contract=contract,
+        project_name="toy-calculator",
+        worker_profile="weak",
+        teacher_profile="teacher",
+        authorization=RealProfileWorkflowAuthorization(
+            scopes=["real_profile_workflow_execute", "teacher_escalation"],
+            max_profile_calls=3,
+            dry_run_only=True,
+        ),
+        evidence_root=tmp_path,
+        run_id="w42d-productized-teacher-retry",
+    )
+
+    assert report.status == RealProfileWorkflowStatus.VERIFIED
+    assert report.provider_call_count == 3
+    assert report.teacher_profile == "teacher"
+    assert report.workflow_report is not None
+    assert report.workflow_report.verification_passed is True
+    assert report.workflow_report.retry_performed is True
+    assert len(report.workflow_report.teacher_guidance_events) == 1
+    assert report.dry_run_only is True
+    assert report.promotion_attempted is False
+    assert report.source_repo_clean is True
+    assert [request.role for request in profile_runner.requests] == ["worker", "teacher", "worker"]
+    evidence_path = tmp_path / ".hermes" / "workflow-smokes" / "w42d-productized-teacher-retry" / "evidence.json"
+    assert evidence_path.exists()
+    payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    assert payload["status"] == "verified"
+    assert payload["provider_call_count"] == 3
+    assert payload["dry_run_only"] is True
+    assert payload["promotion_attempted"] is False
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+
+
+def test_real_project_dry_run_blocks_promotion_even_when_verified(tmp_path: Path) -> None:
+    repo = tmp_path / "real-project"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="w43a-real-project-dry-run",
+        title="Dry-run calculator fix",
+        scope="Verify a real-project-style dry run without promotion.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+        escalation_rule="Dry-run only; do not promote even if verified.",
+    )
+    profile_runner = FakeProfileRunner(
+        {"weak": json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a + b\n"}]})}
+    )
+
+    report = RealProfileWorkflowRunner(profile_runner=profile_runner).run(
+        source_repo=repo,
+        contract=contract,
+        project_name="real-project-dry-run",
+        worker_profile="weak",
+        teacher_profile=None,
+        authorization=RealProfileWorkflowAuthorization(
+            scopes=["real_profile_workflow_execute"],
+            max_profile_calls=1,
+            dry_run_only=True,
+            allow_real_project=True,
+        ),
+        evidence_root=tmp_path,
+        run_id="w43a-real-project-dry-run",
+    )
+
+    assert report.status == RealProfileWorkflowStatus.VERIFIED
+    assert report.workflow_report is not None
+    assert report.workflow_report.promotion_ready is True
+    assert report.dry_run_only is True
+    assert report.promotion_attempted is False
+    assert report.reason_codes == ["real_profile_workflow_execute_authorized", "dry_run_no_promotion"]
+    assert report.source_repo_clean is True
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
