@@ -15,3 +15,5 @@ artifacts/
 local-notes/
 .hermes/provider-runs/
 .hermes/live-benchmarks/
+.hermes/workflow-smokes/
+.hermes/run_*.py

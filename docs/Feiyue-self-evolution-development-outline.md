@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`485 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, and Wave4-2 profile-worker bridge contracts；remote CI mirrors provider-free smokes）。Current verified baseline: `485 passed`.
+> **Verified baseline**：`486 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, and Wave4-2B real profile workflow smoke status contract；remote CI mirrors provider-free smokes）。Current verified baseline: `486 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`485 passed`。
+- `python -m pytest -q`：`486 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1568,6 +1568,22 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 ### Wave4-1 scope note
 
 Wave4-1 证明 **M10 real profile benchmark lane usable**：真实 Hermes profiles 能被安全、可预算、可脱敏地调用，并能产出 quality/latency/reliability evidence。它尚未证明真实 workflow worker execution；**M10 real multi-worker execution lane not yet implemented**，下一步必须把 profile runner 接到 M11 sandbox workflow，而不是继续只跑 prompt benchmark。
+
+## Completed Slice: Wave4-2B Real Profile Workflow Smoke
+
+### Wave4-2B completed
+
+- Marker: `WAVE4_2B_REAL_PROFILE_WORKFLOW_OK`。
+- Profile: `feiyue-weak-deepseek-flash`。
+- provider_call_count: 1。
+- workflow_status: verified。
+- verification_passed: true。
+- promotion_ready: true。
+- source checkout remained clean; the real profile output was parsed into `CandidateFileWrite` and executed only through the sandboxed `ProfileWorkflowBridge` / `ToyWorkflowExecutor` path.
+
+### Wave4-2B scope note
+
+Wave4-2B proves the first real worker-profile bridge: TaskContract → real weak Hermes profile JSON candidate writes → sandbox patch → pytest verifier → verified workflow report. It does not yet include real teacher escalation, multi-worker orchestration, or real-project production promotion.
 
 ## Recommended Next Slice
 
