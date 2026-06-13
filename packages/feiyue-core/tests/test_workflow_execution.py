@@ -219,6 +219,101 @@ def test_toy_workflow_teacher_retry_keeps_failure_when_revised_patch_fails(tmp_p
 
 
 
+def test_toy_workflow_multi_round_fake_teacher_retry_passes_on_second_retry(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m11-teacher-multi-pass",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        acceptance_criteria=["pytest passes"],
+        verification_commands=["python -m pytest -q"],
+        escalation_rule="Bound retries; each fake teacher hint must still be verifier-gated.",
+    )
+
+    report = ToyWorkflowExecutor().execute_with_teacher_retry(
+        source_repo=repo,
+        contract=contract,
+        initial_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a * b\n")],
+        teacher_guidance=[
+            "Multiplication is wrong, try a safer arithmetic operator.",
+            "Use addition exactly; success must come from pytest.",
+        ],
+        revised_writes=[
+            [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a / b\n")],
+            [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        ],
+        max_attempts=3,
+        project_name="toy-calculator",
+    )
+
+    assert report.status == WorkflowExecutionStatus.VERIFIED
+    assert report.verification_passed is True
+    assert report.promotion_ready is True
+    assert report.attempt_count == 3
+    assert report.bug_dossier is None
+    assert len(report.teacher_guidance_events) == 2
+    assert [event.request_id for event in report.teacher_guidance_events] == [
+        "teacher-request-m11-teacher-multi-pass-1",
+        "teacher-request-m11-teacher-multi-pass-2",
+    ]
+    assert [event.attempt_index for event in report.teacher_guidance_events] == [2, 3]
+    assert len(report.attempt_evidence) == 3
+    assert [attempt.attempt_index for attempt in report.attempt_evidence] == [1, 2, 3]
+    assert [attempt.verification_passed for attempt in report.attempt_evidence] == [False, False, True]
+    assert report.attempt_evidence[1].teacher_request_id == "teacher-request-m11-teacher-multi-pass-1"
+    assert report.attempt_evidence[2].teacher_request_id == "teacher-request-m11-teacher-multi-pass-2"
+    assert report.attempt_evidence[2].failure_reason is None
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+
+
+
+def test_toy_workflow_multi_round_fake_teacher_retry_stops_when_budget_exhausted(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="m11-teacher-multi-fail",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        acceptance_criteria=["pytest passes"],
+        verification_commands=["python -m pytest -q"],
+        escalation_rule="Stop after bounded fake teacher retries and hand off safely.",
+    )
+
+    report = ToyWorkflowExecutor().execute_with_teacher_retry(
+        source_repo=repo,
+        contract=contract,
+        initial_writes=[CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a * b\n")],
+        teacher_guidance=["Try division.", "Try subtraction."],
+        revised_writes=[
+            [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a / b\n")],
+            [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a - b\n")],
+            [CandidateFileWrite(path="calc.py", content="def add(a, b):\n    return a + b\n")],
+        ],
+        max_attempts=3,
+        project_name="toy-calculator",
+    )
+
+    assert report.status == WorkflowExecutionStatus.NEEDS_TEACHER
+    assert report.verification_passed is False
+    assert report.promotion_ready is False
+    assert report.attempt_count == 3
+    assert len(report.teacher_guidance_events) == 2
+    assert len(report.attempt_evidence) == 3
+    assert [attempt.verification_passed for attempt in report.attempt_evidence] == [False, False, False]
+    assert report.bug_dossier is not None
+    assert report.bug_dossier.task_id == "m11-teacher-multi-fail"
+    assert "retry_1" in report.bug_dossier.attempts
+    assert "retry_2" in report.bug_dossier.attempts
+    assert "maximum fake teacher retry attempts exhausted" in report.bug_dossier.teacher_request
+    assert report.lesson_candidate is None
+    assert report.regression_check is None
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+
+
+
 def test_promotes_verified_patch_to_target_branch_without_mutating_current_checkout(tmp_path: Path) -> None:
     repo = tmp_path / "toy-repo"
     _init_toy_repo(repo)
