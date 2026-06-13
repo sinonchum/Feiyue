@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`525 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `525 passed`.
+> **Verified baseline**：`549 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `549 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`525 passed`。
+- `python -m pytest -q`：`549 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1759,8 +1759,50 @@ Wave4-5B proves the approved-plan-to-dry-run execution seam. Wave4-5C productize
 
 ### Wave4-5C remaining scope
 
-Wave4-5C is still fake-first/provider-free for execution. The next safe slice is Wave4-5D: real-profile multi-worker dry-run smoke using existing Hermes profile authorization, with teacher escalation remaining separately gated.
+Wave4-5C was still fake-first/provider-free for execution. The parallel A-F completion added the remaining gated foundations while preserving explicit authorization boundaries for live providers and production side effects.
+
+## Completed Parallel Lanes: Remaining A-F Foundations
+
+### Lane A / Wave4-5D completed
+
+- Added the authorization-gated Hermes profile runner seam for selected-worker multi-worker dry-runs.
+- `run-approved-multi-worker-dry-run` can select `--profile-runner fake|hermes`; fake remains default and Hermes mode requires a persisted authorized provider run record.
+- Missing/mismatched Hermes authorization blocks before any profile call and writes dry-run-safe blocked evidence.
+
+### Lane B completed
+
+- Added `MultiWorkerTeacherEscalationAuthorization` for separate teacher escalation/retry approval.
+- Multi-worker dry-run now fails closed with `teacher_escalation_authorization_missing` when verifier failure would require a teacher but authorization is absent.
+- Exact fake teacher authorization permits teacher guidance plus worker retry evidence while keeping dry_run_only: true and promotion_attempted: false.
+
+### Lane C completed
+
+- Added `CapabilityHistoryCollector` and `feiyue-runs capability-history --write-report`.
+- Longitudinal history reads workflow-smoke, workflow-promotion, and multi-worker workflow evidence and writes `.hermes/capability-history/history.jsonl`, `latest.json`, and `latest.md`.
+- Reports preserve `routing_table_mutated: false`; routing learning remains human-reviewed.
+
+### Lane D completed
+
+- Added sandboxed curator asset promotion into project-local `.hermes/assets`, `.hermes/lessons`, `.hermes/evals`, and `.hermes/task-templates` allowlisted paths.
+- Promotion evidence records proposal id, target path, content hash, rollback snapshot, promoted flag, and reason codes.
+- Missing/rejected approval, path escape, duplicate content, and missing rollback reference all fail closed; rollback simulation restores or deletes sandbox assets.
+
+### Lane E completed
+
+- Added read-only review inbox aggregation for pending routing proposals, workflow promotions, multi-worker plan approvals/runs, and asset proposals.
+- Added `feiyue-runs review-inbox --format json`; every item records `mutates_state: false`.
+- No approval/apply/run/promotion side effects are performed by the inbox.
+
+### Lane F completed
+
+- Added local-only promotion lifecycle contracts for PR-plan evidence and rollback simulation.
+- PR plans record `external_pr_created: false`; rollback evidence records local verifier-backed rollback attempts.
+- Missing promotion evidence, dirty repos, missing rollback refs, non-allowlisted target branches, and non-promoted evidence fail closed.
+
+### Remaining scope after A-F
+
+The repo now has the gated seams/foundations for all A-F lanes. Remaining live/production work is still deliberately authorization-gated: actual real Hermes profile multi-worker smoke execution, real teacher escalation calls, GitHub PR creation, production promotion/rollback, and full write-capable review UI require exact approvals and configured credentials.
 
 ## Recommended Next Slice
 
-当前下一步是 **Wave4-5D：Real-profile Multi-worker Dry-run Smoke**。目标是让 productized `approve/run-approved-multi-worker-dry-run` flow 接入真实 Hermes profile runner，但仍只做 dry-run，不做 promotion；teacher escalation 继续单独授权。
+当前下一步是 **Live A/B Smoke：real Hermes profile multi-worker dry-run + real teacher escalation under exact authorization**。先用已完成的 gates 生成 approval/evidence，再执行一次受控真实 profile smoke；production PR/promotion 仍保持禁用。
