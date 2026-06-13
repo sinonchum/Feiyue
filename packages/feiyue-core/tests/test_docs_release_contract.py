@@ -9,6 +9,7 @@ RELEASE_CHECKLIST = REPO_ROOT / "docs" / "release-checklist.md"
 CONTRIBUTING = REPO_ROOT / "CONTRIBUTING.md"
 ARCHITECTURE = REPO_ROOT / "docs" / "architecture.md"
 DOCS_INDEX = REPO_ROOT / "docs" / "index.md"
+REAL_PROVIDER_PLAN = REPO_ROOT / "docs" / "real-provider-integration-plan.md"
 ARCHITECTURE_DIAGRAM = REPO_ROOT / "docs" / "assets" / "feiyue-architecture.svg"
 OUTLINE = REPO_ROOT / "docs" / "Feiyue-self-evolution-development-outline.md"
 
@@ -32,6 +33,7 @@ def test_docs_index_links_canonical_docs_and_provider_free_surfaces() -> None:
     assert "architecture.md" in content
     assert "assets/feiyue-architecture.svg" in content
     assert "release-checklist.md" in content
+    assert "real-provider-integration-plan.md" in content
     assert "../CONTRIBUTING.md" in content
     assert "provider-free example smoke" in content
     assert "provider-free benchmark smoke" in content
@@ -48,8 +50,31 @@ def test_release_checklist_captures_m14_gates_and_authorization_boundaries() -> 
     assert "STATIC_EXPORT_ALL_OK" in content
     assert "SECRET_SCAN_OK" in content
     assert "Real provider execution requires explicit authorization" in content
+    assert "docs/real-provider-integration-plan.md" in content
     assert "Hermes config mutation is out of scope" in content
     assert "Current baseline: 389 passed" in content
+
+
+def test_real_provider_integration_plan_exists_and_defines_authorized_sequence() -> None:
+    content = REAL_PROVIDER_PLAN.read_text(encoding="utf-8")
+
+    assert "# Real Provider Integration Plan" in content
+    assert "real provider execution" in content
+    assert "Hermes profile subprocess" in content
+    assert "real HTTP smoke" in content
+    assert "teacher escalation" in content
+    assert "real weak/strong benchmark" in content
+    assert "explicit human authorization" in content
+    assert "provider-free fake tests" in content
+    assert "redaction/diagnostics" in content
+    assert "isolated dry-run/smoke" in content
+    assert "no global Hermes config mutation" in content
+    assert "auditable run evidence" in content
+    assert "rollback/abort gates" in content
+    assert "Authorization Checklist" in content
+    assert "Forbidden Actions" in content
+    assert "Do not read, print, copy, or commit real credentials" in content
+    assert "Do not implement real provider calls in this documentation lane" in content
 
 
 def test_contributing_guide_documents_tdd_provider_free_and_secret_rules() -> None:

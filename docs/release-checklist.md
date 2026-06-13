@@ -10,6 +10,7 @@ Current release scope:
 - CI-verifiable docs and commands.
 - No real provider credentials.
 - No Hermes configuration mutation.
+- Future real-provider work must follow `docs/real-provider-integration-plan.md` before any real provider execution, Hermes profile subprocess, real HTTP smoke, teacher escalation, or real weak-model vs strong-model benchmark.
 
 Out of scope without explicit authorization:
 
