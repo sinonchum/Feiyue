@@ -134,6 +134,7 @@ class MultiWorkerOrchestrationPlanner:
                 "required_capabilities": list(required_capabilities),
                 "risk_level": risk_level,
                 "routing_path": ".hermes/model-routing.yaml",
+                "available_teacher_profile_id": teacher.profile_id if teacher is not None else None,
                 "writes_only_local_plan_evidence": True,
             },
         )
