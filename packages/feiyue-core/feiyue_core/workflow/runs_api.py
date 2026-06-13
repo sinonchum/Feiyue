@@ -26,7 +26,7 @@ def render_runs_dashboard(project_root: str | Path) -> str:
         rows.append(
             """
             <tr class="{risk_class}">
-              <td><a href="/runs/{task_id}">{task_id}</a></td>
+              <td><a href="/dashboard/runs/{task_id}">{task_id}</a></td>
               <td>{status}</td>
               <td>{policy_action}</td>
               <td>{next_safe_action}</td>
@@ -137,6 +137,103 @@ def render_runs_dashboard(project_root: str | Path) -> str:
 </html>"""
 
 
+def _detail_item(label: str, value: object) -> str:
+    return f"<li><span>{_esc(label)}</span><strong>{_esc(value)}</strong></li>"
+
+
+def render_run_detail(project_root: str | Path, task_id: str) -> str:
+    """Render one run evidence record as a human-readable read-only HTML page."""
+
+    evidence = RunEvidenceLoader(project_root).load(task_id)
+    policy_items = "".join(
+        [
+            _detail_item("Policy Action", evidence.policy_action),
+            _detail_item("Policy Reason", evidence.policy_reason),
+            _detail_item("Next Safe Action", evidence.next_safe_action),
+            _detail_item("Safe To Retry", "yes" if evidence.safe_to_retry else "no"),
+        ]
+    )
+    action_items = "".join(
+        [
+            _detail_item("Execution Performed", evidence.execution_performed),
+            _detail_item("Retry Performed", evidence.retry_performed),
+            _detail_item("Promotion Status", evidence.promotion_status),
+            _detail_item("Promotion Side Effect Performed", evidence.promotion_side_effect_performed),
+        ]
+    )
+    approval_items = "".join(
+        [
+            _detail_item("Approval Exists", evidence.approval_exists),
+            _detail_item("Approval ID", evidence.approval_id),
+            _detail_item("Approver", evidence.approval_approver),
+            _detail_item("Approved Action", evidence.approval_action),
+            _detail_item("Approval Applies", evidence.approval_applies),
+        ]
+    )
+    report_items = "".join(
+        _detail_item(label, path) for label, path in sorted(evidence.report_paths.items())
+    ) or _detail_item("Reports", "none")
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feiyue Run Detail</title>
+  <style>
+    :root {{ --ink:#111827; --muted:#4b5563; --line:#d1d5db; --panel:#fff; --surface:#f8fafc; --accent:#0f766e; --risk:#991b1b; }}
+    * {{ box-sizing: border-box; }}
+    body {{ margin:0; background:var(--surface); color:var(--ink); font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    main {{ max-width:960px; margin:0 auto; padding:40px 24px; }}
+    header {{ border-bottom:1px solid var(--line); padding-bottom:24px; margin-bottom:24px; }}
+    .eyebrow {{ text-transform:uppercase; letter-spacing:.14em; font-size:11px; color:var(--accent); font-weight:700; }}
+    h1 {{ margin:8px 0; font-size:32px; letter-spacing:-.03em; }}
+    p {{ color:var(--muted); line-height:1.6; margin:0; }}
+    nav {{ display:flex; gap:16px; margin-top:18px; flex-wrap:wrap; }}
+    a {{ color:var(--accent); text-decoration:none; font-weight:700; }}
+    a:hover {{ text-decoration:underline; }}
+    .summary {{ display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:12px; margin:24px 0; }}
+    .card, section {{ background:var(--panel); border:1px solid var(--line); border-radius:4px; }}
+    .card {{ padding:18px; }}
+    .label {{ color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.12em; }}
+    .value {{ display:block; margin-top:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:20px; font-weight:700; overflow-wrap:anywhere; }}
+    section {{ margin-top:16px; }}
+    h2 {{ font-size:15px; margin:0; padding:16px 18px; border-bottom:1px solid var(--line); }}
+    ul {{ margin:0; padding:0; list-style:none; }}
+    li {{ display:flex; justify-content:space-between; gap:20px; padding:12px 18px; border-top:1px solid #eef2f7; }}
+    li:first-child {{ border-top:0; }}
+    li span {{ color:var(--muted); }}
+    li strong {{ text-align:right; overflow-wrap:anywhere; }}
+    .attention {{ color:var(--risk); }}
+    @media (max-width:760px) {{ .summary {{ grid-template-columns:1fr; }} main {{ padding:24px 12px; }} li {{ display:block; }} li strong {{ display:block; text-align:left; margin-top:6px; }} }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">Read-only run evidence</div>
+      <h1>Feiyue Run Detail</h1>
+      <p>Task <strong>{_esc(evidence.task_id)}</strong> is rendered for human inspection only. This view does not execute, retry, promote, approve, or mutate state.</p>
+      <nav>
+        <a href="/dashboard">Back to dashboard</a>
+        <a href="/runs/{_esc(evidence.task_id)}">Evidence JSON</a>
+        <a href="/runs/{_esc(evidence.task_id)}/handoff">Handoff Markdown</a>
+      </nav>
+    </header>
+    <div class="summary">
+      <div class="card"><span class="label">Status</span><span class="value">{_esc(evidence.status)}</span></div>
+      <div class="card"><span class="label">Next Safe Action</span><span class="value attention">{_esc(evidence.next_safe_action)}</span></div>
+      <div class="card"><span class="label">Approval</span><span class="value">{_esc('exists' if evidence.approval_exists else 'missing')}</span></div>
+    </div>
+    <section><h2>Policy Decision</h2><ul>{policy_items}</ul></section>
+    <section><h2>Action Evidence</h2><ul>{action_items}</ul></section>
+    <section><h2>Approval Evidence</h2><ul>{approval_items}</ul></section>
+    <section><h2>Report Paths</h2><ul>{report_items}</ul></section>
+  </main>
+</body>
+</html>"""
+
+
 def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHandler]:
     """Create a read-only HTTP handler for persisted Feiyue run evidence."""
 
@@ -151,6 +248,11 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                 if path in ("/", "/dashboard"):
                     self._send_text(200, render_runs_dashboard(root), content_type="text/html; charset=utf-8")
                     return
+                if path.startswith("/dashboard/runs/"):
+                    parts = [part for part in path.split("/") if part]
+                    if len(parts) == 3:
+                        self._send_text(200, render_run_detail(root, parts[2]), content_type="text/html; charset=utf-8")
+                        return
                 if path == "/runs":
                     self._send_json(200, RunCatalog(root).summary().model_dump(mode="json"))
                     return

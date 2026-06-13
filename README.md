@@ -36,6 +36,7 @@ Read-only API endpoints:
 ```text
 GET /
 GET /dashboard
+GET /dashboard/runs/<task_id>
 GET /runs
 GET /runs/<task_id>
 GET /runs/<task_id>/handoff

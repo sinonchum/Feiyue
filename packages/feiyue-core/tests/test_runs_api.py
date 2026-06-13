@@ -82,8 +82,41 @@ def test_runs_api_dashboard_renders_human_readable_html(tmp_path) -> None:
     assert "Approval Required" in html
     assert "m13-api-demo" in html
     assert "request_human_approval" in html
+    assert 'href="/dashboard/runs/m13-api-demo"' in html
     assert "<pre>" not in html
     assert "JSON.stringify" not in html
+
+
+def test_runs_api_dashboard_run_detail_renders_human_readable_evidence(tmp_path) -> None:
+    _write_run_evidence(tmp_path, "m13-api-demo")
+
+    with _api_server(tmp_path) as base_url:
+        html = _get_html(f"{base_url}/dashboard/runs/m13-api-demo")
+
+    assert "Feiyue Run Detail" in html
+    assert "m13-api-demo" in html
+    assert "Policy Decision" in html
+    assert "Action Evidence" in html
+    assert "Approval Evidence" in html
+    assert "request_human_approval" in html
+    assert 'href="/runs/m13-api-demo"' in html
+    assert 'href="/runs/m13-api-demo/handoff"' in html
+    assert "<pre>" not in html
+    assert "JSON.stringify" not in html
+
+
+def test_runs_api_dashboard_run_detail_missing_run_returns_json_404(tmp_path) -> None:
+    with _api_server(tmp_path) as base_url:
+        try:
+            _get_html(f"{base_url}/dashboard/runs/missing-task")
+        except HTTPError as exc:
+            assert exc.code == 404
+            payload = json.loads(exc.read().decode("utf-8"))
+        else:
+            raise AssertionError("Expected 404")
+
+    assert payload["error"] == "run_evidence_not_found"
+    assert payload["task_id"] == "missing-task"
 
 
 def test_runs_api_get_runs_returns_catalog_summary(tmp_path) -> None:
