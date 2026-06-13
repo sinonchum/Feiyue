@@ -17,6 +17,16 @@ from feiyue_core.evaluation.comparison import (
     build_strategy_comparison_report,
     cost_normalized_quality,
 )
+from feiyue_core.evaluation.live_benchmark import (
+    BenchmarkAuthorization,
+    BenchmarkMode,
+    BenchmarkRunPlan,
+    BenchmarkRunResult,
+    BenchmarkRunStatus,
+    StrategyRole,
+    execute_benchmark_run,
+    plan_benchmark_run,
+)
 from feiyue_core.evaluation.record import (
     CreativeAcceptanceStatus,
     StrategyEvaluationRecord,
@@ -31,7 +41,12 @@ from feiyue_core.evaluation.trace_fixture import (
 
 __all__ = [
     "BENCHMARK_CASE_SCHEMA_VERSION",
+    "BenchmarkAuthorization",
     "BenchmarkCase",
+    "BenchmarkMode",
+    "BenchmarkRunPlan",
+    "BenchmarkRunResult",
+    "BenchmarkRunStatus",
     "BenchmarkStrategyComparison",
     "BenchmarkStrategyMetrics",
     "BenchmarkSuite",
@@ -42,6 +57,7 @@ __all__ = [
     "StrategyComparisonReport",
     "StrategyEvaluationRecord",
     "StrategyOutcome",
+    "StrategyRole",
     "StrategyScorecard",
     "build_benchmark_strategy_comparison",
     "build_strategy_comparison_report",
@@ -49,4 +65,6 @@ __all__ = [
     "cost_normalized_quality",
     "default_strategy_trace_fixtures",
     "default_toy_benchmark_suite",
+    "execute_benchmark_run",
+    "plan_benchmark_run",
 ]
