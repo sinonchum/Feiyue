@@ -40,8 +40,8 @@ Feiyue 追求三个战略结果：
 
 - Core package：`packages/feiyue-core`
 - Python source/test 文件：持续扩展中（当前 provider-free foundation 覆盖 workflow、curation、capability、creative、evaluation、providers）。
-- 当前完整测试：`371 passed`
-- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation、M12 policy governor / run evidence / YAML policy config / human approval primitive / approval evidence handoff / run catalog / `feiyue-runs` local inspection CLI / read-only local API/dashboard/static export manifest foundation。
+- 当前完整测试：`374 passed`
+- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation、M12 policy governor / run evidence / YAML policy config / human approval primitive / approval evidence handoff / run catalog / `feiyue-runs` local inspection CLI / read-only local API/dashboard/static export manifest+verify foundation。
 
 ### 1.2 已完成核心资产
 
@@ -1401,7 +1401,7 @@ Update:
 - local inspection CLI：`python -m feiyue_core.workflow.runs_cli --root <project> list|show|handoff` 可列出 run、输出 machine-readable evidence、渲染 fallback handoff。
 - run catalog：`RunCatalog.summary()` 提供 dashboard/API 前置的 typed aggregate：total runs、safe-to-retry count、next-action counts、compact run rows。
 - read-only local API/dashboard：`create_runs_api_handler(root)` / `feiyue-runs-api` 暴露 `GET /`、`GET /dashboard`、`GET /dashboard/runs/{task_id}`、`GET /runs`、`GET /runs/{task_id}`、`GET /runs/{task_id}/handoff`，拒绝 write methods；dashboard 以 human-readable HTML 展示 total runs、safe-to-retry、approval required、next-safe-action distribution 和 run rows；drill-down 页以 human-readable HTML 展示单个 run 的 policy decision、action evidence、approval evidence 和 report paths。
-- static report export：`export_static_runs_report(project_root, output_dir)` / `feiyue-runs-export` 将 dashboard 与 run detail 产出为离线 HTML 文件（`index.html` + `manifest.json` + `runs/<task_id>.html`），用于无本地 server 的 fallback/human review；manifest 记录 schema version、generated_at、source evidence path/hash、导出 HTML path/hash。
+- static report export/verify：`export_static_runs_report(project_root, output_dir)` / `feiyue-runs-export` 将 dashboard 与 run detail 产出为离线 HTML 文件（`index.html` + `manifest.json` + `runs/<task_id>.html`），用于无本地 server 的 fallback/human review；manifest 记录 schema version、generated_at、source evidence path/hash、导出 HTML path/hash；`verify_static_runs_report(manifest_path)` / `feiyue-runs-export-verify` 可离线检测导出 HTML 或 source evidence 是否被篡改。
 - budget gates：worker retry、teacher call、token budget。
 - risk/privacy gates：high-risk operation escalates；sensitive data requires privacy approval。
 - workflow integration：candidate execution、teacher retry、verified promotion 已可接入 policy gate。
@@ -1425,6 +1425,7 @@ Functional acceptance：
 - `GET /runs/{task_id}` → returns run evidence JSON or stable 404 JSON.
 - `GET /runs/{task_id}/handoff` → returns compact Markdown handoff.
 - `feiyue-runs-export --root <project> --out <dir>` → writes offline `index.html`, `manifest.json`, and per-run detail pages for serverless review.
+- `feiyue-runs-export-verify <manifest.json>` → verifies exported HTML hashes and source evidence hashes, returning non-zero on tamper/missing files.
 - POST/PUT/PATCH/DELETE → return 405; API remains read-only.
 - missing CLI run evidence → exits non-zero with stable typed missing evidence message.
 - non-matching human approval → still escalate; approvals do not grant broad permission。
