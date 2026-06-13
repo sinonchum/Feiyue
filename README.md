@@ -80,6 +80,7 @@ GET /runs/<task_id>/handoff
 - [`docs/architecture.md`](docs/architecture.md) — provider-free architecture flow, roles, evidence/handoff surfaces, and gated future work.
 - [`docs/assets/feiyue-architecture.svg`](docs/assets/feiyue-architecture.svg) — static flat SVG diagram of the Feiyue provider-free workflow.
 - [`docs/release-checklist.md`](docs/release-checklist.md) — release gate checklist covering local commands, CI requirements, secret scan, and authorization boundaries.
+- [`docs/real-provider-integration-plan.md`](docs/real-provider-integration-plan.md) — plan-only sequence and safety checklist for explicitly authorized real provider execution, Hermes profile subprocess smoke, teacher escalation, and real weak/strong benchmark work.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution rules for TDD, provider-free defaults, secret handling, and CI expectations.
 - [`docs/resilient-session-runtime.md`](docs/resilient-session-runtime.md) — feature design for anti-amnesia runtime recovery across model fallback, network/power loss, and unknown side effects.
 - [`docs/AI递归自我提升现状讨论 2026-06-12.md`](docs/AI递归自我提升现状讨论%202026-06-12.md) — discussion notes on practical Recursive Self-Improvement (RSI), synthetic data, self-play, AI feedback, inference-time self-correction, environment-driven feedback, and agent loops.

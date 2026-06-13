@@ -14,6 +14,7 @@ This index is a static documentation stub for the provider-free Feiyue foundatio
 - [Architecture](architecture.md) — provider-free system flow, role boundaries, evidence surfaces, and gated future work.
 - [Static architecture diagram](assets/feiyue-architecture.svg) — flat SVG diagram of the human-to-curator workflow.
 - [Release Checklist](release-checklist.md) — local verification commands, CI gates, secret scan, and authorization boundaries.
+- [Real Provider Integration Plan](real-provider-integration-plan.md) — plan-only authorization sequence, forbidden actions, no global Hermes config mutation, auditable evidence, and rollback/abort gates for future real provider execution.
 - [Contributing Guide](../CONTRIBUTING.md) — TDD, provider-free defaults, secret handling, and CI expectations.
 
 ## Provider-Free Examples and Benchmarks
