@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`432 passed`（local full gate for Wave 1/2 provider-free lanes, M14 provider-free smokes, docs/release contract；remote CI mirrors provider-free smokes）。
+> **Verified baseline**：`469 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract；remote CI mirrors provider-free smokes）。
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1333,9 +1333,9 @@ M5 Project Knowledge
 | M6 Curator / Distillation | Done Foundation+ | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate、curation smoke、asset proposal persistence、append-only review decisions 与 provider-free promotion gate 已完成；dedup / 正式 `.hermes` asset write 仍未完成。 |
 | M7 Weak Model Capability Expansion | Done Foundation | CapabilityLadder、WorkerPerformanceRecord、ModelCapabilityProfile、promotion/demotion recommendation rules 与 capability smoke 已完成；真实 worker 数据与 routing adapter 后续增强。 |
 | M8 Creative Role Development | Done Foundation | CreativeBrief、CreativeVariant、CreativeCritique、UserSelectionFeedback 与 creative smoke 已完成；opportunity discovery、accepted-proposal metrics、真实 creative provider 后续增强。 |
-| M9 Strategy/Evaluation Harness | Done Foundation+ | StrategyEvaluationRecord、StrategyScorecard、BenchmarkSuite、StrategyComparisonReport、evaluation smoke、benchmark case schema、provider-free trace fixtures 与 fixture strategy comparison contracts 已完成；真实 benchmark runner、真实 weak/strong calls 与 longitudinal gain 仍未完成。 |
-| M10 Real Provider / Multi-Profile Worker Integration | Partial Foundation+ | FakeProfileRunner、ProviderDiagnostic、ProviderFailureKind、redaction、profile diagnostic smoke 与 real-provider plan-only authorization checklist 已完成；真实 Hermes profile subprocess、真实 HTTP provider smoke、真实 teacher escalation 需明确授权。 |
-| M11 Real Workflow Execution / Promotion | Provider-free Foundation+ | CandidateFileWrite、ToyWorkflowExecutor、verifier-gated readiness、BugDossier on failure、bounded multi-round fake teacher retry、verified branch promotion、run report persistence、source clean guarantee 已完成；真实 worker/provider patch 未完成。 |
+| M9 Strategy/Evaluation Harness | Done Foundation++ | StrategyEvaluationRecord、StrategyScorecard、BenchmarkSuite、StrategyComparisonReport、evaluation smoke、benchmark case schema、provider-free trace fixtures、fixture strategy comparison contracts 与 gated live benchmark plan/replay contracts 已完成；真实 weak/strong provider calls 与 longitudinal gain 仍未完成。 |
+| M10 Real Provider / Multi-Profile Worker Integration | Partial Foundation++ | FakeProfileRunner、ProviderDiagnostic、ProviderFailureKind、redaction、profile diagnostic smoke、real-provider plan-only authorization checklist、typed authorization/evidence records 与 gated Hermes profile subprocess runner 已完成；真实 HTTP provider smoke、真实 teacher escalation 执行需精确授权。 |
+| M11 Real Workflow Execution / Promotion | Provider-free Foundation++ | CandidateFileWrite、ToyWorkflowExecutor、verifier-gated readiness、BugDossier on failure、bounded multi-round fake teacher retry、verified branch promotion、production promotion safety/rollback boundary、run report persistence、source clean guarantee 已完成；真实 worker/provider patch 未完成。 |
 | M12 Safety / Budget / Policy Governor | Done Foundation | PolicyGovernor、budget/risk/privacy gates、PolicyGovernorConfigLoader、HumanApprovalRecord、approval persistence、run-evidence、safe_to_retry/next_safe_action、handoff summary 与 action evidence 已完成。 |
 | M13 Productization / Dashboard / API | Done Foundation+ | `feiyue-runs` CLI、RunCatalog、read-only API/dashboard、drill-down、read-only asset catalog/API/dashboard page、static HTML export、manifest SHA256、verifier、portable bundle、export-all pipeline 已完成；full review UI 尚未完整产品化。 |
 | M14 Release Hardening / CI / Documentation | Partial Foundation+ | GitHub Actions CI、CI contract tests、compileall、pytest、static export-all smoke、provider-free example smoke、provider-free benchmark smoke、release checklist、contributing guide、architecture doc、docs index、static SVG architecture diagram、secret scan、Node24 actions runtime opt-in 已完成；full docs site 仍未完成。 |
@@ -1351,7 +1351,7 @@ Blueprint / Doctrine
 → anti-amnesia runtime
 → fake student/teacher candidate loop
 → workflow assets
-→ curator/capability/creative/evaluation foundations + asset proposal and benchmark-prep contracts
+→ curator/capability/creative/evaluation foundations + asset proposal, benchmark-prep, live-benchmark plan, provider-evidence, and promotion-safety contracts
 → policy governor + approval/action evidence
 → run evidence and asset catalog CLI/API/dashboard/static export/bundle
 → GitHub Actions CI gate
@@ -1361,9 +1361,9 @@ Blueprint / Doctrine
 
 1. 真实 provider / Hermes profile execution。
 2. 真实弱模型 vs 强模型 benchmark 调用与长期指标。
-3. 真实多 worker routing 与 teacher escalation。
+3. 真实多 worker execution 与 teacher escalation 的实际 provider 调用。
 4. Curator proposal 到正式 `.hermes` asset 的 dedup / promotion 写入闭环。
-5. 真实项目自动 promotion / rollback 的生产级安全边界。
+5. 真实项目自动 promotion / rollback 的外部生产执行。
 6. M13 全面 productization：lesson/eval/routing/capability/creative proposal review UI。
 7. M14 release hardening：full docs site。
 
@@ -1525,11 +1525,29 @@ Update:
 
 ### Wave 1/2 local verification
 
-- `python -m pytest -q`：`432 passed`。
+- `python -m pytest -q`：`469 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - `STATIC_EXPORT_ALL_OK`、`PROVIDER_FREE_EXAMPLE_SMOKE_OK`、`BENCHMARK_SMOKE_OK`、`SECRET_SCAN_OK` 均已本地验证。
 
+## Completed Parallel Wave: Wave 3
+
+### Wave 3 completed
+
+- **W3 Provider authorization/evidence + gated Hermes profile subprocess**：新增 typed authorization/evidence records、`.hermes/provider-runs/<run_id>/run-evidence.json` writer、global config mutation blocker 与 fake-tested subprocess adapter。真实 Hermes profile command 仍需 exact authorization；默认 fail closed。
+- **W3 Gated live benchmark and multi-worker routing contracts**：新增 live benchmark replay/plan contracts 与 multi-worker routing / teacher escalation gate。replay mode provider-free；live mode 无授权时 blocked，有授权时也只生成计划，不自动联网执行。
+- **W3 Promotion/rollback safety boundary**：新增 production promotion request / safety report，要求 verified report、exact human approval、branch allowlist、clean source repo、rollback plan/ref、post-promotion target-ref verification；外部生产 promotion 仍需独立授权。
+
+### Wave 3 local verification
+
+- `python -m pytest -q`：`469 passed`。
+- `python -m compileall -q feiyue_core`：passed。
+- `git diff --check`：passed。
+
+### Wave 3 scope note
+
+Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher escalation / production promotion 的 **authorization-gated seams**，但没有执行真实 provider/network calls、没有读取凭据、没有修改 Hermes config、没有进行真实外部 production promotion。
+
 ## Recommended Next Slice
 
-当前更稳的下一步是 **M6 Formal Asset Promotion/Dedup Writer**：在已有 asset proposal persistence 和 review gate 基础上，增加去重/合并策略与受控正式 `.hermes` asset 写入，但仍需保持 provider-free、tmp_path-first、review-approved-only。
+当前更稳的下一步是 **M6 Formal Asset Promotion/Dedup Writer** 或 **authorized live smoke run**。前者继续 provider-free，把 asset proposal 安全推进到正式 `.hermes` asset；后者需要用户按 `docs/real-provider-integration-plan.md` 提供 exact provider/profile/command/budget/evidence-retention 授权后才可执行。
