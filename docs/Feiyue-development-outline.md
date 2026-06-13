@@ -2,7 +2,7 @@
 
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 >
-> **Goal:** 建立一个以外部验证器为核心的系统层自我进化闭环：任务输入、student 候选生成、沙箱执行、验证反馈、候选修订、稀疏 teacher 指导、指导蒸馏、策略优化、技能沉淀、评测对比、审计回放。Feiyue 必须让 mimo-v2.5-pro、deepseek-v4-pro 等 student models 通过系统进化尽量接近强 teacher model 的输出质量，并在模型切换后保持质量约束。
+> **Goal:** 建立一个以外部验证器为核心的系统层自我进化闭环：任务输入、student 候选生成、沙箱执行、验证反馈、候选修订、稀疏 teacher 指导、指导蒸馏、策略优化、技能沉淀、评测对比、审计回放。Feiyue 必须让 mimo-v2.5-pro、deepseek-v4-pro 等 student models 通过系统进化尽量接近 GPT-5.5 / Gemini 3.1 Pro 等强 teacher model 的输出质量，并在模型切换后保持质量约束。
 >
 > **Canonical reference:** 后续开发和计划默认以 [`Feiyue-system-doctrine.md`](Feiyue-system-doctrine.md) 为准；除非用户特别说明，不得把 Feiyue 简化为普通弱模型 wrapper、普通 fallback runtime 或普通 code repair bot。
 >

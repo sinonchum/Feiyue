@@ -12,6 +12,9 @@ DOCS_INDEX = REPO_ROOT / "docs" / "index.md"
 REAL_PROVIDER_PLAN = REPO_ROOT / "docs" / "real-provider-integration-plan.md"
 ARCHITECTURE_DIAGRAM = REPO_ROOT / "docs" / "assets" / "feiyue-architecture.svg"
 OUTLINE = REPO_ROOT / "docs" / "Feiyue-self-evolution-development-outline.md"
+PRD = REPO_ROOT / "docs" / "Feiyue-PRD.md"
+SYSTEM_DOCTRINE = REPO_ROOT / "docs" / "Feiyue-system-doctrine.md"
+DEVELOPMENT_OUTLINE = REPO_ROOT / "docs" / "Feiyue-development-outline.md"
 
 
 def test_readme_indexes_release_contribution_and_architecture_docs() -> None:
@@ -132,3 +135,11 @@ def test_outline_marks_docs_release_checklist_slice_done() -> None:
     assert "docs/release-checklist.md" in content
     assert "CONTRIBUTING.md" in content
     assert "docs/architecture.md" in content
+
+
+def test_canonical_docs_use_gemini_31_pro_for_strong_model_examples() -> None:
+    for path in (PRD, SYSTEM_DOCTRINE, DEVELOPMENT_OUTLINE):
+        content = path.read_text(encoding="utf-8")
+        assert "Gemini 3.1 Pro" in content
+        assert "Gemini 2.5 Pro" not in content
+        assert "gemini-2.5-pro" not in content.lower()

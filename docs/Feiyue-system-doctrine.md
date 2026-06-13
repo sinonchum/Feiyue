@@ -29,7 +29,7 @@ Feiyue 的“进化”属于系统层，而不默认意味着在线修改基础�
 
 ## 2. Not Merely a Weak-Model Enhancement Wrapper
 
-Feiyue 需要让 mimo-v2.5-pro、deepseek-v4-pro 等相对弱或低成本模型，在系统进化后尽量获得接近 Opus、Fable、GPT-5.5 等强模型的输出质量。
+Feiyue 需要让 mimo-v2.5-pro、deepseek-v4-pro 等相对弱或低成本模型，在系统进化后尽量获得接近 GPT-5.5 / Gemini 3.1 Pro 等强模型的输出质量。
 
 但这不等于 Feiyue 只是“弱模型增强框架”。
 
@@ -49,7 +49,7 @@ Feiyue 需要让 mimo-v2.5-pro、deepseek-v4-pro 等相对弱或低成本模型�
 
 ## 3. Strong Models as Sparse Teachers
 
-GPT-5.5、Opus、Fable 等强模型不应默认作为全程 executor。
+GPT-5.5、Gemini 3.1 Pro 等强模型不应默认作为全程 executor。
 
 它们在 Feiyue 中的默认角色是：
 
@@ -73,7 +73,7 @@ Feiyue 的 provider / model 系统必须区分角色，而不是只有“主模�
 建议角色：
 
 - **Student Model**：默认执行者，例如 mimo-v2.5-pro、deepseek-v4-pro。
-- **Teacher Model**：稀疏介入的强模型，例如 GPT-5.5 / Opus / Fable。
+- **Teacher Model**：稀疏介入的强模型，例如 GPT-5.5 / Gemini 3.1 Pro。
 - **Reviewer Model**：审查 candidate、风险、遗漏约束。
 - **Labeler Model**：标注失败原因和经验类型。
 - **Judge Auxiliary Model**：只能辅助解释，不能单独决定成功。

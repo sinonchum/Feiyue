@@ -38,7 +38,7 @@ routes:
   worker:
     primary: claude-sonnet
     fallback: codex
-    reviewer: gemini-review
+    reviewer: gemini-3.1-pro
   creative_expansion:
     primary: claude-opus
   prd:
@@ -57,7 +57,7 @@ routes:
     assert table.routes["worker"] == RoleRoute(
         primary="claude-sonnet",
         fallback="codex",
-        reviewer="gemini-review",
+        reviewer="gemini-3.1-pro",
     )
     assert table.routes["teacher_debug"].teacher == "teacher-profile"
 

@@ -3,7 +3,7 @@
 > **版本**：v0.1
 > **日期**：2026-06-12
 > **仓库**：Feiyue
-> **定位**：一个面向代码、推理、研究与工具型任务的“工程化自我提升”系统；它通过系统层自我进化、弱/强模型角色协作、外部验证器、教师指导蒸馏和持久化质量约束，让 mimo-v2.5-pro、deepseek-v4-pro 等 student models 在模型切换和低强模型调用条件下尽量获得接近 Opus、Fable、GPT-5.5 等 teacher models 的输出质量。
+> **定位**：一个面向代码、推理、研究与工具型任务的“工程化自我提升”系统；它通过系统层自我进化、弱/强模型角色协作、外部验证器、教师指导蒸馏和持久化质量约束，让 mimo-v2.5-pro、deepseek-v4-pro 等 student models 在模型切换和低强模型调用条件下尽量获得接近 GPT-5.5 / Gemini 3.1 Pro 等 teacher models 的输出质量。
 > **Canonical reference**：后续开发与计划必须以 [`Feiyue-system-doctrine.md`](Feiyue-system-doctrine.md) 为准；除非另有明确说明，不得把 Feiyue 简化成普通弱模型 wrapper、普通 fallback runtime 或普通 code repair bot。
 > **Canonical development outline**：阶段开发、依赖、并行/串行关系与双轨验收以 [`Feiyue-self-evolution-development-outline.md`](Feiyue-self-evolution-development-outline.md) 为准。
 
@@ -11,7 +11,7 @@
 
 ## 1. 产品一句话
 
-Feiyue 是一个受控的 AI 自我提升系统：它让 Agent 在真实任务环境中生成候选方案、执行验证器、收集反馈、形成经验资产，并通过评测、提示词/策略优化、技能库沉淀、teacher guidance distillation 和可选训练数据产出，实现可审计、可回滚、可量化的系统层进化闭环。Feiyue 的关键目标之一是让弱/低成本 student models 在系统持续进化后，跨模型切换时仍能保持高质量输出，并尽量减少 GPT-5.5 / Opus / Fable 等强 teacher models 的全程执行需求。
+Feiyue 是一个受控的 AI 自我提升系统：它让 Agent 在真实任务环境中生成候选方案、执行验证器、收集反馈、形成经验资产，并通过评测、提示词/策略优化、技能库沉淀、teacher guidance distillation 和可选训练数据产出，实现可审计、可回滚、可量化的系统层进化闭环。Feiyue 的关键目标之一是让弱/低成本 student models 在系统持续进化后，跨模型切换时仍能保持高质量输出，并尽量减少 GPT-5.5 / Gemini 3.1 Pro 等强 teacher models 的全程执行需求。
 
 ---
 
@@ -41,7 +41,7 @@ Feiyue 是一个受控的 AI 自我提升系统：它让 Agent 在真实任务�
 6. **沉淀可复用能力**：成功策略进入技能库、提示词库、任务模板、评测集或训练数据候选池。
 7. **系统层自我进化**：Feiyue 的进化发生在 prompt、planner、tool policy、model routing、failure playbook、skill library、eval cases 和 strategy versions 等系统资产上；这些资产必须可审计、可回滚、可评测。
 8. **弱模型质量放大**：通过 verifier-driven feedback、bounded revision、teacher sparse intervention 和 distillation，让 mimo-v2.5-pro、deepseek-v4-pro 等 student models 尽量逼近强 teacher model 的输出质量。
-9. **强模型稀疏教师化**：GPT-5.5 / Opus / Fable 等强模型默认担任 teacher、reviewer、labeler、strategy critic 或 curriculum designer，而不是默认全程 executor。
+9. **强模型稀疏教师化**：GPT-5.5 / Gemini 3.1 Pro 等强模型默认担任 teacher、reviewer、labeler、strategy critic 或 curriculum designer，而不是默认全程 executor。
 10. **跨模型质量保持**：模型 fallback 或切换后，输出质量必须依赖 durable TaskSpec、verifier、strategy assets、known mistakes、teacher-distilled guidance 和 recovery manifest 维持，而不是依赖单个模型的临时上下文。
 
 ### 3.2 非目标
