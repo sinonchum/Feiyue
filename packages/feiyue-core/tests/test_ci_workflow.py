@@ -17,6 +17,8 @@ def test_ci_workflow_runs_core_quality_gates() -> None:
     assert "actions/checkout" in workflow
     assert "actions/setup-python" in workflow
     assert "python -m pip install -e '.[dev]'" in workflow
+    assert "git config --global user.email" in workflow
+    assert "git config --global user.name" in workflow
     assert "python -m compileall -q feiyue_core" in workflow
     assert "python -m pytest -q" in workflow
     assert "SECRET_SCAN_OK" in workflow

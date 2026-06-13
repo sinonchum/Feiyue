@@ -24,6 +24,11 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
 
+      - name: Configure Git identity for tests
+        run: |
+          git config --global user.email "ci@example.invalid"
+          git config --global user.name "Feiyue CI"
+
       - name: Compile package
         working-directory: packages/feiyue-core
         run: python -m compileall -q feiyue_core
