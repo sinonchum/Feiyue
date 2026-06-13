@@ -1,12 +1,9 @@
 import json
 
-import pytest
-
 from feiyue_core.curation.asset_promotion import (
     AssetPromotionError,
     AssetPromotionStore,
     AssetProposalStatus,
-    PromotionBlockedError,
 )
 from feiyue_core.curation.distillation_proposal import (
     ProposalPatch,
@@ -93,14 +90,32 @@ def test_rejected_and_unapproved_promotion_are_blocked_fail_closed(tmp_path) -> 
     store.persist_proposal(_proposal(proposal_id="rejected"))
     store.reject("rejected", reviewer="reviewer-1", reason="Unsafe", decided_at="stable-time")
 
-    with pytest.raises(PromotionBlockedError, match="not approved"):
-        store.promote("needs-review", reviewer="reviewer-1", reason="promote", decided_at="stable-time")
+    needs_review = store.promote(
+        "needs-review",
+        reviewer="reviewer-1",
+        reason="promote",
+        decided_at="stable-time",
+        rollback_ref="review-decision-1",
+    )
+    rejected = store.promote(
+        "rejected",
+        reviewer="reviewer-1",
+        reason="promote",
+        decided_at="stable-time",
+        rollback_ref="review-decision-1",
+    )
 
-    with pytest.raises(PromotionBlockedError, match="rejected"):
-        store.promote("rejected", reviewer="reviewer-1", reason="promote", decided_at="stable-time")
+    assert needs_review.promoted is False
+    assert "approval_missing" in needs_review.reason_codes
+    assert rejected.promoted is False
+    assert "proposal_rejected" in rejected.reason_codes
 
-    with pytest.raises(AssetPromotionError, match="missing proposal"):
+    try:
         store.promote("missing", reviewer="reviewer-1", reason="promote", decided_at="stable-time")
+    except AssetPromotionError as exc:
+        assert "missing proposal" in str(exc)
+    else:  # pragma: no cover - defensive assertion
+        raise AssertionError("missing proposal should raise")
 
 
 def test_approved_promotion_writes_safe_artifact_and_updates_status(tmp_path) -> None:
@@ -113,16 +128,16 @@ def test_approved_promotion_writes_safe_artifact_and_updates_status(tmp_path) ->
         reviewer="reviewer-1",
         reason="Promote to safe artifact only.",
         decided_at="stable-time-2",
+        rollback_ref="review-decision-1",
     )
 
-    assert promotion.decision == "promote"
+    assert promotion.promoted is True
     proposal_dir = tmp_path / ".hermes" / "asset-proposals" / "proposal-1"
     promotion_path = proposal_dir / "promotion.json"
     assert promotion_path.exists()
     assert json.loads(promotion_path.read_text()) == promotion.model_dump(mode="json")
+    assert (tmp_path / ".hermes" / "lessons" / "retry.md").read_text() == "Retry flaky checks once."
     assert not (tmp_path / ".hermes" / "skills").exists()
-    assert not (tmp_path / ".hermes" / "evals").exists()
-    assert not (tmp_path / ".hermes" / "templates").exists()
     assert store.load_proposal("proposal-1").status is AssetProposalStatus.PROMOTED
 
 

@@ -1,13 +1,14 @@
-"""Provider-free persistence for reviewed asset promotion proposals.
+"""Provider-free persistence and sandboxed promotion for reviewed asset proposals.
 
-This module writes only to a caller-supplied project/profile root under
-``.hermes/asset-proposals``. Promotion creates a safe audit artifact inside the
-proposal directory; it never installs skills, evals, templates, or other formal
-Hermes assets.
+This module writes only to a caller-supplied project/profile root. Proposal
+records live under ``.hermes/asset-proposals``. Approved promotion may write
+formal assets only inside that same project-local ``.hermes`` sandbox and only
+under explicit allowlisted asset roots.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from enum import StrEnum
 from pathlib import Path
@@ -38,6 +39,31 @@ class AssetProposalStatus(StrEnum):
 
 
 DecisionKind = Literal["approve", "reject", "promote"]
+
+_ASSET_TYPE_DEFAULT_DIRS: dict[str, str] = {
+    "lesson": "lessons",
+    "regression_eval": "evals",
+    "task_template": "task-templates",
+    "skill": "assets/skill",
+    "project_memory": "assets/project_memory",
+    "routing_rule": "assets/routing_rule",
+}
+
+_ALLOWLIST_ROOTS = (
+    ".hermes/assets",
+    ".hermes/lessons",
+    ".hermes/evals",
+    ".hermes/task-templates",
+)
+
+ReasonCode = Literal[
+    "approval_missing",
+    "proposal_rejected",
+    "target_path_not_allowed",
+    "duplicate_content_hash",
+    "rollback_ref_missing",
+    "patch_missing",
+]
 
 
 class AssetReviewDecision(FeiyueModel):
@@ -71,6 +97,20 @@ class AssetProposalRecord(FeiyueModel):
         if value == "":
             raise ValueError("proposal_id must not be empty")
         return value
+
+
+class PromotionEvidence(FeiyueModel):
+    """Durable evidence for an attempted sandboxed asset promotion."""
+
+    proposal_id: str
+    target_path: str
+    content_hash: str
+    rollback_snapshot: dict[str, Any]
+    promoted: bool
+    reason_codes: list[ReasonCode] = Field(default_factory=list)
+    reviewer: str
+    reason: str
+    decided_at: str
 
 
 _SECRET_KEYS = ("password", "secret", "token", "api_key", "apikey", "credential")
@@ -150,14 +190,61 @@ class AssetPromotionStore:
             new_status=AssetProposalStatus.REJECTED,
         )
 
-    def promote(self, proposal_id: str, *, reviewer: str, reason: str, decided_at: str) -> AssetReviewDecision:
-        """Promote an approved proposal to a safe artifact in its proposal directory."""
+    def promote(
+        self,
+        proposal_id: str,
+        *,
+        reviewer: str,
+        reason: str,
+        decided_at: str,
+        rollback_ref: str | None = None,
+        patch_index: int = 0,
+    ) -> PromotionEvidence:
+        """Promote one approved proposal patch into project-local ``.hermes`` assets.
+
+        The method fails closed: any missing approval, rejected status, unsafe
+        target path, duplicate content hash, or missing rollback reference
+        produces non-promoted evidence and leaves asset files untouched.
+        """
 
         record = self.load_proposal(proposal_id)
+        patch = self._proposal_patch(record, patch_index)
+        content = str(patch.get("proposed_content", "")) if patch is not None else ""
+        content_hash = self._content_hash(content)
+        target_path = self._target_path_for_patch(record, patch) if patch is not None else ""
+        target_allowed = self._is_allowed_target_path(target_path)
+        rollback_snapshot = self._rollback_snapshot(target_path, rollback_ref) if target_allowed else {
+            "rollback_ref": rollback_ref,
+            "existed": False,
+        }
+        reason_codes: list[ReasonCode] = []
+
         if record.status is AssetProposalStatus.REJECTED:
-            raise PromotionBlockedError(f"proposal {proposal_id} is rejected and cannot be promoted")
-        if record.status is not AssetProposalStatus.APPROVED:
-            raise PromotionBlockedError(f"proposal {proposal_id} is not approved and cannot be promoted")
+            reason_codes.append("proposal_rejected")
+        elif record.status is not AssetProposalStatus.APPROVED:
+            reason_codes.append("approval_missing")
+        if not rollback_ref:
+            reason_codes.append("rollback_ref_missing")
+        if patch is None:
+            reason_codes.append("patch_missing")
+        elif not target_allowed:
+            reason_codes.append("target_path_not_allowed")
+        elif self._duplicate_content_hash_exists(content_hash, target_path):
+            reason_codes.append("duplicate_content_hash")
+
+        promoted = not reason_codes
+        evidence = PromotionEvidence(
+            proposal_id=proposal_id,
+            target_path=target_path,
+            content_hash=content_hash,
+            rollback_snapshot=rollback_snapshot,
+            promoted=promoted,
+            reason_codes=reason_codes,
+            reviewer=reviewer,
+            reason=reason,
+            decided_at=decided_at,
+        )
+        self._write_promotion_evidence(evidence)
 
         decision = AssetReviewDecision(
             proposal_id=proposal_id,
@@ -167,11 +254,100 @@ class AssetPromotionStore:
             decided_at=decided_at,
         )
         self._append_decision(decision)
-        (self._proposal_dir(proposal_id) / "promotion.json").write_text(
-            decision.model_dump_json(indent=2) + "\n",
-        )
+
+        if not promoted:
+            return evidence
+
+        target = self.root / target_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(content)
         self._write_record(record.model_copy(update={"status": AssetProposalStatus.PROMOTED}))
-        return decision
+        self._write_promotion_evidence(evidence)
+        return evidence
+
+    def simulate_rollback(self, evidence: PromotionEvidence | dict[str, Any]) -> dict[str, Any]:
+        """Apply the rollback snapshot from promotion evidence in the sandbox."""
+
+        evidence_model = evidence if isinstance(evidence, PromotionEvidence) else PromotionEvidence.model_validate(evidence)
+        if not self._is_allowed_target_path(evidence_model.target_path):
+            return {"rolled_back": False, "reason_codes": ["target_path_not_allowed"]}
+        target = self.root / evidence_model.target_path
+        snapshot = evidence_model.rollback_snapshot
+        if snapshot.get("existed"):
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(str(snapshot.get("content", "")))
+        elif target.exists():
+            target.unlink()
+        return {"rolled_back": True, "target_path": evidence_model.target_path}
+
+    def _proposal_patch(self, record: AssetProposalRecord, patch_index: int) -> dict[str, Any] | None:
+        patches = record.proposal.get("patches", [])
+        if not isinstance(patches, list) or patch_index < 0 or patch_index >= len(patches):
+            return None
+        patch = patches[patch_index]
+        return patch if isinstance(patch, dict) else None
+
+    def _target_path_for_patch(self, record: AssetProposalRecord, patch: dict[str, Any]) -> str:
+        raw_target = patch.get("target_path")
+        if isinstance(raw_target, str) and raw_target:
+            normalized = raw_target.replace("\\", "/").lstrip("/")
+            if normalized.startswith(".hermes/"):
+                return normalized
+            return f".hermes/{normalized}"
+        asset_type = str(patch.get("asset_type", ""))
+        default_dir = _ASSET_TYPE_DEFAULT_DIRS.get(asset_type, f"assets/{asset_type}")
+        return f".hermes/{default_dir}/{record.proposal_id}.md"
+
+    def _is_allowed_target_path(self, target_path: str) -> bool:
+        if not target_path:
+            return False
+        candidate = (self.root / target_path).resolve()
+        sandbox = (self.root / ".hermes").resolve()
+        try:
+            candidate.relative_to(sandbox)
+        except ValueError:
+            return False
+        normalized = candidate.relative_to(self.root.resolve()).as_posix()
+        return any(normalized == root or normalized.startswith(f"{root}/") for root in _ALLOWLIST_ROOTS)
+
+    def _rollback_snapshot(self, target_path: str, rollback_ref: str | None) -> dict[str, Any]:
+        target = self.root / target_path
+        if target.exists():
+            content = target.read_text()
+            return {
+                "rollback_ref": rollback_ref,
+                "existed": True,
+                "content": content,
+                "content_hash": self._content_hash(content),
+            }
+        return {"rollback_ref": rollback_ref, "existed": False}
+
+    def _duplicate_content_hash_exists(self, content_hash: str, target_path: str) -> bool:
+        hermes = self.root / ".hermes"
+        if not hermes.exists():
+            return False
+        target = (self.root / target_path).resolve()
+        for allow_root in _ALLOWLIST_ROOTS:
+            root = self.root / allow_root
+            if not root.exists():
+                continue
+            for existing in root.rglob("*"):
+                if not existing.is_file() or existing.resolve() == target:
+                    continue
+                try:
+                    if self._content_hash(existing.read_text()) == content_hash:
+                        return True
+                except UnicodeDecodeError:
+                    continue
+        return False
+
+    def _write_promotion_evidence(self, evidence: PromotionEvidence) -> None:
+        path = self._proposal_dir(evidence.proposal_id) / "promotion.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(evidence.model_dump_json(indent=2) + "\n")
+
+    def _content_hash(self, content: str) -> str:
+        return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()
 
     def _append_decision_and_update_status(
         self,

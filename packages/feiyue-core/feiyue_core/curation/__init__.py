@@ -8,6 +8,7 @@ from feiyue_core.curation.asset_promotion import (
     AssetProposalStatus,
     AssetReviewDecision,
     PromotionBlockedError,
+    PromotionEvidence,
 )
 from feiyue_core.curation.distillation_proposal import (
     ALLOWED_ASSET_TYPES,
@@ -40,6 +41,7 @@ __all__ = [
     "ProposalPatch",
     "ProposalStatus",
     "PromotionBlockedError",
+    "PromotionEvidence",
     "ReviewDecision",
     "ReviewDecisionStatus",
     "ReviewGate",
