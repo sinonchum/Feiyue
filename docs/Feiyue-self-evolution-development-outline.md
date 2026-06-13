@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`394 passed`（local full gate for M14 provider-free smokes + docs/release contract；remote CI mirrors provider-free smokes）。
+> **Verified baseline**：`432 passed`（local full gate for Wave 1/2 provider-free lanes, M14 provider-free smokes, docs/release contract；remote CI mirrors provider-free smokes）。
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1330,15 +1330,15 @@ M5 Project Knowledge
 | M3 Resilient Runtime | Done Foundation | journal、recovery manifest、operation recorder、side-effect inspector、reconciler、resume flow、recovery prompt、安全 gate 与 interruption simulation 已完成；后续只作为支撑模块按需增强。 |
 | M4 Candidate / Feedback / Teacher Loop | Done Foundation | fake provider、role-aware student/teacher、candidate service、feedback/revision、iteration trace/replay、fallback resume prompt demo 已完成。 |
 | M5 Workflow Asset Layer | Done Foundation | project knowledge、task contract、bug dossier、lesson packet、regression eval、routing table 与 integration smoke 已完成；批量 lesson persistence / routing learning 后续增强。 |
-| M6 Curator / Distillation | Done Foundation | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate 与 curation smoke 已完成；promotion writer / dedup /正式 asset write 仍未完成。 |
+| M6 Curator / Distillation | Done Foundation+ | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate、curation smoke、asset proposal persistence、append-only review decisions 与 provider-free promotion gate 已完成；dedup / 正式 `.hermes` asset write 仍未完成。 |
 | M7 Weak Model Capability Expansion | Done Foundation | CapabilityLadder、WorkerPerformanceRecord、ModelCapabilityProfile、promotion/demotion recommendation rules 与 capability smoke 已完成；真实 worker 数据与 routing adapter 后续增强。 |
 | M8 Creative Role Development | Done Foundation | CreativeBrief、CreativeVariant、CreativeCritique、UserSelectionFeedback 与 creative smoke 已完成；opportunity discovery、accepted-proposal metrics、真实 creative provider 后续增强。 |
-| M9 Strategy/Evaluation Harness | Done Foundation | StrategyEvaluationRecord、StrategyScorecard、BenchmarkSuite、StrategyComparisonReport 与 evaluation smoke 已完成；真实 benchmark runner、weak/strong 对照与 longitudinal gain 仍未完成。 |
-| M10 Real Provider / Multi-Profile Worker Integration | Partial Foundation | FakeProfileRunner、ProviderDiagnostic、ProviderFailureKind、redaction、profile diagnostic smoke 已完成；真实 Hermes profile subprocess、真实 HTTP provider smoke、真实 teacher escalation 需明确授权。 |
-| M11 Real Workflow Execution / Promotion | Provider-free Foundation | CandidateFileWrite、ToyWorkflowExecutor、verifier-gated readiness、BugDossier on failure、fake teacher retry、verified branch promotion、run report persistence、source clean guarantee 已完成；真实 worker/provider patch 与多轮 repair 未完成。 |
+| M9 Strategy/Evaluation Harness | Done Foundation+ | StrategyEvaluationRecord、StrategyScorecard、BenchmarkSuite、StrategyComparisonReport、evaluation smoke、benchmark case schema、provider-free trace fixtures 与 fixture strategy comparison contracts 已完成；真实 benchmark runner、真实 weak/strong calls 与 longitudinal gain 仍未完成。 |
+| M10 Real Provider / Multi-Profile Worker Integration | Partial Foundation+ | FakeProfileRunner、ProviderDiagnostic、ProviderFailureKind、redaction、profile diagnostic smoke 与 real-provider plan-only authorization checklist 已完成；真实 Hermes profile subprocess、真实 HTTP provider smoke、真实 teacher escalation 需明确授权。 |
+| M11 Real Workflow Execution / Promotion | Provider-free Foundation+ | CandidateFileWrite、ToyWorkflowExecutor、verifier-gated readiness、BugDossier on failure、bounded multi-round fake teacher retry、verified branch promotion、run report persistence、source clean guarantee 已完成；真实 worker/provider patch 未完成。 |
 | M12 Safety / Budget / Policy Governor | Done Foundation | PolicyGovernor、budget/risk/privacy gates、PolicyGovernorConfigLoader、HumanApprovalRecord、approval persistence、run-evidence、safe_to_retry/next_safe_action、handoff summary 与 action evidence 已完成。 |
-| M13 Productization / Dashboard / API | Done Foundation | `feiyue-runs` CLI、RunCatalog、read-only API/dashboard、drill-down、static HTML export、manifest SHA256、verifier、portable bundle、export-all pipeline 已完成；lesson/eval/routing/capability/creative proposal UI 尚未完整产品化。 |
-| M14 Release Hardening / CI / Documentation | Partial Foundation | GitHub Actions CI、CI contract tests、compileall、pytest、static export-all smoke、provider-free example smoke、provider-free benchmark smoke、release checklist、contributing guide、architecture doc、secret scan、Node24 actions runtime opt-in 已完成；docs site 与 visual architecture diagram 仍未完成。 |
+| M13 Productization / Dashboard / API | Done Foundation+ | `feiyue-runs` CLI、RunCatalog、read-only API/dashboard、drill-down、read-only asset catalog/API/dashboard page、static HTML export、manifest SHA256、verifier、portable bundle、export-all pipeline 已完成；full review UI 尚未完整产品化。 |
+| M14 Release Hardening / CI / Documentation | Partial Foundation+ | GitHub Actions CI、CI contract tests、compileall、pytest、static export-all smoke、provider-free example smoke、provider-free benchmark smoke、release checklist、contributing guide、architecture doc、docs index、static SVG architecture diagram、secret scan、Node24 actions runtime opt-in 已完成；full docs site 仍未完成。 |
 
 ## 19.1 当前最准确阶段判断
 
@@ -1351,21 +1351,21 @@ Blueprint / Doctrine
 → anti-amnesia runtime
 → fake student/teacher candidate loop
 → workflow assets
-→ curator/capability/creative/evaluation foundations
+→ curator/capability/creative/evaluation foundations + asset proposal and benchmark-prep contracts
 → policy governor + approval/action evidence
-→ run evidence CLI/API/dashboard/static export/bundle
+→ run evidence and asset catalog CLI/API/dashboard/static export/bundle
 → GitHub Actions CI gate
 ```
 
 尚未进入或尚未完成的主线是：
 
 1. 真实 provider / Hermes profile execution。
-2. 真实弱模型 vs 强模型 benchmark 与长期指标。
+2. 真实弱模型 vs 强模型 benchmark 调用与长期指标。
 3. 真实多 worker routing 与 teacher escalation。
-4. Curator proposal 到正式 `.hermes/` asset 的 promotion / rejection / dedup 写入闭环。
+4. Curator proposal 到正式 `.hermes` asset 的 dedup / promotion 写入闭环。
 5. 真实项目自动 promotion / rollback 的生产级安全边界。
-6. M13 全面 productization：lesson/eval/routing/capability/creative proposal browser/review UI。
-7. M14 release hardening：docs site、visual architecture diagram。
+6. M13 全面 productization：lesson/eval/routing/capability/creative proposal review UI。
+7. M14 release hardening：full docs site。
 
 ---
 
@@ -1509,15 +1509,27 @@ Update:
 - Architecture doc explains Human Creative Direction、Strong Spec / Teacher、Weak Worker / Student、Verifier、Policy Governor、Run Evidence、Static Export Bundle 与 Provider-Free Foundation。
 - README links all three docs.
 
+## Completed Parallel Waves: Wave 1 and Wave 2
+
+### Wave 1 completed
+
+- **M6 Asset Promotion Writer**：新增 asset proposal persistence、append-only review decisions 与 provider-free promotion gate。proposal 安全写入 `.hermes/asset-proposals/<proposal_id>/`，approved 之前不能 promotion，rejected fail closed；不写正式 skills/evals/templates。
+- **M13 Asset Browser Expansion**：新增 read-only asset catalog、`GET /assets`、`GET /dashboard/assets` 与 static export `assets/index.html`；缺失目录返回空列表，输出相对路径和摘要，不 dump raw logs/secrets。
+- **M14 Visual Architecture Diagram / Docs Site Stub**：新增 `docs/index.md` 与 `docs/assets/feiyue-architecture.svg`，并用 docs contract tests 覆盖链接、核心角色标签和无外部资源。
+
+### Wave 2 completed
+
+- **M9 Real Benchmark Preparation**：新增 benchmark case schema v1、provider-free trace fixtures 与 fixture strategy comparison contract；用于未来真实 weak/strong 对照的格式准备，不调用真实模型。
+- **M10 Real Provider Plan Only**：新增 `docs/real-provider-integration-plan.md`，明确 fake tests → diagnostics/redaction → explicit authorization → isolated smoke → run evidence → rollback/abort gates；不执行真实 provider。
+- **M11 Multi-round Fake Teacher Retry**：provider-free workflow 支持 bounded multi-round fake teacher retry；每轮记录 attempt evidence 和 teacher guidance，成功仍只由 verifier pass 决定。
+
+### Wave 1/2 local verification
+
+- `python -m pytest -q`：`432 passed`。
+- `python -m compileall -q feiyue_core`：passed。
+- `git diff --check`：passed。
+- `STATIC_EXPORT_ALL_OK`、`PROVIDER_FREE_EXAMPLE_SMOKE_OK`、`BENCHMARK_SMOKE_OK`、`SECRET_SCAN_OK` 均已本地验证。
+
 ## Recommended Next Slice
 
-当前更稳的下一步是 **M14 Visual Architecture Diagram / Docs Site Stub**：把 `docs/architecture.md` 的文本流转图升级为可审查的静态 SVG/HTML diagram 或最小 docs site 索引，同时继续保持 provider-free、no network、no credentials。
-
-## Alternative Next Slices
-
-如果暂时不做 example project，也可以选择：
-
-1. **M6 Asset Promotion Writer**：把 Curator proposals 安全写入 `.hermes/asset-proposals/`，带 review/promotion/rejection 状态。
-2. **M13 Asset Browser Expansion**：让 dashboard 查看 lessons/evals/routing/capability profiles，而不仅是 run evidence。
-3. **M9 Real Benchmark Preparation**：在不接 provider 的前提下定义真实 benchmark case schema 与 trace fixture 格式，为未来真实模型对照做准备。
-4. **M10 Real Provider Plan Only**：只写接入计划和安全检查清单，不执行真实 provider 调用，等待授权。
+当前更稳的下一步是 **M6 Formal Asset Promotion/Dedup Writer**：在已有 asset proposal persistence 和 review gate 基础上，增加去重/合并策略与受控正式 `.hermes` asset 写入，但仍需保持 provider-free、tmp_path-first、review-approved-only。
