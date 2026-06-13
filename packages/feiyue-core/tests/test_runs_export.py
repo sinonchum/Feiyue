@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+import json
+
+from feiyue_core.workflow.runs_export import export_static_runs_report
+
+
+def _write_run_evidence(root, task_id="m13-export-demo"):
+    run_dir = root / ".hermes" / "runs" / task_id
+    run_dir.mkdir(parents=True)
+    (run_dir / "run-evidence.json").write_text(
+        json.dumps(
+            {
+                "task_id": task_id,
+                "status": "blocked",
+                "policy_action": "escalate",
+                "policy_reason": "high_risk_operation",
+                "execution_performed": False,
+                "retry_performed": False,
+                "promotion_status": None,
+                "promotion_side_effect_performed": None,
+                "approval_exists": False,
+                "approval_id": None,
+                "approval_approver": None,
+                "approval_action": None,
+                "approval_applies": False,
+                "safe_to_retry": False,
+                "next_safe_action": "request_human_approval",
+                "report_paths": {"execution_report": "execution-report.md"},
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_export_static_runs_report_writes_offline_dashboard_and_detail(tmp_path) -> None:
+    _write_run_evidence(tmp_path, "m13-export-demo")
+    output_dir = tmp_path / "report"
+
+    result = export_static_runs_report(tmp_path, output_dir)
+
+    assert result.index_path == output_dir / "index.html"
+    assert result.detail_paths == {"m13-export-demo": output_dir / "runs" / "m13-export-demo.html"}
+    assert result.index_path.exists()
+    assert result.detail_paths["m13-export-demo"].exists()
+
+    index_html = result.index_path.read_text(encoding="utf-8")
+    detail_html = result.detail_paths["m13-export-demo"].read_text(encoding="utf-8")
+
+    assert "Feiyue Run Dashboard" in index_html
+    assert 'href="runs/m13-export-demo.html"' in index_html
+    assert "Feiyue Run Detail" in detail_html
+    assert "Policy Decision" in detail_html
+    assert "Action Evidence" in detail_html
+    assert "Approval Evidence" in detail_html
+    assert 'href="../index.html"' in detail_html
+    assert "<pre>" not in index_html + detail_html
+    assert "JSON.stringify" not in index_html + detail_html
+
+
+def test_export_static_runs_report_handles_empty_runs(tmp_path) -> None:
+    output_dir = tmp_path / "report"
+
+    result = export_static_runs_report(tmp_path, output_dir)
+
+    assert result.index_path.exists()
+    assert result.detail_paths == {}
+    assert "No run evidence found." in result.index_path.read_text(encoding="utf-8")

@@ -15,6 +15,7 @@ dependencies = [
 feiyue-interruption-demo = "feiyue_core.runtime.interruption_simulation:main"
 feiyue-runs = "feiyue_core.workflow.runs_cli:main"
 feiyue-runs-api = "feiyue_core.workflow.runs_api:main"
+feiyue-runs-export = "feiyue_core.workflow.runs_export:main"
 
 [project.optional-dependencies]
 dev = [
