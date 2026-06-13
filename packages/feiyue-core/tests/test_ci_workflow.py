@@ -16,6 +16,7 @@ def test_ci_workflow_runs_core_quality_gates() -> None:
 
     assert "actions/checkout" in workflow
     assert "actions/setup-python" in workflow
+    assert "FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true" in workflow
     assert "python -m pip install -e '.[dev]'" in workflow
     assert "git config --global user.email" in workflow
     assert "git config --global user.name" in workflow
