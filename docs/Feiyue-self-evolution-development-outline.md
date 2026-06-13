@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`496 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, and Wave4-3B-3 low-risk real-project branch-only promotion smoke；remote CI mirrors provider-free smokes）。Current verified baseline: `496 passed`.
+> **Verified baseline**：`498 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, and Wave4-3C productized approval CLI smoke；remote CI mirrors provider-free smokes）。Current verified baseline: `498 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`496 passed`。
+- `python -m pytest -q`：`498 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1653,6 +1653,22 @@ Wave4-2C proves the first real teacher retry bridge on a controlled toy workflow
 
 The approval gate and branch-only real-project promotion smoke exist. The next safe step is Wave4-3C: add an explicit approval CLI/API flow so approval records are generated/audited by the product surface instead of test/smoke scripts.
 
+## Completed Slice: Wave4-3C Productized Approval CLI
+
+### Wave4-3C completed
+
+- Added `feiyue-runs approve-promotion <run_id>` to generate persisted `approval.json` under `.hermes/workflow-promotions/<run_id>/` from dry-run evidence.
+- Added `feiyue-runs promote-approved <run_id>` to read persisted approval evidence, recover candidate writes from workflow smoke stdout, and call `RealProfilePromotionGate`.
+- Added CLI contract test `test_runs_cli_approves_and_promotes_verified_dry_run` covering approval creation, approval hashing, branch promotion, and clean source checkout.
+- Executed real-project branch-only smoke run_id `wave4-3c-productized-approval-cli-smoke-v2`.
+- Productized CLI smoke target branch: `feiyue/w43c-productized-approval-cli-smoke`.
+- Productized CLI smoke promoted commit: `d8370868a992320590d23865b2e77099b57930ad`.
+- Remote branch verification passed and main checkout remained clean.
+
+### Wave4-3C remaining scope
+
+The productized CLI path exists for approval creation and promotion execution. The next safe slice is Wave4-4: feed real execution/promotion evidence into capability metrics and routing updates without allowing automatic mutation of routing tables.
+
 ## Recommended Next Slice
 
-当前下一步是 **Wave4-2：Real Hermes Profile Worker Execution Bridge**。目标是把已验证的 real profile benchmark runner 接入 M11 workflow executor：TaskContract → real weak profile worker → sandbox patch → verifier → bug dossier on failure → optional real strong teacher guidance → worker retry → run evidence → capability/routing metrics。建议先 provider-free fake-first TDD，再用 toy repo 最小真实 workflow smoke；默认 worker 候选为 `feiyue-weak-deepseek-flash`，teacher/reference 候选为 `feiyue-strong-gpt55`，`gemini-3.1-pro` 作为 secondary strong reviewer。
+当前下一步是 **Wave4-4：Capability Metrics Feedback Loop**。目标是把 workflow-smoke / workflow-promotion evidence 汇总为 capability metrics，先只生成建议和审计报告，不自动改写 routing table；后续再做人审 gate 后的 model routing updates。
