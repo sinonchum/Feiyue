@@ -18,6 +18,7 @@ from feiyue_core.workflow.real_profile_promotion import (
     read_promotion_approval,
     write_promotion_approval,
 )
+from feiyue_core.workflow.routing_proposal import RoutingProposalError, RoutingProposalGenerator
 from feiyue_core.workflow.real_profile_workflow_runner import RealProfileWorkflowRunReport
 
 
@@ -58,6 +59,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     feedback_parser = subparsers.add_parser("capability-feedback", help="Summarize workflow evidence into audit-only capability metrics")
     feedback_parser.add_argument("--write-report", action="store_true", help="Persist latest.json and latest.md under .hermes/capability-feedback")
+
+    proposal_parser = subparsers.add_parser("routing-proposal", help="Generate a human-reviewed routing update proposal from capability feedback")
+    proposal_parser.add_argument("--proposal-id", required=True)
+    proposal_parser.add_argument("--write-proposal", action="store_true", help="Persist proposal.json and proposal.md under .hermes/routing-proposals")
 
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
@@ -134,7 +139,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             report = aggregator.write_report() if args.write_report else aggregator.build_report()
             print(report.model_dump_json(indent=2))
             return 0
-    except RunEvidenceNotFoundError as exc:
+        if args.command == "routing-proposal":
+            generator = RoutingProposalGenerator(root)
+            proposal = generator.write_proposal(proposal_id=args.proposal_id) if args.write_proposal else generator.build_proposal(proposal_id=args.proposal_id)
+            print(proposal.model_dump_json(indent=2))
+            return 0
+    except (RunEvidenceNotFoundError, RoutingProposalError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     return 2
