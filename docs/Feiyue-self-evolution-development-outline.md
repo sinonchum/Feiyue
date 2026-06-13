@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`498 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, and Wave4-3C productized approval CLI smoke；remote CI mirrors provider-free smokes）。Current verified baseline: `498 passed`.
+> **Verified baseline**：`502 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, and Wave4-4 audit-only capability feedback loop；remote CI mirrors provider-free smokes）。Current verified baseline: `502 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`498 passed`。
+- `python -m pytest -q`：`502 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1669,6 +1669,21 @@ The approval gate and branch-only real-project promotion smoke exist. The next s
 
 The productized CLI path exists for approval creation and promotion execution. The next safe slice is Wave4-4: feed real execution/promotion evidence into capability metrics and routing updates without allowing automatic mutation of routing tables.
 
+## Completed Slice: Wave4-4 Capability Metrics Feedback Loop
+
+### Wave4-4 completed
+
+- Added `CapabilityFeedbackAggregator` to collect `.hermes/workflow-smokes/*/evidence.json` and `.hermes/workflow-promotions/*/promotion-evidence.json` into per-profile metrics.
+- Metrics include workflow_runs, verified_runs, needs_teacher_runs, blocked_runs, teacher_guidance_events, provider_call_count, promotion_attempts, promoted_runs, verification_rate, promotion_rate, and teacher_or_blocked_rate.
+- Added audit-only recommendations: `consider_promotion`, `keep_review`, and `keep_routing`; every recommendation records `mutates_routing_table: false`.
+- Added `feiyue-runs capability-feedback --write-report` to print JSON and persist `.hermes/capability-feedback/latest.json` plus `.hermes/capability-feedback/latest.md`, with `routing_table_mutated: false`.
+- Added `.hermes/capability-feedback/` to `.gitignore`; reports are local evidence artifacts, not committed source.
+- Capability feedback intentionally does not rewrite `.hermes/model-routing.yaml`; routing table changes remain human-reviewed follow-up work.
+
+### Wave4-4 remaining scope
+
+The current feedback loop is audit-only. The next safe slice is Wave4-4B: add a human-approved route-update proposal file that can be reviewed before any routing table mutation.
+
 ## Recommended Next Slice
 
-当前下一步是 **Wave4-4：Capability Metrics Feedback Loop**。目标是把 workflow-smoke / workflow-promotion evidence 汇总为 capability metrics，先只生成建议和审计报告，不自动改写 routing table；后续再做人审 gate 后的 model routing updates。
+当前下一步是 **Wave4-4B：Human-reviewed Routing Proposal**。目标是从 capability-feedback 生成 route-update proposal（只读/待审批），绑定 evidence hashes 和 recommendation reasons；只有后续明确 approval gate 才允许修改 `.hermes/model-routing.yaml`。

@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Sequence
 
+from feiyue_core.workflow.capability_feedback import CapabilityFeedbackAggregator
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
 from feiyue_core.workflow.profile_worker_bridge import _parse_candidate_writes
 from feiyue_core.workflow.real_profile_promotion import (
@@ -54,6 +55,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     promote_parser = subparsers.add_parser("promote-approved", help="Promote a dry run using persisted approval evidence")
     promote_parser.add_argument("run_id")
     promote_parser.add_argument("--commit-message", required=True)
+
+    feedback_parser = subparsers.add_parser("capability-feedback", help="Summarize workflow evidence into audit-only capability metrics")
+    feedback_parser.add_argument("--write-report", action="store_true", help="Persist latest.json and latest.md under .hermes/capability-feedback")
 
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
@@ -124,6 +128,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 evidence_root=root,
             )
             print(result.model_dump_json(indent=2))
+            return 0
+        if args.command == "capability-feedback":
+            aggregator = CapabilityFeedbackAggregator(root)
+            report = aggregator.write_report() if args.write_report else aggregator.build_report()
+            print(report.model_dump_json(indent=2))
             return 0
     except RunEvidenceNotFoundError as exc:
         print(str(exc), file=sys.stderr)

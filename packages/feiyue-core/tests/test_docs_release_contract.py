@@ -55,7 +55,7 @@ def test_release_checklist_captures_m14_gates_and_authorization_boundaries() -> 
     assert "Real provider execution requires explicit authorization" in content
     assert "docs/real-provider-integration-plan.md" in content
     assert "Hermes config mutation is out of scope" in content
-    assert "Current baseline: 498 passed" in content
+    assert "Current baseline: 502 passed" in content
 
 
 def test_real_provider_integration_plan_exists_and_defines_authorized_sequence() -> None:
@@ -150,7 +150,7 @@ def test_status_docs_capture_wave4_real_profile_benchmark_checkpoint() -> None:
     outline = OUTLINE.read_text(encoding="utf-8")
 
     for content in (readme, outline):
-        assert "Current verified baseline: `498 passed`" in content
+        assert "Current verified baseline: `502 passed`" in content
         assert "Wave4-1F" in content
         assert "45/45 real Hermes profile calls" in content
         assert "gemini-3.1-pro" in content
@@ -163,7 +163,7 @@ def test_status_docs_capture_wave4_2b_real_profile_workflow_smoke() -> None:
     outline = OUTLINE.read_text(encoding="utf-8")
 
     for content in (readme, outline):
-        assert "Current verified baseline: `498 passed`" in content
+        assert "Current verified baseline: `502 passed`" in content
         assert "Wave4-2B" in content
         assert "WAVE4_2B_REAL_PROFILE_WORKFLOW_OK" in content
         assert "feiyue-weak-deepseek-flash" in content
@@ -176,7 +176,7 @@ def test_status_docs_capture_wave4_2c_real_teacher_retry_smoke() -> None:
     outline = OUTLINE.read_text(encoding="utf-8")
 
     for content in (readme, outline):
-        assert "Current verified baseline: `498 passed`" in content
+        assert "Current verified baseline: `502 passed`" in content
         assert "Wave4-2C" in content
         assert "WAVE4_2C_REAL_TEACHER_RETRY_OK" in content
         assert "feiyue-strong-gpt55" in content
@@ -190,7 +190,7 @@ def test_status_docs_capture_wave4_2d_and_wave4_3a_productized_runner() -> None:
     outline = OUTLINE.read_text(encoding="utf-8")
 
     for content in (readme, outline):
-        assert "Current verified baseline: `498 passed`" in content
+        assert "Current verified baseline: `502 passed`" in content
         assert "Wave4-2D" in content
         assert "RealProfileWorkflowRunner" in content
         assert "feiyue-runs workflow-smoke" in content
@@ -204,7 +204,7 @@ def test_status_docs_capture_wave4_3b_approval_gate() -> None:
     outline = OUTLINE.read_text(encoding="utf-8")
 
     for content in (readme, outline):
-        assert "Current verified baseline: `498 passed`" in content
+        assert "Current verified baseline: `502 passed`" in content
         assert "Wave4-3B-1" in content
         assert "RealProfilePromotionApproval" in content
         assert "Wave4-3B-2" in content
@@ -236,3 +236,16 @@ def test_status_docs_capture_wave4_3c_productized_approval_cli() -> None:
         assert "wave4-3c-productized-approval-cli-smoke-v2" in content
         assert "feiyue/w43c-productized-approval-cli-smoke" in content
         assert "d8370868a992320590d23865b2e77099b57930ad" in content
+
+
+def test_status_docs_capture_wave4_4_capability_feedback_loop() -> None:
+    readme = README.read_text(encoding="utf-8")
+    outline = OUTLINE.read_text(encoding="utf-8")
+
+    for content in (readme, outline):
+        assert "Wave4-4" in content
+        assert "capability-feedback" in content
+        assert "CapabilityFeedbackAggregator" in content
+        assert "routing_table_mutated: false" in content
+        assert "latest.json" in content
+        assert "latest.md" in content

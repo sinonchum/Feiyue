@@ -17,4 +17,5 @@ local-notes/
 .hermes/live-benchmarks/
 .hermes/workflow-smokes/
 .hermes/workflow-promotions/
+.hermes/capability-feedback/
 .hermes/run_*.py
