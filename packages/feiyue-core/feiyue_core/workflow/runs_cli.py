@@ -11,6 +11,7 @@ from typing import Sequence
 from feiyue_core.workflow.capability_feedback import CapabilityFeedbackAggregator
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
 from feiyue_core.workflow.profile_worker_bridge import _parse_candidate_writes
+from feiyue_core.workflow.review_inbox import ReviewInbox
 from feiyue_core.workflow.real_profile_promotion import (
     RealProfilePromotionApproval,
     RealProfilePromotionGate,
@@ -127,11 +128,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_multi_worker_parser.add_argument("--escalation-rule", default="Approved multi-worker dry-run only.")
     run_multi_worker_parser.add_argument("--fake-worker-response-json", required=True)
 
+    review_inbox_parser = subparsers.add_parser("review-inbox", help="List pending local approval/review items without mutating state")
+    review_inbox_parser.add_argument("--format", choices=["json"], default="json")
+
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
     loader = RunEvidenceLoader(root)
 
     try:
+        if args.command == "review-inbox":
+            summary = ReviewInbox(root).summary()
+            print(summary.model_dump_json(indent=2))
+            return 0
         if args.command == "list":
             catalog = RunCatalog(root)
             if args.json:
