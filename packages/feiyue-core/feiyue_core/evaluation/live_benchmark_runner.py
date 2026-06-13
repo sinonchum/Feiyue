@@ -9,6 +9,7 @@ contract, but execution remains fail-closed without explicit execute scope.
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Protocol
@@ -384,7 +385,7 @@ def _score_result(result: ProfileRunResult, case: LiveBenchmarkCase) -> _RubricS
     stdout_lower = result.stdout.lower()
     concept_hits = [concept for concept in case.required_concepts if concept.lower() in stdout_lower]
     missing_concepts = [concept for concept in case.required_concepts if concept.lower() not in stdout_lower]
-    forbidden_claim_hits = [claim for claim in case.forbidden_claims if claim.lower() in stdout_lower]
+    forbidden_claim_hits = _forbidden_claim_hits(stdout_lower, case.forbidden_claims)
     quality_score = _quality_score(
         marker_passed=marker_passed,
         marker_count=len(case.expected_markers),
@@ -416,6 +417,31 @@ def _quality_score(
     if marker_count:
         return marker_component
     return 1.0 if exit_ok else 0.0
+
+
+_NEGATION_RE = re.compile(r"(?:\bnot\b|\bno\b|\bnever\b|\bwithout\b|does\s+not\s+mean)\W*$")
+
+
+def _forbidden_claim_hits(stdout_lower: str, forbidden_claims: list[str]) -> list[str]:
+    """Return forbidden claims unless the local context explicitly negates them."""
+
+    hits: list[str] = []
+    for claim in forbidden_claims:
+        claim_lower = claim.lower()
+        start = 0
+        matched_positive = False
+        while True:
+            index = stdout_lower.find(claim_lower, start)
+            if index == -1:
+                break
+            prefix = stdout_lower[max(0, index - 32) : index]
+            if not _NEGATION_RE.search(prefix):
+                matched_positive = True
+                break
+            start = index + len(claim_lower)
+        if matched_positive:
+            hits.append(claim)
+    return hits
 
 
 def _average_quality_score_by_strategy(results: list[LiveBenchmarkRunResultEvidence]) -> dict[str, float]:

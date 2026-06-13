@@ -199,6 +199,38 @@ def test_forbidden_claim_fails_even_when_marker_and_required_concepts_pass() -> 
     assert weak.passed is False
 
 
+def test_negated_forbidden_claims_do_not_fail_rubric() -> None:
+    case = _rubric_case(forbidden_claims=["human review is unnecessary", "unbounded spending"])
+    runner = RecordingProfileRunner(
+        {
+            ("weak.fake", "solve case.rubric"): ProfileRunResult(
+                stdout=(
+                    "OK preserve marker behavior; deterministic substring rubric. "
+                    "This does not mean human review is unnecessary, and no unbounded spending is allowed."
+                ),
+                stderr="",
+                exit_code=0,
+            ),
+            ("strong.fake", "solve case.rubric"): ProfileRunResult(
+                stdout="OK preserve marker behavior; deterministic substring rubric",
+                stderr="",
+                exit_code=0,
+            ),
+        }
+    )
+
+    report = AuthorizedLiveBenchmarkRunner(profile_runner=runner).run(
+        run_id="rubric-negated-forbidden",
+        cases=[case],
+        bindings=_bindings(),
+        authorization=_authorization(),
+    )
+
+    weak = next(result for result in report.run_results if result.strategy_id == "weak-only")
+    assert weak.forbidden_claim_hits == []
+    assert weak.passed is True
+
+
 def test_min_quality_score_threshold_controls_pass_fail() -> None:
     case = _rubric_case(min_quality_score=0.75)
     runner = RecordingProfileRunner(
