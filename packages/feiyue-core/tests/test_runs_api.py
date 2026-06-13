@@ -40,6 +40,17 @@ def _write_run_evidence(root, task_id="m13-api-demo"):
     return run_dir
 
 
+def _write_asset_fixture(root):
+    lessons = root / ".hermes" / "lessons"
+    lessons.mkdir(parents=True)
+    (lessons / "lesson-asset.md").write_text(
+        "# Lesson Asset\n\napi_key=SHOULD_NOT_LEAK\n", encoding="utf-8"
+    )
+    (root / ".hermes" / "model-routing.yaml").write_text(
+        "schema_version: feiyue.model_routing.v1\nsecret: SHOULD_NOT_LEAK\n", encoding="utf-8"
+    )
+
+
 @contextmanager
 def _api_server(root):
     server = HTTPServer(("127.0.0.1", 0), create_runs_api_handler(root))
@@ -130,6 +141,35 @@ def test_runs_api_get_runs_returns_catalog_summary(tmp_path) -> None:
     assert payload["next_action_counts"] == {"request_human_approval": 1}
     assert payload["runs"][0]["task_id"] == "m13-api-demo"
     assert payload["runs"][0]["approval_exists"] is False
+
+
+def test_runs_api_get_assets_returns_read_only_sanitized_catalog(tmp_path) -> None:
+    _write_asset_fixture(tmp_path)
+
+    with _api_server(tmp_path) as base_url:
+        payload = _get_json(f"{base_url}/assets")
+
+    rendered = json.dumps(payload, sort_keys=True)
+    assert payload["counts"]["lessons"] == 1
+    assert payload["counts"]["model_routing"] == 1
+    assert payload["categories"]["lessons"][0]["path"] == ".hermes/lessons/lesson-asset.md"
+    assert "SHOULD_NOT_LEAK" not in rendered
+    assert str(tmp_path) not in rendered
+
+
+def test_runs_api_dashboard_assets_renders_html_without_raw_secrets(tmp_path) -> None:
+    _write_asset_fixture(tmp_path)
+
+    with _api_server(tmp_path) as base_url:
+        html = _get_html(f"{base_url}/dashboard/assets")
+
+    assert "Feiyue Asset Catalog" in html
+    assert "lessons" in html
+    assert "model_routing" in html
+    assert "Lesson Asset" in html
+    assert "SHOULD_NOT_LEAK" not in html
+    assert "<pre>" not in html
+    assert "JSON.stringify" not in html
 
 
 def test_runs_api_get_run_returns_evidence_json(tmp_path) -> None:

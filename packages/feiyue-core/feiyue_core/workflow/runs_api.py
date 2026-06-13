@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Sequence
 from urllib.parse import unquote, urlparse
 
+from feiyue_core.workflow.asset_catalog import AssetCatalog
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
 
 
@@ -137,6 +138,91 @@ def render_runs_dashboard(project_root: str | Path) -> str:
 </html>"""
 
 
+def render_assets_dashboard(project_root: str | Path) -> str:
+    """Render a human-readable, read-only dashboard for local Hermes assets."""
+
+    summary = AssetCatalog(project_root).summary()
+    sections = []
+    for category, items in summary.categories.items():
+        rows = []
+        for item in items:
+            rows.append(
+                """
+                <tr>
+                  <td>{id}</td>
+                  <td>{path}</td>
+                  <td>{title}</td>
+                </tr>
+                """.format(
+                    id=_esc(item.id),
+                    path=_esc(item.path),
+                    title=_esc(item.title or ""),
+                )
+            )
+        body = "".join(rows) or '<tr><td colspan="3" class="empty">No assets found.</td></tr>'
+        sections.append(
+            f"""
+            <section>
+              <h2>{_esc(category)} <span>{summary.counts.get(category, 0)}</span></h2>
+              <table>
+                <thead><tr><th>ID</th><th>Relative Path</th><th>Title</th></tr></thead>
+                <tbody>{body}</tbody>
+              </table>
+            </section>
+            """
+        )
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feiyue Asset Catalog</title>
+  <style>
+    :root {{ --ink:#111827; --muted:#4b5563; --line:#d1d5db; --panel:#fff; --surface:#f8fafc; --accent:#0f766e; }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; background:var(--surface); color:var(--ink); font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    main {{ max-width:1080px; margin:0 auto; padding:40px 24px; }}
+    header {{ border-bottom:1px solid var(--line); padding-bottom:24px; margin-bottom:24px; }}
+    .eyebrow {{ text-transform:uppercase; letter-spacing:.14em; font-size:11px; color:var(--accent); font-weight:700; }}
+    h1 {{ margin:8px 0; font-size:34px; letter-spacing:-.03em; }}
+    p {{ color:var(--muted); margin:0; line-height:1.6; }}
+    nav {{ display:flex; gap:16px; margin-top:18px; flex-wrap:wrap; }}
+    a {{ color:var(--accent); text-decoration:none; font-weight:700; }}
+    a:hover {{ text-decoration:underline; }}
+    .cards {{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; margin:24px 0; }}
+    .card, section {{ background:var(--panel); border:1px solid var(--line); border-radius:4px; }}
+    .card {{ padding:18px; }}
+    .label {{ color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.12em; }}
+    .value {{ display:block; margin-top:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:30px; font-weight:700; }}
+    section {{ margin-top:16px; overflow:hidden; }}
+    h2 {{ display:flex; justify-content:space-between; gap:12px; font-size:15px; margin:0; padding:16px 18px; border-bottom:1px solid var(--line); }}
+    h2 span {{ color:var(--muted); font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }}
+    table {{ width:100%; border-collapse:collapse; }}
+    th, td {{ padding:12px 14px; border-top:1px solid #eef2f7; text-align:left; font-size:13px; vertical-align:top; overflow-wrap:anywhere; }}
+    th {{ color:var(--muted); text-transform:uppercase; letter-spacing:.10em; font-size:11px; font-weight:700; }}
+    .empty {{ color:var(--muted); text-align:center; padding:24px; }}
+    @media (max-width:760px) {{ .cards {{ grid-template-columns:1fr; }} main {{ padding:24px 12px; }} }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">Read-only asset surface</div>
+      <h1>Feiyue Asset Catalog</h1>
+      <p>Safe summary of project-local Hermes workflow assets. This page exposes only IDs, relative paths, and parseable titles; it does not show raw asset contents, call providers, or mutate state.</p>
+      <nav><a href="/dashboard">Run dashboard</a><a href="/assets">Asset JSON</a></nav>
+    </header>
+    <div class="cards" aria-label="Asset summary">
+      <div class="card"><span class="label">Total Assets</span><span class="value">{summary.total_assets}</span></div>
+      <div class="card"><span class="label">Categories</span><span class="value">{len(summary.categories)}</span></div>
+    </div>
+    {''.join(sections)}
+  </main>
+</body>
+</html>"""
+
+
 def _detail_item(label: str, value: object) -> str:
     return f"<li><span>{_esc(label)}</span><strong>{_esc(value)}</strong></li>"
 
@@ -247,6 +333,12 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
             try:
                 if path in ("/", "/dashboard"):
                     self._send_text(200, render_runs_dashboard(root), content_type="text/html; charset=utf-8")
+                    return
+                if path == "/dashboard/assets":
+                    self._send_text(200, render_assets_dashboard(root), content_type="text/html; charset=utf-8")
+                    return
+                if path == "/assets":
+                    self._send_json(200, AssetCatalog(root).summary().model_dump(mode="json"))
                     return
                 if path.startswith("/dashboard/runs/"):
                     parts = [part for part in path.split("/") if part]
