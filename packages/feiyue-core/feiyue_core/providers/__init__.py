@@ -1,6 +1,14 @@
 """Role-aware provider contracts for Feiyue."""
 
 from .base import ModelProfile, ProviderRequest, ProviderResponse, ProviderRole
+from .authorization import (
+    AuthorizedProviderRunRecord,
+    AuthorizedScope,
+    ProviderRunEvidence,
+    RealProviderAuthorization,
+    build_provider_run_evidence,
+    write_provider_run_evidence,
+)
 from .diagnostics import (
     ProviderDiagnostic,
     ProviderFailureKind,
@@ -10,13 +18,21 @@ from .diagnostics import (
 from .errors import ProviderError, ProviderErrorKind
 from .fake import BaseProvider, FakeStudentProvider, FakeTeacherProvider
 from .integration import ProfileRunOutcome, ProfileRunner, run_profile_with_diagnostic
-from .profile_runner import FakeProfileRunner, ProfileRunRequest, ProfileRunResult
+from .profile_runner import (
+    FakeProfileRunner,
+    HermesProfileSubprocessRunner,
+    ProfileRunRequest,
+    ProfileRunResult,
+)
 
 __all__ = [
     "BaseProvider",
+    "AuthorizedProviderRunRecord",
+    "AuthorizedScope",
     "FakeProfileRunner",
     "FakeStudentProvider",
     "FakeTeacherProvider",
+    "HermesProfileSubprocessRunner",
     "ModelProfile",
     "ProfileRunOutcome",
     "ProfileRunRequest",
@@ -26,10 +42,14 @@ __all__ = [
     "ProviderError",
     "ProviderErrorKind",
     "ProviderFailureKind",
+    "ProviderRunEvidence",
     "ProviderRequest",
     "ProviderResponse",
     "ProviderRole",
+    "RealProviderAuthorization",
+    "build_provider_run_evidence",
     "classify_provider_failure",
     "redact_secrets",
     "run_profile_with_diagnostic",
+    "write_provider_run_evidence",
 ]
