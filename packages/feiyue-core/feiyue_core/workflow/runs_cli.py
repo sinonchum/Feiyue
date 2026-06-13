@@ -2,11 +2,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Sequence
 
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
+from feiyue_core.workflow.profile_worker_bridge import _parse_candidate_writes
+from feiyue_core.workflow.real_profile_promotion import (
+    RealProfilePromotionApproval,
+    RealProfilePromotionGate,
+    compute_workflow_report_hash,
+    read_promotion_approval,
+    write_promotion_approval,
+)
+from feiyue_core.workflow.real_profile_workflow_runner import RealProfileWorkflowRunReport
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -31,6 +42,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     workflow_promotion_parser = subparsers.add_parser("workflow-promotion", help="Print real profile workflow promotion evidence JSON")
     workflow_promotion_parser.add_argument("run_id")
+
+    approve_parser = subparsers.add_parser("approve-promotion", help="Create exact approval evidence for a verified workflow dry run")
+    approve_parser.add_argument("run_id")
+    approve_parser.add_argument("--target-branch", required=True)
+    approve_parser.add_argument("--changed-file", action="append", required=True, dest="changed_files")
+    approve_parser.add_argument("--approved-by", required=True)
+    approve_parser.add_argument("--approval-id", required=True)
+    approve_parser.add_argument("--reason", required=True)
+
+    promote_parser = subparsers.add_parser("promote-approved", help="Promote a dry run using persisted approval evidence")
+    promote_parser.add_argument("run_id")
+    promote_parser.add_argument("--commit-message", required=True)
 
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
@@ -66,10 +89,71 @@ def main(argv: Sequence[str] | None = None) -> int:
                 return 2
             print(json.dumps(json.loads(evidence_path.read_text(encoding="utf-8")), indent=2, sort_keys=True))
             return 0
+        if args.command == "approve-promotion":
+            dry_run = _load_workflow_smoke_report(root, args.run_id)
+            if dry_run.workflow_report is None:
+                print(f"Workflow smoke report is missing workflow_report for run_id: {args.run_id}", file=sys.stderr)
+                return 2
+            approval = RealProfilePromotionApproval(
+                approval_id=args.approval_id,
+                approved_by=args.approved_by,
+                run_id=dry_run.run_id,
+                task_id=dry_run.task_id,
+                approved_action="promote_verified_dry_run",
+                changed_files=args.changed_files,
+                target_branch=args.target_branch,
+                source_commit_sha=_git("rev-parse", "HEAD", cwd=root).strip(),
+                workflow_report_hash=compute_workflow_report_hash(dry_run.workflow_report),
+                approved_at=datetime.now(UTC).isoformat(),
+                reason=args.reason,
+            )
+            write_promotion_approval(approval, root)
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "promote-approved":
+            dry_run = _load_workflow_smoke_report(root, args.run_id)
+            approval = read_promotion_approval(root, args.run_id)
+            candidate_writes = _extract_latest_candidate_writes(dry_run)
+            result = RealProfilePromotionGate().promote_verified_dry_run(
+                source_repo=root,
+                dry_run_report=dry_run,
+                candidate_writes=candidate_writes,
+                target_branch=approval.target_branch,
+                commit_message=args.commit_message,
+                approval=approval,
+                evidence_root=root,
+            )
+            print(result.model_dump_json(indent=2))
+            return 0
     except RunEvidenceNotFoundError as exc:
         print(str(exc), file=sys.stderr)
         return 2
     return 2
+
+
+def _load_workflow_smoke_report(root: Path, run_id: str) -> RealProfileWorkflowRunReport:
+    evidence_path = root / ".hermes" / "workflow-smokes" / run_id / "evidence.json"
+    if not evidence_path.exists():
+        raise FileNotFoundError(f"Workflow smoke evidence not found for run_id: {run_id}")
+    payload = json.loads(evidence_path.read_text(encoding="utf-8"))
+    payload.pop("written_at", None)
+    return RealProfileWorkflowRunReport.model_validate(payload)
+
+
+def _extract_latest_candidate_writes(report: RealProfileWorkflowRunReport):
+    for stdout in reversed(report.stdout_redacted):
+        try:
+            return _parse_candidate_writes(stdout)
+        except ValueError:
+            continue
+    raise ValueError(f"No parseable candidate writes found for run_id: {report.run_id}")
+
+
+def _git(*args: str, cwd: Path) -> str:
+    completed = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=False)
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip())
+    return completed.stdout
 
 
 if __name__ == "__main__":

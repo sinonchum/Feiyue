@@ -76,6 +76,27 @@ class RealProfilePromotionGateResult(FeiyueModel):
     written_at: str | None = None
 
 
+def approval_evidence_path(evidence_root: str | Path, run_id: str) -> Path:
+    return Path(evidence_root) / ".hermes" / "workflow-promotions" / run_id / "approval.json"
+
+
+def write_promotion_approval(approval: RealProfilePromotionApproval, evidence_root: str | Path) -> Path:
+    path = approval_evidence_path(evidence_root, approval.run_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = approval.model_dump(mode="json") | {"written_at": datetime.now(UTC).isoformat()}
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def read_promotion_approval(evidence_root: str | Path, run_id: str) -> RealProfilePromotionApproval:
+    path = approval_evidence_path(evidence_root, run_id)
+    if not path.exists():
+        raise FileNotFoundError(f"Promotion approval evidence not found for run_id: {run_id}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.pop("written_at", None)
+    return RealProfilePromotionApproval.model_validate(payload)
+
+
 class RealProfilePromotionGate:
     """Fail-closed promotion boundary for Wave4-3B real-profile dry runs."""
 
