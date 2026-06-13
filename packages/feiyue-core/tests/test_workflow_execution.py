@@ -23,6 +23,12 @@ from feiyue_core.workflow.execution import (
     ToyWorkflowExecutor,
     WorkflowReportWriter,
 )
+from feiyue_core.workflow.profile_worker_bridge import (
+    ProfileWorkflowBridge,
+    ProfileWorkflowBridgeAuthorization,
+    ProfileWorkflowBridgeStatus,
+)
+from feiyue_core.providers.profile_runner import FakeProfileRunner
 
 
 def _init_toy_repo(path: Path) -> None:
@@ -1023,3 +1029,97 @@ def test_run_catalog_returns_empty_summary_when_no_runs_exist(tmp_path: Path) ->
     assert summary.safe_to_retry_count == 0
     assert summary.next_action_counts == {}
     assert summary.runs == []
+
+
+def test_profile_workflow_bridge_executes_profile_generated_patch_in_sandbox(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="w42-profile-worker-pass",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        acceptance_criteria=["pytest passes"],
+        verification_commands=["python -m pytest -q"],
+        escalation_rule="Run weak profile once; verifier decides success.",
+    )
+    fake_runner = FakeProfileRunner(
+        {
+            "feiyue-weak-deepseek-flash": json.dumps(
+                {"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a + b\n"}]}
+            )
+        }
+    )
+
+    bridge_report = ProfileWorkflowBridge(profile_runner=fake_runner).execute(
+        source_repo=repo,
+        contract=contract,
+        project_name="toy-calculator",
+        worker_profile="feiyue-weak-deepseek-flash",
+        authorization=ProfileWorkflowBridgeAuthorization(scopes=["profile_workflow_execute"], max_profile_calls=1),
+    )
+
+    assert bridge_report.status == ProfileWorkflowBridgeStatus.VERIFIED
+    assert bridge_report.provider_call_count == 1
+    assert bridge_report.worker_profile == "feiyue-weak-deepseek-flash"
+    assert bridge_report.reason_codes == ["profile_workflow_execute_authorized", "profile_runner_injected"]
+    assert bridge_report.workflow_report.status == WorkflowExecutionStatus.VERIFIED
+    assert bridge_report.workflow_report.promotion_ready is True
+    assert bridge_report.workflow_report.changed_files == ["calc.py"]
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+
+
+def test_profile_workflow_bridge_blocks_without_execute_authorization(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="w42-profile-worker-blocked",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    fake_runner = FakeProfileRunner(
+        {"feiyue-weak-deepseek-flash": json.dumps({"writes": [{"path": "calc.py", "content": "ignored"}]})}
+    )
+
+    bridge_report = ProfileWorkflowBridge(profile_runner=fake_runner).execute(
+        source_repo=repo,
+        contract=contract,
+        project_name="toy-calculator",
+        worker_profile="feiyue-weak-deepseek-flash",
+        authorization=ProfileWorkflowBridgeAuthorization(scopes=["profile_workflow_plan"], max_profile_calls=1),
+    )
+
+    assert bridge_report.status == ProfileWorkflowBridgeStatus.BLOCKED
+    assert bridge_report.provider_call_count == 0
+    assert bridge_report.workflow_report is None
+    assert bridge_report.reason_codes == ["authorization_scope_profile_workflow_execute_missing"]
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+
+
+def test_profile_workflow_bridge_blocks_when_profile_output_is_not_candidate_writes(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    contract = TaskContract(
+        task_id="w42-profile-worker-invalid-json",
+        title="Fix calculator add",
+        scope="Make add return a sum.",
+        files_to_modify=["calc.py"],
+        verification_commands=["python -m pytest -q"],
+    )
+    fake_runner = FakeProfileRunner({"feiyue-weak-deepseek-flash": "not json"})
+
+    bridge_report = ProfileWorkflowBridge(profile_runner=fake_runner).execute(
+        source_repo=repo,
+        contract=contract,
+        project_name="toy-calculator",
+        worker_profile="feiyue-weak-deepseek-flash",
+        authorization=ProfileWorkflowBridgeAuthorization(scopes=["profile_workflow_execute"], max_profile_calls=1),
+    )
+
+    assert bridge_report.status == ProfileWorkflowBridgeStatus.BLOCKED
+    assert bridge_report.provider_call_count == 1
+    assert bridge_report.workflow_report is None
+    assert bridge_report.reason_codes == ["profile_output_parse_failed"]
+    assert "not json" in bridge_report.stdout_redacted
