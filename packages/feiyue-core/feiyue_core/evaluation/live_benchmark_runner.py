@@ -36,6 +36,9 @@ class LiveBenchmarkCase(FeiyueModel):
     case_id: str
     prompt: str
     expected_markers: list[str] = Field(default_factory=list)
+    required_concepts: list[str] = Field(default_factory=list)
+    forbidden_claims: list[str] = Field(default_factory=list)
+    min_quality_score: float = Field(default=1.0, ge=0.0, le=1.0)
     source_ids: list[str]
 
     @field_validator("case_id", "prompt")
@@ -43,10 +46,10 @@ class LiveBenchmarkCase(FeiyueModel):
     def _required_text(cls, value: str) -> str:
         return _non_empty(value, "case field")
 
-    @field_validator("expected_markers")
+    @field_validator("expected_markers", "required_concepts", "forbidden_claims")
     @classmethod
-    def _normalize_markers(cls, value: list[str]) -> list[str]:
-        return [_non_empty(marker, "expected_marker") for marker in value]
+    def _normalize_rubric_strings(cls, value: list[str]) -> list[str]:
+        return [_non_empty(item, "rubric item") for item in value]
 
     @field_validator("source_ids")
     @classmethod
@@ -88,7 +91,12 @@ class LiveBenchmarkRunResultEvidence(FeiyueModel):
     stdout_redacted: str
     stderr_redacted: str
     passed: bool
+    marker_passed: bool
     missing_markers: list[str] = Field(default_factory=list)
+    concept_hits: list[str] = Field(default_factory=list)
+    missing_concepts: list[str] = Field(default_factory=list)
+    forbidden_claim_hits: list[str] = Field(default_factory=list)
+    quality_score: float = Field(ge=0.0, le=1.0)
 
 
 class LiveBenchmarkExecutionRecord(FeiyueModel):
@@ -124,6 +132,7 @@ class LiveBenchmarkExecutionReport(FeiyueModel):
     records: list[LiveBenchmarkExecutionRecord] = Field(default_factory=list)
     trace_fixtures: list[BenchmarkTraceFixture] = Field(default_factory=list)
     comparison: BenchmarkStrategyComparison | None = None
+    average_quality_score_by_strategy: dict[str, float] = Field(default_factory=dict)
     evidence_paths: list[str] = Field(default_factory=list)
     reason_codes: list[str]
     authorization: BenchmarkAuthorization | None = None
@@ -211,6 +220,7 @@ class AuthorizedLiveBenchmarkRunner:
                             comparison=None,
                             reason_codes=[*reason_codes, "max_requests_would_be_exceeded", "comparison_not_available_incomplete_execution"],
                             authorization=authorization,
+                            average_quality_score_by_strategy=_average_quality_score_by_strategy(result_evidence),
                             run_results=result_evidence,
                         )
                     )
@@ -224,9 +234,9 @@ class AuthorizedLiveBenchmarkRunner:
                 result = self._profile_runner.run(request)
                 provider_call_count += 1
 
-                passed, missing_markers = _result_passes(result, case.expected_markers)
+                rubric = _score_result(result, case)
                 strategy_id = _role_value(binding.strategy_role)
-                outcome = StrategyOutcome.PASSED if passed else StrategyOutcome.FAILED
+                outcome = StrategyOutcome.PASSED if rubric.passed else StrategyOutcome.FAILED
                 records.append(
                     LiveBenchmarkExecutionRecord(
                         record_id=f"{normalized_run_id}:{strategy_id}:{case.case_id}",
@@ -245,8 +255,13 @@ class AuthorizedLiveBenchmarkRunner:
                         timed_out=result.timed_out,
                         stdout_redacted=redact_secrets(result.stdout),
                         stderr_redacted=redact_secrets(result.stderr),
-                        passed=passed,
-                        missing_markers=missing_markers,
+                        passed=rubric.passed,
+                        marker_passed=rubric.marker_passed,
+                        missing_markers=rubric.missing_markers,
+                        concept_hits=rubric.concept_hits,
+                        missing_concepts=rubric.missing_concepts,
+                        forbidden_claim_hits=rubric.forbidden_claim_hits,
+                        quality_score=rubric.quality_score,
                     )
                 )
 
@@ -265,6 +280,7 @@ class AuthorizedLiveBenchmarkRunner:
                 records=records,
                 trace_fixtures=fixtures,
                 comparison=comparison,
+                average_quality_score_by_strategy=_average_quality_score_by_strategy(result_evidence),
                 reason_codes=reason_codes,
                 authorization=authorization,
                 run_results=result_evidence,
@@ -344,10 +360,69 @@ def _max_requests(authorization: BenchmarkAuthorization) -> int | None:
     return raw
 
 
-def _result_passes(result: ProfileRunResult, expected_markers: list[str]) -> tuple[bool, list[str]]:
-    missing = [marker for marker in expected_markers if marker not in result.stdout]
-    passed = result.exit_code == 0 and not result.timed_out and not missing
-    return passed, missing
+class _RubricScore(FeiyueModel):
+    passed: bool
+    marker_passed: bool
+    missing_markers: list[str]
+    concept_hits: list[str]
+    missing_concepts: list[str]
+    forbidden_claim_hits: list[str]
+    quality_score: float = Field(ge=0.0, le=1.0)
+
+
+def _score_result(result: ProfileRunResult, case: LiveBenchmarkCase) -> _RubricScore:
+    """Score one runner result with deterministic, provider-free substring rubrics.
+
+    Expected markers preserve the existing case-sensitive stdout substring behavior.
+    Required concepts and forbidden claims are case-insensitive stdout substrings;
+    no LLM judge or live provider is used for scoring.
+    """
+
+    exit_ok = result.exit_code == 0 and not result.timed_out
+    missing_markers = [marker for marker in case.expected_markers if marker not in result.stdout]
+    marker_passed = not missing_markers
+    stdout_lower = result.stdout.lower()
+    concept_hits = [concept for concept in case.required_concepts if concept.lower() in stdout_lower]
+    missing_concepts = [concept for concept in case.required_concepts if concept.lower() not in stdout_lower]
+    forbidden_claim_hits = [claim for claim in case.forbidden_claims if claim.lower() in stdout_lower]
+    quality_score = _quality_score(
+        marker_passed=marker_passed,
+        marker_count=len(case.expected_markers),
+        concept_hits=len(concept_hits),
+        concept_count=len(case.required_concepts),
+        exit_ok=exit_ok,
+    )
+    passed = exit_ok and marker_passed and not forbidden_claim_hits and quality_score >= case.min_quality_score
+    return _RubricScore(
+        passed=passed,
+        marker_passed=marker_passed,
+        missing_markers=missing_markers,
+        concept_hits=concept_hits,
+        missing_concepts=missing_concepts,
+        forbidden_claim_hits=[redact_secrets(claim) for claim in forbidden_claim_hits],
+        quality_score=quality_score,
+    )
+
+
+def _quality_score(
+    *, marker_passed: bool, marker_count: int, concept_hits: int, concept_count: int, exit_ok: bool
+) -> float:
+    marker_component = 1.0 if marker_passed else 0.0
+    if concept_count:
+        concept_component = concept_hits / concept_count
+        if marker_count:
+            return (marker_component + concept_component) / 2
+        return concept_component
+    if marker_count:
+        return marker_component
+    return 1.0 if exit_ok else 0.0
+
+
+def _average_quality_score_by_strategy(results: list[LiveBenchmarkRunResultEvidence]) -> dict[str, float]:
+    grouped: dict[str, list[float]] = defaultdict(list)
+    for result in results:
+        grouped[result.strategy_id].append(result.quality_score)
+    return {strategy_id: sum(scores) / len(scores) for strategy_id, scores in sorted(grouped.items()) if scores}
 
 
 def _fixtures_from_records(records: list[LiveBenchmarkExecutionRecord]) -> list[BenchmarkTraceFixture]:
@@ -405,12 +480,24 @@ def _render_markdown_report(report: LiveBenchmarkExecutionReport) -> str:
                 f"total {metric.total}, repeated mistakes {metric.repeated_mistake_count}"
             )
 
+    lines.extend(["", "## Average Quality Score"])
+    if report.average_quality_score_by_strategy:
+        for strategy_id, average_quality in sorted(report.average_quality_score_by_strategy.items()):
+            lines.append(f"- {strategy_id}: {average_quality:.2f}")
+    else:
+        lines.append("- unavailable")
+
     lines.extend(["", "## Redacted Run Snippets"])
     for result in report.run_results:
         lines.extend(
             [
                 f"- {result.strategy_id}/{result.case_id}/{result.profile}: "
-                f"passed={result.passed}, exit={result.exit_code}, timed_out={result.timed_out}",
+                f"passed={result.passed}, marker_passed={result.marker_passed}, "
+                f"quality_score={result.quality_score:.2f}, exit={result.exit_code}, timed_out={result.timed_out}",
+                f"  - missing_markers={result.missing_markers}",
+                f"  - concept_hits={result.concept_hits}",
+                f"  - missing_concepts={result.missing_concepts}",
+                f"  - forbidden_claim_hits={result.forbidden_claim_hits}",
                 f"  - stdout: {_snippet(result.stdout_redacted)}",
                 f"  - stderr: {_snippet(result.stderr_redacted)}",
             ]
