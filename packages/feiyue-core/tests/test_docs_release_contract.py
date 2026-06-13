@@ -55,7 +55,7 @@ def test_release_checklist_captures_m14_gates_and_authorization_boundaries() -> 
     assert "Real provider execution requires explicit authorization" in content
     assert "docs/real-provider-integration-plan.md" in content
     assert "Hermes config mutation is out of scope" in content
-    assert "Current baseline: 486 passed" in content
+    assert "Current baseline: 487 passed" in content
 
 
 def test_real_provider_integration_plan_exists_and_defines_authorized_sequence() -> None:
@@ -150,7 +150,7 @@ def test_status_docs_capture_wave4_real_profile_benchmark_checkpoint() -> None:
     outline = OUTLINE.read_text(encoding="utf-8")
 
     for content in (readme, outline):
-        assert "Current verified baseline: `486 passed`" in content
+        assert "Current verified baseline: `487 passed`" in content
         assert "Wave4-1F" in content
         assert "45/45 real Hermes profile calls" in content
         assert "gemini-3.1-pro" in content
@@ -163,9 +163,23 @@ def test_status_docs_capture_wave4_2b_real_profile_workflow_smoke() -> None:
     outline = OUTLINE.read_text(encoding="utf-8")
 
     for content in (readme, outline):
-        assert "Current verified baseline: `486 passed`" in content
+        assert "Current verified baseline: `487 passed`" in content
         assert "Wave4-2B" in content
         assert "WAVE4_2B_REAL_PROFILE_WORKFLOW_OK" in content
         assert "feiyue-weak-deepseek-flash" in content
         assert "provider_call_count: 1" in content
         assert "workflow_status: verified" in content
+
+
+def test_status_docs_capture_wave4_2c_real_teacher_retry_smoke() -> None:
+    readme = README.read_text(encoding="utf-8")
+    outline = OUTLINE.read_text(encoding="utf-8")
+
+    for content in (readme, outline):
+        assert "Current verified baseline: `487 passed`" in content
+        assert "Wave4-2C" in content
+        assert "WAVE4_2C_REAL_TEACHER_RETRY_OK" in content
+        assert "feiyue-strong-gpt55" in content
+        assert "provider_call_count: 3" in content
+        assert "initial_workflow_status: needs_teacher" in content
+        assert "final_workflow_status: verified" in content
