@@ -29,6 +29,7 @@ from feiyue_core.workflow.routing_proposal import (
     write_routing_proposal_approval,
 )
 from feiyue_core.workflow.real_profile_workflow_runner import RealProfileWorkflowRunReport
+from feiyue_core.workflow.multi_worker_orchestration import MultiWorkerOrchestrationPlanner, MultiWorkerPlanError
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -81,6 +82,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     apply_routing_parser = subparsers.add_parser("apply-approved-routing", help="Apply a routing proposal using persisted exact approval evidence")
     apply_routing_parser.add_argument("--proposal-id", required=True)
+
+    multi_worker_parser = subparsers.add_parser("multi-worker-plan", help="Create a provider-free multi-worker orchestration plan from approved routing")
+    multi_worker_parser.add_argument("--plan-id", required=True)
+    multi_worker_parser.add_argument("--task-id", required=True)
+    multi_worker_parser.add_argument("--capability", action="append", required=True, dest="capabilities")
+    multi_worker_parser.add_argument("--risk-level", choices=["low", "medium", "high"], default="low")
+    multi_worker_parser.add_argument("--student-failure-count", type=int, default=0)
+    multi_worker_parser.add_argument("--failure-category")
+    multi_worker_parser.add_argument("--verifier-confidence", type=float)
+    multi_worker_parser.add_argument("--teacher-calls-used", type=int, default=0)
+    multi_worker_parser.add_argument("--teacher-call-budget", type=int, default=0)
+    multi_worker_parser.add_argument("--write-plan", action="store_true", help="Persist plan.json and plan.md under .hermes/multi-worker-plans")
 
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
@@ -184,7 +197,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             result = RoutingApplyGate(root).apply_proposal(proposal=proposal, approval=approval)
             print(result.model_dump_json(indent=2))
             return 0
-    except (RunEvidenceNotFoundError, RoutingProposalError) as exc:
+        if args.command == "multi-worker-plan":
+            planner = MultiWorkerOrchestrationPlanner(root)
+            kwargs = {
+                "plan_id": args.plan_id,
+                "task_id": args.task_id,
+                "required_capabilities": args.capabilities,
+                "risk_level": args.risk_level,
+                "student_failure_count": args.student_failure_count,
+                "failure_category": args.failure_category,
+                "verifier_confidence": args.verifier_confidence,
+                "teacher_calls_used": args.teacher_calls_used,
+                "teacher_call_budget": args.teacher_call_budget,
+            }
+            plan = planner.write_plan(**kwargs) if args.write_plan else planner.plan(**kwargs)
+            print(plan.model_dump_json(indent=2))
+            return 0
+    except (RunEvidenceNotFoundError, RoutingProposalError, MultiWorkerPlanError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     return 2

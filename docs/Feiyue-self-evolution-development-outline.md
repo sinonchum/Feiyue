@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`511 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `511 passed`.
+> **Verified baseline**：`517 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `517 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`511 passed`。
+- `python -m pytest -q`：`517 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1713,8 +1713,24 @@ Wave4-4B only proposes routing changes. Wave4-4C adds exact approval for a propo
 
 ### Wave4-4C remaining scope
 
-Wave4-4C can apply exact approved routing changes. The next safe slice is Wave4-5: multi-worker orchestration hardening using routing/proposal evidence as input, not automatic global Hermes config mutation.
+Wave4-4C can apply exact approved routing changes. Wave4-5 hardens multi-worker orchestration on top of those approved project-local routes without executing providers or mutating global Hermes config.
+
+## Completed Slice: Wave4-5 Multi-worker Orchestration Hardening
+
+### Wave4-5 completed
+
+- Added `MultiWorkerOrchestrationPlanner` to load `.hermes/model-routing.yaml`, discover latest applied routing evidence, and create provider-free multi-worker route plans.
+- Added `MultiWorkerOrchestrationPlan` evidence with selected route source, `routing_apply_evidence_loaded`, route reason codes, and explicit safety flags.
+- Added `feiyue-runs multi-worker-plan --plan-id <id> --task-id <id> --capability <capability> --risk-level <level> --write-plan` to print JSON and persist `.hermes/multi-worker-plans/<plan_id>/plan.json` plus `plan.md`.
+- Added fail-closed missing routing table behavior with no provider execution and no routing/global config mutation.
+- Teacher escalation remains guarded by the existing multi-worker escalation gate; repeated-failure plans block with `teacher_escalation_authorization_missing` unless explicit authorization is supplied.
+- Added `.hermes/multi-worker-plans/` to `.gitignore`; generated plans are local evidence artifacts.
+- Smoke run `wave4-5-multi-worker-orchestration-smoke` selected `steady-4c` from the approved Wave4-4C route with `routing_apply_evidence_loaded`, `provider_execution_requested: false`, and `global_hermes_config_mutated: false`.
+
+### Wave4-5 remaining scope
+
+Wave4-5 is a provider-free planning seam. The next safe slice is Wave4-5B: connect approved multi-worker plans to real workflow execution as a dry-run-only orchestrator, with exact authorization before any provider calls or teacher escalation.
 
 ## Recommended Next Slice
 
-当前下一步是 **Wave4-5：Multi-worker Orchestration Hardening**。目标是把 routing/proposal/apply evidence 接到多 worker 路由与 escalation gate，但仍保持 provider/config 修改受 approval gate 约束。
+当前下一步是 **Wave4-5B：Approved Multi-worker Workflow Dry-run Orchestrator**。目标是让 `multi-worker-plan` 驱动 dry-run workflow execution，但 provider calls、teacher escalation、promotion、routing/global Hermes config mutation继续分开授权、分开落 evidence。
