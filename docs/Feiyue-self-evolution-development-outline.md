@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`469 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract；remote CI mirrors provider-free smokes）。
+> **Verified baseline**：`482 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, and Wave4 live-benchmark scoring contracts；remote CI mirrors provider-free smokes）。Current verified baseline: `482 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1333,8 +1333,8 @@ M5 Project Knowledge
 | M6 Curator / Distillation | Done Foundation+ | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate、curation smoke、asset proposal persistence、append-only review decisions 与 provider-free promotion gate 已完成；dedup / 正式 `.hermes` asset write 仍未完成。 |
 | M7 Weak Model Capability Expansion | Done Foundation | CapabilityLadder、WorkerPerformanceRecord、ModelCapabilityProfile、promotion/demotion recommendation rules 与 capability smoke 已完成；真实 worker 数据与 routing adapter 后续增强。 |
 | M8 Creative Role Development | Done Foundation | CreativeBrief、CreativeVariant、CreativeCritique、UserSelectionFeedback 与 creative smoke 已完成；opportunity discovery、accepted-proposal metrics、真实 creative provider 后续增强。 |
-| M9 Strategy/Evaluation Harness | Done Foundation++ | StrategyEvaluationRecord、StrategyScorecard、BenchmarkSuite、StrategyComparisonReport、evaluation smoke、benchmark case schema、provider-free trace fixtures、fixture strategy comparison contracts 与 gated live benchmark plan/replay contracts 已完成；真实 weak/strong provider calls 与 longitudinal gain 仍未完成。 |
-| M10 Real Provider / Multi-Profile Worker Integration | Partial Foundation++ | FakeProfileRunner、ProviderDiagnostic、ProviderFailureKind、redaction、profile diagnostic smoke、real-provider plan-only authorization checklist、typed authorization/evidence records 与 gated Hermes profile subprocess runner 已完成；真实 HTTP provider smoke、真实 teacher escalation 执行需精确授权。 |
+| M9 Strategy/Evaluation Harness | Done Foundation+++ | StrategyEvaluationRecord、StrategyScorecard、BenchmarkSuite、StrategyComparisonReport、evaluation smoke、benchmark case schema、provider-free trace fixtures、fixture strategy comparison contracts、gated live benchmark plan/replay contracts、authorized live benchmark runner、rubric quality scoring、negation-aware forbidden-claim handling 与 Wave4 real Hermes profile benchmark evidence 已完成；longitudinal gain / semantic judge 仍未完成。 |
+| M10 Real Provider / Multi-Profile Worker Integration | Partial Real Benchmark Lane | FakeProfileRunner、ProviderDiagnostic、ProviderFailureKind、redaction、profile diagnostic smoke、real-provider plan-only authorization checklist、typed authorization/evidence records、gated Hermes profile subprocess runner 与 real profile benchmark execution 已完成。Wave4-1F: 45/45 real Hermes profile calls passed across weak/mid/strong profiles, `gemini-3.1-pro` is the canonical Gemini strong model. M10 real profile benchmark lane usable; M10 real multi-worker execution lane not yet implemented. |
 | M11 Real Workflow Execution / Promotion | Provider-free Foundation++ | CandidateFileWrite、ToyWorkflowExecutor、verifier-gated readiness、BugDossier on failure、bounded multi-round fake teacher retry、verified branch promotion、production promotion safety/rollback boundary、run report persistence、source clean guarantee 已完成；真实 worker/provider patch 未完成。 |
 | M12 Safety / Budget / Policy Governor | Done Foundation | PolicyGovernor、budget/risk/privacy gates、PolicyGovernorConfigLoader、HumanApprovalRecord、approval persistence、run-evidence、safe_to_retry/next_safe_action、handoff summary 与 action evidence 已完成。 |
 | M13 Productization / Dashboard / API | Done Foundation+ | `feiyue-runs` CLI、RunCatalog、read-only API/dashboard、drill-down、read-only asset catalog/API/dashboard page、static HTML export、manifest SHA256、verifier、portable bundle、export-all pipeline 已完成；full review UI 尚未完整产品化。 |
@@ -1359,9 +1359,9 @@ Blueprint / Doctrine
 
 尚未进入或尚未完成的主线是：
 
-1. 真实 provider / Hermes profile execution。
-2. 真实弱模型 vs 强模型 benchmark 调用与长期指标。
-3. 真实多 worker execution 与 teacher escalation 的实际 provider 调用。
+1. 真实 Hermes profile workflow worker execution（benchmark prompt 已打通，但 workflow patch worker 未打通）。
+2. 真实弱模型 vs 强模型 longitudinal gain 指标（单轮/多轮 benchmark 已打通，但长期资产提升未量化）。
+3. 真实多 worker execution 与 teacher escalation 的实际 workflow 调用。
 4. Curator proposal 到正式 `.hermes` asset 的 dedup / promotion 写入闭环。
 5. 真实项目自动 promotion / rollback 的外部生产执行。
 6. M13 全面 productization：lesson/eval/routing/capability/creative proposal review UI。
@@ -1548,6 +1548,27 @@ Update:
 
 Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher escalation / production promotion 的 **authorization-gated seams**，但没有执行真实 provider/network calls、没有读取凭据、没有修改 Hermes config、没有进行真实外部 production promotion。
 
+## Completed Parallel Wave: Wave 4-1 Real Profile Benchmark Checkpoint
+
+### Wave4-1 completed
+
+- **W4-1B Real matrix**：authorized live benchmark runner 已实际调用 5 个 Hermes profiles，完成弱/中/强 profile smoke matrix，并写入 redacted JSON/Markdown evidence。
+- **W4-1C Rubric scoring**：新增 required concepts、forbidden claims、quality score 与 negation-aware forbidden-claim handling，避免 `no evidence found` 误触发 forbidden claim。
+- **W4-1D Hard rubric matrix**：补充更难 rubric cases，并将 nested Hermes profile 调用限制为 toolless `--ignore-rules --max-turns 1 -t ''`，防止 benchmark subject 自己作为 agent 修改 repo。
+- **W4-1E Gemini reliability upgrade**：Gemini strong profile 实际模型切到 `gemini-3.1-pro`，可靠性诊断无 timeout / empty output。
+- **W4-1F Multi-round reliability sweep**：完成 45/45 real Hermes profile calls，覆盖 weak/mid/strong profiles；DeepSeek Flash 当前是最稳低成本 worker 候选，Gemini 3.1 Pro 是可用但更慢更贵的 strong/reviewer 候选。
+
+### Wave4-1 local verification
+
+- `python -m pytest -q`：`482 passed`。
+- `python -m compileall -q feiyue_core`：passed。
+- `git diff --check`：passed。
+- Latest remote CI for status-sync predecessor: success.
+
+### Wave4-1 scope note
+
+Wave4-1 证明 **M10 real profile benchmark lane usable**：真实 Hermes profiles 能被安全、可预算、可脱敏地调用，并能产出 quality/latency/reliability evidence。它尚未证明真实 workflow worker execution；**M10 real multi-worker execution lane not yet implemented**，下一步必须把 profile runner 接到 M11 sandbox workflow，而不是继续只跑 prompt benchmark。
+
 ## Recommended Next Slice
 
-当前更稳的下一步是 **M6 Formal Asset Promotion/Dedup Writer** 或 **authorized live smoke run**。前者继续 provider-free，把 asset proposal 安全推进到正式 `.hermes` asset；后者需要用户按 `docs/real-provider-integration-plan.md` 提供 exact provider/profile/command/budget/evidence-retention 授权后才可执行。
+当前下一步是 **Wave4-2：Real Hermes Profile Worker Execution Bridge**。目标是把已验证的 real profile benchmark runner 接入 M11 workflow executor：TaskContract → real weak profile worker → sandbox patch → verifier → bug dossier on failure → optional real strong teacher guidance → worker retry → run evidence → capability/routing metrics。建议先 provider-free fake-first TDD，再用 toy repo 最小真实 workflow smoke；默认 worker 候选为 `feiyue-weak-deepseek-flash`，teacher/reference 候选为 `feiyue-strong-gpt55`，`gemini-3.1-pro` 作为 secondary strong reviewer。

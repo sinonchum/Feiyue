@@ -55,7 +55,7 @@ def test_release_checklist_captures_m14_gates_and_authorization_boundaries() -> 
     assert "Real provider execution requires explicit authorization" in content
     assert "docs/real-provider-integration-plan.md" in content
     assert "Hermes config mutation is out of scope" in content
-    assert "Current baseline: 469 passed" in content
+    assert "Current baseline: 482 passed" in content
 
 
 def test_real_provider_integration_plan_exists_and_defines_authorized_sequence() -> None:
@@ -143,3 +143,16 @@ def test_canonical_docs_use_gemini_31_pro_for_strong_model_examples() -> None:
         assert "Gemini 3.1 Pro" in content
         assert "Gemini 2.5 Pro" not in content
         assert "gemini-2.5-pro" not in content.lower()
+
+
+def test_status_docs_capture_wave4_real_profile_benchmark_checkpoint() -> None:
+    readme = README.read_text(encoding="utf-8")
+    outline = OUTLINE.read_text(encoding="utf-8")
+
+    for content in (readme, outline):
+        assert "Current verified baseline: `482 passed`" in content
+        assert "Wave4-1F" in content
+        assert "45/45 real Hermes profile calls" in content
+        assert "gemini-3.1-pro" in content
+        assert "M10 real profile benchmark lane usable" in content
+        assert "M10 real multi-worker execution lane not yet implemented" in content
