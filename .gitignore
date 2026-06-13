@@ -20,4 +20,5 @@ local-notes/
 .hermes/capability-feedback/
 .hermes/routing-proposals/
 .hermes/multi-worker-plans/
+.hermes/multi-worker-workflows/
 .hermes/run_*.py

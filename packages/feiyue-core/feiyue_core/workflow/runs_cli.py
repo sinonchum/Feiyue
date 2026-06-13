@@ -95,6 +95,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     multi_worker_parser.add_argument("--teacher-call-budget", type=int, default=0)
     multi_worker_parser.add_argument("--write-plan", action="store_true", help="Persist plan.json and plan.md under .hermes/multi-worker-plans")
 
+    multi_worker_workflow_parser = subparsers.add_parser("multi-worker-workflow", help="Print multi-worker workflow dry-run evidence JSON")
+    multi_worker_workflow_parser.add_argument("run_id")
+
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
     loader = RunEvidenceLoader(root)
@@ -212,6 +215,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             }
             plan = planner.write_plan(**kwargs) if args.write_plan else planner.plan(**kwargs)
             print(plan.model_dump_json(indent=2))
+            return 0
+        if args.command == "multi-worker-workflow":
+            evidence_path = root / ".hermes" / "multi-worker-workflows" / args.run_id / "evidence.json"
+            if not evidence_path.exists():
+                print(f"Multi-worker workflow evidence not found for run_id: {args.run_id}", file=sys.stderr)
+                return 2
+            print(json.dumps(json.loads(evidence_path.read_text(encoding="utf-8")), indent=2, sort_keys=True))
             return 0
     except (RunEvidenceNotFoundError, RoutingProposalError, MultiWorkerPlanError) as exc:
         print(str(exc), file=sys.stderr)
