@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 
 from feiyue_core.workflow.runs_export import export_static_runs_report
@@ -57,6 +58,34 @@ def test_export_static_runs_report_writes_offline_dashboard_and_detail(tmp_path)
     assert 'href="../index.html"' in detail_html
     assert "<pre>" not in index_html + detail_html
     assert "JSON.stringify" not in index_html + detail_html
+
+
+def test_export_static_runs_report_writes_manifest_with_hashes_and_sources(tmp_path) -> None:
+    _write_run_evidence(tmp_path, "m13-export-demo")
+    output_dir = tmp_path / "report"
+
+    result = export_static_runs_report(tmp_path, output_dir)
+
+    assert result.manifest_path == output_dir / "manifest.json"
+    manifest = json.loads(result.manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["schema_version"] == "feiyue.static_runs_report.v1"
+    assert manifest["project_root"] == str(tmp_path)
+    assert manifest["total_runs"] == 1
+    assert manifest["generated_at"].endswith("Z")
+    assert manifest["files"][0]["path"] == "index.html"
+    assert manifest["files"][0]["sha256"] == hashlib.sha256(result.index_path.read_bytes()).hexdigest()
+    assert manifest["runs"] == [
+        {
+            "task_id": "m13-export-demo",
+            "detail_path": "runs/m13-export-demo.html",
+            "detail_sha256": hashlib.sha256(result.detail_paths["m13-export-demo"].read_bytes()).hexdigest(),
+            "source_evidence_path": ".hermes/runs/m13-export-demo/run-evidence.json",
+            "source_evidence_sha256": hashlib.sha256(
+                (tmp_path / ".hermes" / "runs" / "m13-export-demo" / "run-evidence.json").read_bytes()
+            ).hexdigest(),
+        }
+    ]
 
 
 def test_export_static_runs_report_handles_empty_runs(tmp_path) -> None:

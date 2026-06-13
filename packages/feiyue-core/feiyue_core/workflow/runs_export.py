@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
 import re
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Sequence
 
@@ -14,6 +17,15 @@ from feiyue_core.workflow.runs_api import render_run_detail, render_runs_dashboa
 class StaticRunsReportExport:
     index_path: Path
     detail_paths: dict[str, Path]
+    manifest_path: Path
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _relative_posix(path: Path, base: Path) -> str:
+    return path.relative_to(base).as_posix()
 
 
 def _safe_html_filename(task_id: str) -> str:
@@ -52,7 +64,34 @@ def export_static_runs_report(project_root: str | Path, output_dir: str | Path) 
         path.write_text(detail_html, encoding="utf-8")
         detail_paths[task_id] = path
 
-    return StaticRunsReportExport(index_path=index_path, detail_paths=detail_paths)
+    manifest_path = out / "manifest.json"
+    manifest = {
+        "schema_version": "feiyue.static_runs_report.v1",
+        "generated_at": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "project_root": str(root),
+        "total_runs": summary.total_runs,
+        "files": [
+            {
+                "path": _relative_posix(index_path, out),
+                "sha256": _sha256(index_path),
+            }
+        ],
+        "runs": [],
+    }
+    for task_id, detail_path in detail_paths.items():
+        evidence_path = root / ".hermes" / "runs" / task_id / "run-evidence.json"
+        manifest["runs"].append(
+            {
+                "task_id": task_id,
+                "detail_path": _relative_posix(detail_path, out),
+                "detail_sha256": _sha256(detail_path),
+                "source_evidence_path": _relative_posix(evidence_path, root),
+                "source_evidence_sha256": _sha256(evidence_path),
+            }
+        )
+    manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+
+    return StaticRunsReportExport(index_path=index_path, detail_paths=detail_paths, manifest_path=manifest_path)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -66,6 +105,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     result = export_static_runs_report(args.root, args.out)
     print(f"index: {result.index_path}")
+    print(f"manifest: {result.manifest_path}")
     print(f"details: {len(result.detail_paths)}")
     return 0
 
