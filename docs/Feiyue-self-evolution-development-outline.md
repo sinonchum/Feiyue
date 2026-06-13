@@ -1318,137 +1318,126 @@ M5 Project Knowledge
 
 # 19. 当前完成度矩阵
 
+> **Status sync date**：2026-06-13
+> **Verified baseline**：`381 passed`，remote `main` at `dd3928b`，GitHub Actions CI success。
+> **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
+
 | Milestone | 状态 | 说明 |
 |---|---:|---|
-| M0 Doctrine / Blueprint | Done | Master Blueprint 已写入并链接 |
-| M1 Core Schemas | Done | schemas / trace contracts 已测 |
-| M2 Local Execution / Verifier | Done MVP | sandbox/verifier/local loop 已有 |
-| M3 Resilient Runtime | Done Foundation | anti-amnesia 基础闭环完成 |
-| M4 Candidate / Feedback / Teacher Loop | Done Foundation | fake provider / toy loop / trace resume 完成 |
-| M5 Workflow Asset Layer | Done Foundation | Project knowledge、task contract、bug dossier、lesson packet、regression eval、routing table 与 integration smoke 已完成；后续批量持久化/学习策略归入 M6/M7 |
-| M6 Curator / Distillation | Done Foundation | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate 与 curation smoke 已完成；promotion writer/dedup 作为后续增强 |
-| M7 Weak Model Capability Expansion | Done Foundation | CapabilityLadder、TaskComplexity、WorkerPerformanceRecord、ModelCapabilityProfile、recommendation rules 与 capability smoke 已完成；routing adapter/真实数据连接后续增强 |
-| M8 Creative Role Development | Done Foundation | CreativeBrief、CreativeVariant、CreativeCritique、UserSelectionFeedback 与 creative smoke 已完成；opportunity/metrics/real provider 后续增强 |
-| M9 Strategy/Evaluation Harness | Done Foundation | StrategyEvaluationRecord、StrategyScorecard、BenchmarkSuite、StrategyComparisonReport 与 evaluation smoke 已完成；真实 benchmark/provider 后续增强 |
-| M10 Real Provider Integration | Not Started | 需要授权，不改 Hermes config |
-| M11 Real Workflow Execution | Not Started | 依赖 M5/M6/M10，provider-free toy path 可先做 |
-| M12 Safety/Budget Governor | Not Started | 依赖 M7/M10/M11 |
-| M13 Productization | Not Started | 依赖数据模型稳定 |
-| M14 Release Hardening | Not Started | 可部分提前做 CI skeleton |
+| M0 Doctrine / Blueprint | Done | Master Blueprint、System Doctrine、PRD、development outline、README 索引、私有 GitHub repo 已完成。 |
+| M1 Core Schemas | Done | schemas / trace contracts / JSON round-trip / JSONL writer 已测。 |
+| M2 Local Execution / Verifier | Done MVP | worktree sandbox、command runner、pytest verifier、LocalLoop、source repo clean guarantee 已完成。 |
+| M3 Resilient Runtime | Done Foundation | journal、recovery manifest、operation recorder、side-effect inspector、reconciler、resume flow、recovery prompt、安全 gate 与 interruption simulation 已完成；后续只作为支撑模块按需增强。 |
+| M4 Candidate / Feedback / Teacher Loop | Done Foundation | fake provider、role-aware student/teacher、candidate service、feedback/revision、iteration trace/replay、fallback resume prompt demo 已完成。 |
+| M5 Workflow Asset Layer | Done Foundation | project knowledge、task contract、bug dossier、lesson packet、regression eval、routing table 与 integration smoke 已完成；批量 lesson persistence / routing learning 后续增强。 |
+| M6 Curator / Distillation | Done Foundation | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate 与 curation smoke 已完成；promotion writer / dedup /正式 asset write 仍未完成。 |
+| M7 Weak Model Capability Expansion | Done Foundation | CapabilityLadder、WorkerPerformanceRecord、ModelCapabilityProfile、promotion/demotion recommendation rules 与 capability smoke 已完成；真实 worker 数据与 routing adapter 后续增强。 |
+| M8 Creative Role Development | Done Foundation | CreativeBrief、CreativeVariant、CreativeCritique、UserSelectionFeedback 与 creative smoke 已完成；opportunity discovery、accepted-proposal metrics、真实 creative provider 后续增强。 |
+| M9 Strategy/Evaluation Harness | Done Foundation | StrategyEvaluationRecord、StrategyScorecard、BenchmarkSuite、StrategyComparisonReport 与 evaluation smoke 已完成；真实 benchmark runner、weak/strong 对照与 longitudinal gain 仍未完成。 |
+| M10 Real Provider / Multi-Profile Worker Integration | Partial Foundation | FakeProfileRunner、ProviderDiagnostic、ProviderFailureKind、redaction、profile diagnostic smoke 已完成；真实 Hermes profile subprocess、真实 HTTP provider smoke、真实 teacher escalation 需明确授权。 |
+| M11 Real Workflow Execution / Promotion | Provider-free Foundation | CandidateFileWrite、ToyWorkflowExecutor、verifier-gated readiness、BugDossier on failure、fake teacher retry、verified branch promotion、run report persistence、source clean guarantee 已完成；真实 worker/provider patch 与多轮 repair 未完成。 |
+| M12 Safety / Budget / Policy Governor | Done Foundation | PolicyGovernor、budget/risk/privacy gates、PolicyGovernorConfigLoader、HumanApprovalRecord、approval persistence、run-evidence、safe_to_retry/next_safe_action、handoff summary 与 action evidence 已完成。 |
+| M13 Productization / Dashboard / API | Done Foundation | `feiyue-runs` CLI、RunCatalog、read-only API/dashboard、drill-down、static HTML export、manifest SHA256、verifier、portable bundle、export-all pipeline 已完成；lesson/eval/routing/capability/creative proposal UI 尚未完整产品化。 |
+| M14 Release Hardening / CI / Documentation | Partial Foundation | GitHub Actions CI、CI contract tests、compileall、pytest、static export-all smoke、secret scan、Node24 actions runtime opt-in 已完成；example projects、benchmark CI、docs site、architecture diagrams、contribution/release checklist 仍未完成。 |
+
+## 19.1 当前最准确阶段判断
+
+当前 Feiyue 已经完成一个 **provider-free、可验证、可恢复、可审计、可离线交接** 的 foundation：
+
+```text
+Blueprint / Doctrine
+→ typed schemas / trace contracts
+→ sandbox verifier
+→ anti-amnesia runtime
+→ fake student/teacher candidate loop
+→ workflow assets
+→ curator/capability/creative/evaluation foundations
+→ policy governor + approval/action evidence
+→ run evidence CLI/API/dashboard/static export/bundle
+→ GitHub Actions CI gate
+```
+
+尚未进入或尚未完成的主线是：
+
+1. 真实 provider / Hermes profile execution。
+2. 真实弱模型 vs 强模型 benchmark 与长期指标。
+3. 真实多 worker routing 与 teacher escalation。
+4. Curator proposal 到正式 `.hermes/` asset 的 promotion / rejection / dedup 写入闭环。
+5. 真实项目自动 promotion / rollback 的生产级安全边界。
+6. M13 全面 productization：lesson/eval/routing/capability/creative proposal browser/review UI。
+7. M14 release hardening：example project、benchmark CI、docs site、architecture diagrams、contribution/release checklist。
 
 ---
 
 # 20. Immediate Next Development Slice
 
-## M9.3 / M9.4：Benchmark Task Suite + Strategy Comparison Report
+## 推荐下一步：M14 Provider-Free Example Project Smoke
 
-下一步继续 M9。Evaluation records/scorecards 已能聚合单个策略；接下来要建立 provider-free benchmark task suite 和多策略 comparison report，用 fixture records 比较 weak-only / weak+Feiyue / weak+sparse-teacher 等策略。
+### Rationale
+
+现在 roadmap/status 已经同步，下一步最稳的是补一个 **committed provider-free example project**，让新模型、人类 reviewer 和 CI 都能从零运行 Feiyue 的最小可复现链路。这个 slice 不需要真实 provider、不读取或修改 Hermes 配置，也不会引入凭据。
+
+它服务于 Master Blueprint 的位置：
+
+- M11：真实 workflow execution 的 provider-free 可复现示例。
+- M12：run evidence / handoff / policy evidence 的可复现样例。
+- M13：CLI/API/static export 的真实 fixture 来源。
+- M14：release hardening / example project / CI smoke。
 
 ### Objective
 
-实现 deterministic toy benchmark task definitions 与 strategy comparison report。此阶段仍不调用真实 provider，只使用 fixture/evidence records，重点验证 scorecard comparison、cost-normalized quality、teacher-call tradeoff 和 unsafe/repeated-failure visibility。
+创建一个小型、可提交、无 secrets 的 `examples/provider-free-toy-project/`，包含一个最小 Python toy repo 或 fixture run evidence；CI 中验证：
 
-### Files
+1. example 可以被现有 provider-free workflow 或 run-evidence export 管线消费。
+2. 生成的 report/export/bundle 可验证。
+3. example 不依赖网络、真实模型、真实 Hermes profile 或真实 credentials。
+
+### Candidate Files
 
 Create:
 
-- `packages/feiyue-core/feiyue_core/evaluation/benchmark.py`
-- `packages/feiyue-core/feiyue_core/evaluation/comparison.py`
-- `packages/feiyue-core/tests/test_benchmark_suite.py`
-- `packages/feiyue-core/tests/test_strategy_comparison.py`
+- `examples/provider-free-toy-project/README.md`
+- `examples/provider-free-toy-project/src/` 或 `examples/provider-free-toy-project/.hermes/runs/example-task/run-evidence.json`
+- `packages/feiyue-core/tests/test_provider_free_example_project.py`
 
 Update:
 
-- `packages/feiyue-core/feiyue_core/evaluation/__init__.py`
-- Extend evaluation integration smoke.
-- `README.md`
-- `docs/Feiyue-self-evolution-development-outline.md`
+- `.github/workflows/ci.yml`：加入 example smoke（若本地测试先证明稳定）。
+- `README.md`：加入 example usage。
+- `docs/Feiyue-self-evolution-development-outline.md`：更新 M14 example 状态。
 
 ### Functional Acceptance
 
-- BenchmarkTask can represent task id, required capability level, expected verifier, category, and source IDs.
-- BenchmarkSuite can hold deterministic ordered tasks.
-- StrategyComparisonReport can compare multiple scorecards and identify best pass-rate, lowest cost, lowest teacher-call-rate strategies without hiding unsafe count.
-- Cost-normalized quality is explicit and deterministic.
+- example project 可在 fresh checkout 中运行 provider-free smoke。
+- smoke 输出明确 `EXAMPLE_PROVIDER_FREE_SMOKE_OK` 或等价稳定 marker。
+- static export-all pipeline 可消费 example run evidence 并通过 manifest verification。
+- README 中给出可复制命令。
 
 ### Code Quality & Cleanliness Acceptance
 
-- Provider-free and deterministic.
-- No real benchmark/provider claims.
-- No LLM self-evaluation.
-- Empty/missing strategy edge cases tested.
-- compileall / pytest / diff-check / secret scan pass.
+- provider-free、deterministic、no network。
+- 不包含 API key、token、password、Authorization bearer 或连接串。
+- 不修改真实 Hermes config。
+- tests 覆盖 example path 与 missing/invalid fixture path。
+- `python -m compileall -q feiyue_core`、`python -m pytest -q`、secret scan、GitHub Actions 均通过。
 
 ### Dependencies
 
-- M9.1 StrategyEvaluationRecord.
-- M9.2 StrategyScorecard.
-- M7 capability levels.
+- M11 provider-free workflow/report foundation。
+- M12 run-evidence and export-all pipeline。
+- M13 CLI/static export。
+- M14 CI skeleton。
 
 ### Parallelization
 
-可并行：Benchmark Suite 与 Strategy Comparison Report 可以分两条 lane 开发。
-必须串行：comparison integration smoke 需要两条 lane 合并后完成。
+可并行：example README、fixture、test contract。
+必须串行：CI workflow update 必须等本地 example smoke 和 full suite 通过后再加入。
 
+## Alternative Next Slices
 
-## M12 Safety / Budget / Policy Governor
+如果暂时不做 example project，也可以选择：
 
-当前 M12 foundation：
-- `PolicyGovernor`：provider-free allow / block / escalate gate。
-- `PolicyGovernorConfigLoader`：从 `.feiyue/policy.yaml` 加载项目级 policy；缺省时使用安全默认值；非法配置抛出 typed `PolicyConfigLoadError`。
-- `HumanApprovalRecord`：显式记录人工批准的 action/task/approver/time/reason，并只对匹配 task 与 action 的请求生效。
-- approval handoff：`WorkflowReportWriter` 可持久化 `approval.json`，`run-evidence.json` 显式记录 approval 是否存在、approval id、approver、approved action、是否适用于当前 policy decision；`RunEvidenceLoader` 可读取 approval 并渲染 handoff。
-- local inspection CLI：`python -m feiyue_core.workflow.runs_cli --root <project> list|show|handoff` 可列出 run、输出 machine-readable evidence、渲染 fallback handoff。
-- run catalog：`RunCatalog.summary()` 提供 dashboard/API 前置的 typed aggregate：total runs、safe-to-retry count、next-action counts、compact run rows。
-- read-only local API/dashboard：`create_runs_api_handler(root)` / `feiyue-runs-api` 暴露 `GET /`、`GET /dashboard`、`GET /dashboard/runs/{task_id}`、`GET /runs`、`GET /runs/{task_id}`、`GET /runs/{task_id}/handoff`，拒绝 write methods；dashboard 以 human-readable HTML 展示 total runs、safe-to-retry、approval required、next-safe-action distribution 和 run rows；drill-down 页以 human-readable HTML 展示单个 run 的 policy decision、action evidence、approval evidence 和 report paths。
-- static report export/verify/bundle/all-in-one：`export_static_runs_report(project_root, output_dir)` / `feiyue-runs-export` 将 dashboard 与 run detail 产出为离线 HTML 文件（`index.html` + `manifest.json` + `runs/<task_id>.html`），用于无本地 server 的 fallback/human review；manifest 记录 schema version、generated_at、source evidence path/hash、导出 HTML path/hash；`verify_static_runs_report(manifest_path)` / `feiyue-runs-export-verify` 可离线检测导出 HTML 或 source evidence 是否被篡改；`pack_static_runs_report(report_dir, bundle_path)` / `feiyue-runs-export-bundle` 将报告目录打包为便携 ZIP，但不包含 `.hermes` source evidence 原文；`export_static_runs_report_all(root, out, bundle)` / `feiyue-runs-export-all` 一次完成 export、verify、bundle、extract、verify。
-- CI workflow contract：`.github/workflows/ci.yml` 在 push/PR 上运行 editable install、compileall、pytest、static export-all smoke 和 secret scan；`tests/test_ci_workflow.py` 固化 workflow contract，防止 CI gate 被误删或降级。
-- budget gates：worker retry、teacher call、token budget。
-- risk/privacy gates：high-risk operation escalates；sensitive data requires privacy approval。
-- workflow integration：candidate execution、teacher retry、verified promotion 已可接入 policy gate。
-- report persistence：execution/promotion Markdown 均持久化 `Policy Decision` 与 `Action Evidence` section；`run-evidence.json` 提供 machine-readable handoff。
-- deterministic audit metadata：用于后续 run report 与 dashboard。
-
-Functional acceptance：
-- low-risk within budget → allow。
-- high-risk operation → escalate with human approval。
-- matching `HumanApprovalRecord` → allow exact high-risk approved action and persist `human_approval_id` audit metadata。
-- `WorkflowReportWriter.write(..., approval=...)` → persist compact `approval.json` and add `approval` relative path into run evidence。
-- `run-evidence.json` → expose `approval_exists` / `approval_id` / `approval_approver` / `approval_action` / `approval_applies` for fallback handoff。
-- `RunEvidenceLoader.load_approval(task_id)` → loads typed approval when present and returns `None` when missing.
-- fallback handoff summary → renders explicit `Approval Evidence` section for both present and missing approval.
-- `feiyue-runs list|show|handoff` → provider-free local CLI can inspect persisted runs without dashboard/API setup.
-- `feiyue-runs list --json` → outputs `RunCatalogSummary` for dashboard/API pre-integration smoke.
-- `RunCatalog.summary()` → aggregates run count, safe retry count, next safe action distribution, and compact run rows.
-- `GET /` / `GET /dashboard` → returns human-readable read-only dashboard HTML without raw JSON dumps.
-- `GET /dashboard/runs/{task_id}` → returns human-readable read-only detail HTML for one run without raw JSON dumps.
-- `GET /runs` → returns `RunCatalogSummary` JSON.
-- `GET /runs/{task_id}` → returns run evidence JSON or stable 404 JSON.
-- `GET /runs/{task_id}/handoff` → returns compact Markdown handoff.
-- `feiyue-runs-export --root <project> --out <dir>` → writes offline `index.html`, `manifest.json`, and per-run detail pages for serverless review.
-- `feiyue-runs-export-verify <manifest.json>` → verifies exported HTML hashes and source evidence hashes, returning non-zero on tamper/missing files.
-- `feiyue-runs-export-bundle --report <dir> --out <zip>` → packs `index.html`, `manifest.json`, and `runs/*.html` into a portable ZIP without source evidence files.
-- `feiyue-runs-export-all --root <project> --out <dir> --bundle <zip>` → single-command export pipeline: export static HTML, verify manifest, pack ZIP, extract ZIP, and verify extracted bundle.
-- POST/PUT/PATCH/DELETE → return 405; API remains read-only.
-- missing CLI run evidence → exits non-zero with stable typed missing evidence message.
-- non-matching human approval → still escalate; approvals do not grant broad permission。
-- missing `.feiyue/policy.yaml` → safe default `PolicyGovernorConfig`。
-- invalid `.feiyue/policy.yaml` → typed `PolicyConfigLoadError` with path。
-- worker retry budget exhausted → block。
-- teacher call budget exhausted → block。
-- token budget exceeded → block。
-- sensitive data without privacy approval → escalate。
-- low-risk workflow execution remains verified。
-- teacher retry budget exhausted blocks retry before revised writes。
-- high-risk promotion escalates before branch creation。
-- execution/promotion reports include policy action/reason/operation/tokens/approval metadata。
-- blocked/escalated execution records `execution_performed=False` and `retry_performed=False`。
-- blocked teacher retry records `retry_performed=False` after first execution evidence。
-- blocked/escalated promotion records `side_effect_performed=False` before branch/worktree side effects。
-- `run-evidence.json` records status, policy action/reason, side-effect flags, `safe_to_retry`, `next_safe_action`, and relative report paths。
-- `RunEvidenceLoader` loads persisted evidence and renders compact fallback handoff summaries; missing evidence raises a typed `RunEvidenceNotFoundError`.
-
-Quality acceptance：
-- provider-free deterministic schema。
-- serializable decision model。
-- no secrets, no real provider calls。
+1. **M6 Asset Promotion Writer**：把 Curator proposals 安全写入 `.hermes/asset-proposals/`，带 review/promotion/rejection 状态。
+2. **M13 Asset Browser Expansion**：让 dashboard 查看 lessons/evals/routing/capability profiles，而不仅是 run evidence。
+3. **M9 Real Benchmark Preparation**：在不接 provider 的前提下定义真实 benchmark case schema 与 trace fixture 格式，为未来真实模型对照做准备。
+4. **M10 Real Provider Plan Only**：只写接入计划和安全检查清单，不执行真实 provider 调用，等待授权。
