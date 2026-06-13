@@ -40,8 +40,8 @@ Feiyue 追求三个战略结果：
 
 - Core package：`packages/feiyue-core`
 - Python source/test 文件：持续扩展中（当前 provider-free foundation 覆盖 workflow、curation、capability、creative、evaluation、providers）。
-- 当前完整测试：`389 passed`
-- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation、M12 policy governor / run evidence / YAML policy config / human approval primitive / approval evidence handoff / run catalog / `feiyue-runs` local inspection CLI / read-only local API/dashboard/static export manifest+verify+bundle+all-in-one pipeline foundation，以及 GitHub Actions CI contract、provider-free example smoke 与 provider-free benchmark smoke foundation。
+- 当前完整测试：`394 passed`
+- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation、M12 policy governor / run evidence / YAML policy config / human approval primitive / approval evidence handoff / run catalog / `feiyue-runs` local inspection CLI / read-only local API/dashboard/static export manifest+verify+bundle+all-in-one pipeline foundation，以及 GitHub Actions CI contract、provider-free example smoke、provider-free benchmark smoke、release checklist、contributing guide 与 architecture doc foundation。
 
 ### 1.2 已完成核心资产
 
@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`389 passed`（local full gate for M14 provider-free example smoke + benchmark smoke；remote CI gate mirrors both smokes）。
+> **Verified baseline**：`394 passed`（local full gate for M14 provider-free smokes + docs/release contract；remote CI mirrors provider-free smokes）。
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1338,7 +1338,7 @@ M5 Project Knowledge
 | M11 Real Workflow Execution / Promotion | Provider-free Foundation | CandidateFileWrite、ToyWorkflowExecutor、verifier-gated readiness、BugDossier on failure、fake teacher retry、verified branch promotion、run report persistence、source clean guarantee 已完成；真实 worker/provider patch 与多轮 repair 未完成。 |
 | M12 Safety / Budget / Policy Governor | Done Foundation | PolicyGovernor、budget/risk/privacy gates、PolicyGovernorConfigLoader、HumanApprovalRecord、approval persistence、run-evidence、safe_to_retry/next_safe_action、handoff summary 与 action evidence 已完成。 |
 | M13 Productization / Dashboard / API | Done Foundation | `feiyue-runs` CLI、RunCatalog、read-only API/dashboard、drill-down、static HTML export、manifest SHA256、verifier、portable bundle、export-all pipeline 已完成；lesson/eval/routing/capability/creative proposal UI 尚未完整产品化。 |
-| M14 Release Hardening / CI / Documentation | Partial Foundation | GitHub Actions CI、CI contract tests、compileall、pytest、static export-all smoke、provider-free example smoke、provider-free benchmark smoke、secret scan、Node24 actions runtime opt-in 已完成；docs site、architecture diagrams、contribution/release checklist 仍未完成。 |
+| M14 Release Hardening / CI / Documentation | Partial Foundation | GitHub Actions CI、CI contract tests、compileall、pytest、static export-all smoke、provider-free example smoke、provider-free benchmark smoke、release checklist、contributing guide、architecture doc、secret scan、Node24 actions runtime opt-in 已完成；docs site 与 visual architecture diagram 仍未完成。 |
 
 ## 19.1 当前最准确阶段判断
 
@@ -1365,7 +1365,7 @@ Blueprint / Doctrine
 4. Curator proposal 到正式 `.hermes/` asset 的 promotion / rejection / dedup 写入闭环。
 5. 真实项目自动 promotion / rollback 的生产级安全边界。
 6. M13 全面 productization：lesson/eval/routing/capability/creative proposal browser/review UI。
-7. M14 release hardening：docs site、architecture diagrams、contribution/release checklist。
+7. M14 release hardening：docs site、visual architecture diagram。
 
 ---
 
@@ -1480,9 +1480,38 @@ CLI marker: `BENCHMARK_SMOKE_OK`。
 - The quick dataset is tiny and checked into code, suitable for CI.
 - The smoke writes both JSON and Markdown artifacts and asserts their existence in CI.
 
+# 22. Completed Slice: M14 Docs / Release Checklist Skeleton
+
+## 已完成：M14 Docs / Release Checklist Skeleton
+
+### Objective
+
+补齐 repo-level release checklist、contribution notes、architecture doc entry 与 README 索引，让 provider-free smokes、CI gates、secret scan 和 authorization boundaries 对 reviewer 可见且可测试。
+
+### Created / Updated Files
+
+Create:
+
+- `docs/release-checklist.md`
+- `CONTRIBUTING.md`
+- `docs/architecture.md`
+- `packages/feiyue-core/tests/test_docs_release_contract.py`
+
+Update:
+
+- `README.md`：索引 release checklist、contributing guide、architecture doc。
+- `docs/Feiyue-self-evolution-development-outline.md`：更新 M14 docs/release status。
+
+### Functional Acceptance
+
+- Release checklist lists compileall、pytest、static export-all、provider-free example、provider-free benchmark、secret scan、remote CI 与 authorization boundaries。
+- Contributing guide documents RED-GREEN-REFACTOR、provider-free defaults、no credentials、no Hermes config mutation。
+- Architecture doc explains Human Creative Direction、Strong Spec / Teacher、Weak Worker / Student、Verifier、Policy Governor、Run Evidence、Static Export Bundle 与 Provider-Free Foundation。
+- README links all three docs.
+
 ## Recommended Next Slice
 
-当前更稳的下一步是 **M14 Docs / Release Checklist Skeleton**：补齐 repo-level release checklist、contribution notes、architecture diagram/doc entry，让 example smoke、benchmark smoke、CI gates 和 remaining authorization boundaries 对 reviewer 更清楚。
+当前更稳的下一步是 **M14 Visual Architecture Diagram / Docs Site Stub**：把 `docs/architecture.md` 的文本流转图升级为可审查的静态 SVG/HTML diagram 或最小 docs site 索引，同时继续保持 provider-free、no network、no credentials。
 
 ## Alternative Next Slices
 

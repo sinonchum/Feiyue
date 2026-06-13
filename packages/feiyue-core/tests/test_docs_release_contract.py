@@ -1,0 +1,68 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+
+REPO_ROOT = Path(__file__).resolve().parents[3]
+README = REPO_ROOT / "README.md"
+RELEASE_CHECKLIST = REPO_ROOT / "docs" / "release-checklist.md"
+CONTRIBUTING = REPO_ROOT / "CONTRIBUTING.md"
+ARCHITECTURE = REPO_ROOT / "docs" / "architecture.md"
+OUTLINE = REPO_ROOT / "docs" / "Feiyue-self-evolution-development-outline.md"
+
+
+def test_readme_indexes_release_contribution_and_architecture_docs() -> None:
+    readme = README.read_text(encoding="utf-8")
+
+    assert "docs/release-checklist.md" in readme
+    assert "CONTRIBUTING.md" in readme
+    assert "docs/architecture.md" in readme
+
+
+def test_release_checklist_captures_m14_gates_and_authorization_boundaries() -> None:
+    content = RELEASE_CHECKLIST.read_text(encoding="utf-8")
+
+    assert "# Feiyue Release Checklist" in content
+    assert "python -m compileall -q feiyue_core" in content
+    assert "python -m pytest -q" in content
+    assert "PROVIDER_FREE_EXAMPLE_SMOKE_OK" in content
+    assert "BENCHMARK_SMOKE_OK" in content
+    assert "STATIC_EXPORT_ALL_OK" in content
+    assert "SECRET_SCAN_OK" in content
+    assert "Real provider execution requires explicit authorization" in content
+    assert "Hermes config mutation is out of scope" in content
+    assert "Current baseline: 389 passed" in content
+
+
+def test_contributing_guide_documents_tdd_provider_free_and_secret_rules() -> None:
+    content = CONTRIBUTING.read_text(encoding="utf-8")
+
+    assert "# Contributing to Feiyue" in content
+    assert "RED-GREEN-REFACTOR" in content
+    assert "provider-free by default" in content
+    assert "No real provider credentials" in content
+    assert "Do not mutate Hermes configuration" in content
+    assert "Terminal: `\"python -m pytest -q\"`" in content
+
+
+def test_architecture_doc_explains_provider_free_flow_and_handoff_surfaces() -> None:
+    content = ARCHITECTURE.read_text(encoding="utf-8")
+
+    assert "# Feiyue Architecture" in content
+    assert "Human Creative Direction" in content
+    assert "Strong Spec / Teacher" in content
+    assert "Weak Worker / Student" in content
+    assert "Verifier" in content
+    assert "Run Evidence" in content
+    assert "Static Export Bundle" in content
+    assert "Policy Governor" in content
+    assert "Provider-Free Foundation" in content
+
+
+def test_outline_marks_docs_release_checklist_slice_done() -> None:
+    content = OUTLINE.read_text(encoding="utf-8")
+
+    assert "M14 Docs / Release Checklist Skeleton" in content
+    assert "docs/release-checklist.md" in content
+    assert "CONTRIBUTING.md" in content
+    assert "docs/architecture.md" in content
