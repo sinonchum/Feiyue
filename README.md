@@ -36,6 +36,17 @@ python3 -m feiyue_core.workflow.runs_export_all --root ../.. --out ../../.hermes
 # export writes index.html, manifest.json, and runs/<task_id>.html
 ```
 
+- Provider-free example smoke command:
+
+```bash
+cd packages/feiyue-core
+python3 -m feiyue_core.examples.provider_free_smoke \
+  --root /tmp/feiyue-provider-free-example \
+  --out /tmp/feiyue-provider-free-example-report \
+  --bundle /tmp/feiyue-provider-free-example-report.zip
+# expected marker: PROVIDER_FREE_EXAMPLE_SMOKE_OK
+```
+
 Read-only API endpoints:
 
 ```text
@@ -59,4 +70,4 @@ GET /runs/<task_id>/handoff
 
 ## Status
 
-Private repository. Current baseline includes provider-free Feiyue core foundations through M9; M10 safe provider/profile integration foundation; M11 provider-free workflow execution, fake teacher-guided retry, verified branch promotion, and run report persistence; M12 policy governor, budget/risk/privacy gates, exact-match human approval, action evidence, run-evidence indexes, and fallback handoff summaries; M13 `feiyue-runs` CLI, `RunCatalog`, read-only local API/dashboard/drill-down, static HTML export, manifest hashing/verifier, portable bundle, and export-all pipeline; and M14 GitHub Actions CI gates with compileall, pytest, static export-all smoke, secret scan, CI contract tests, and Node24 actions runtime opt-in. Current verified baseline: `381 passed`. Real provider smoke, Hermes profile execution, real weak/strong benchmark, and real-project promotion remain gated on explicit authorization and configured credentials.
+Private repository. Current baseline includes provider-free Feiyue core foundations through M9; M10 safe provider/profile integration foundation; M11 provider-free workflow execution, fake teacher-guided retry, verified branch promotion, and run report persistence; M12 policy governor, budget/risk/privacy gates, exact-match human approval, action evidence, run-evidence indexes, and fallback handoff summaries; M13 `feiyue-runs` CLI, `RunCatalog`, read-only local API/dashboard/drill-down, static HTML export, manifest hashing/verifier, portable bundle, and export-all pipeline; and M14 GitHub Actions CI gates with compileall, pytest, static export-all smoke, provider-free example smoke, secret scan, CI contract tests, and Node24 actions runtime opt-in. Current verified baseline: `385 passed`. Real provider smoke, Hermes profile execution, real weak/strong benchmark, and real-project promotion remain gated on explicit authorization and configured credentials.

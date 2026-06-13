@@ -40,8 +40,8 @@ Feiyue 追求三个战略结果：
 
 - Core package：`packages/feiyue-core`
 - Python source/test 文件：持续扩展中（当前 provider-free foundation 覆盖 workflow、curation、capability、creative、evaluation、providers）。
-- 当前完整测试：`381 passed`
-- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation、M12 policy governor / run evidence / YAML policy config / human approval primitive / approval evidence handoff / run catalog / `feiyue-runs` local inspection CLI / read-only local API/dashboard/static export manifest+verify+bundle+all-in-one pipeline foundation，以及 GitHub Actions CI contract foundation。
+- 当前完整测试：`385 passed`
+- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation、M12 policy governor / run evidence / YAML policy config / human approval primitive / approval evidence handoff / run catalog / `feiyue-runs` local inspection CLI / read-only local API/dashboard/static export manifest+verify+bundle+all-in-one pipeline foundation，以及 GitHub Actions CI contract 与 provider-free example smoke foundation。
 
 ### 1.2 已完成核心资产
 
@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`381 passed`，remote `main` at `dd3928b`，GitHub Actions CI success。
+> **Verified baseline**：`385 passed`（local full gate for M14 provider-free example smoke；remote CI gate below mirrors this smoke）。
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1338,7 +1338,7 @@ M5 Project Knowledge
 | M11 Real Workflow Execution / Promotion | Provider-free Foundation | CandidateFileWrite、ToyWorkflowExecutor、verifier-gated readiness、BugDossier on failure、fake teacher retry、verified branch promotion、run report persistence、source clean guarantee 已完成；真实 worker/provider patch 与多轮 repair 未完成。 |
 | M12 Safety / Budget / Policy Governor | Done Foundation | PolicyGovernor、budget/risk/privacy gates、PolicyGovernorConfigLoader、HumanApprovalRecord、approval persistence、run-evidence、safe_to_retry/next_safe_action、handoff summary 与 action evidence 已完成。 |
 | M13 Productization / Dashboard / API | Done Foundation | `feiyue-runs` CLI、RunCatalog、read-only API/dashboard、drill-down、static HTML export、manifest SHA256、verifier、portable bundle、export-all pipeline 已完成；lesson/eval/routing/capability/creative proposal UI 尚未完整产品化。 |
-| M14 Release Hardening / CI / Documentation | Partial Foundation | GitHub Actions CI、CI contract tests、compileall、pytest、static export-all smoke、secret scan、Node24 actions runtime opt-in 已完成；example projects、benchmark CI、docs site、architecture diagrams、contribution/release checklist 仍未完成。 |
+| M14 Release Hardening / CI / Documentation | Partial Foundation | GitHub Actions CI、CI contract tests、compileall、pytest、static export-all smoke、provider-free example smoke、secret scan、Node24 actions runtime opt-in 已完成；benchmark CI、docs site、architecture diagrams、contribution/release checklist 仍未完成。 |
 
 ## 19.1 当前最准确阶段判断
 
@@ -1365,13 +1365,13 @@ Blueprint / Doctrine
 4. Curator proposal 到正式 `.hermes/` asset 的 promotion / rejection / dedup 写入闭环。
 5. 真实项目自动 promotion / rollback 的生产级安全边界。
 6. M13 全面 productization：lesson/eval/routing/capability/creative proposal browser/review UI。
-7. M14 release hardening：example project、benchmark CI、docs site、architecture diagrams、contribution/release checklist。
+7. M14 release hardening：benchmark CI、docs site、architecture diagrams、contribution/release checklist。
 
 ---
 
-# 20. Immediate Next Development Slice
+# 20. Completed Slice: M14 Provider-Free Example Project Smoke
 
-## 推荐下一步：M14 Provider-Free Example Project Smoke
+## 已完成：M14 Provider-Free Example Project Smoke
 
 ### Rationale
 
@@ -1386,7 +1386,7 @@ Blueprint / Doctrine
 
 ### Objective
 
-创建一个小型、可提交、无 secrets 的 `examples/provider-free-toy-project/`，包含一个最小 Python toy repo 或 fixture run evidence；CI 中验证：
+创建一个小型、可提交、无 secrets 的 `examples/provider-free-smoke/` 文档入口和 `feiyue_core.examples.provider_free_smoke` 可执行模块。该 smoke 会生成一个 fresh toy git repo，跑 provider-free workflow、teacher retry、verified promotion、run evidence handoff、static export、manifest verify、bundle、extract verify 的完整链路。
 
 1. example 可以被现有 provider-free workflow 或 run-evidence export 管线消费。
 2. 生成的 report/export/bundle 可验证。
@@ -1396,20 +1396,22 @@ Blueprint / Doctrine
 
 Create:
 
-- `examples/provider-free-toy-project/README.md`
-- `examples/provider-free-toy-project/src/` 或 `examples/provider-free-toy-project/.hermes/runs/example-task/run-evidence.json`
-- `packages/feiyue-core/tests/test_provider_free_example_project.py`
+- `examples/provider-free-smoke/README.md`
+- `packages/feiyue-core/feiyue_core/examples/__init__.py`
+- `packages/feiyue-core/feiyue_core/examples/provider_free_smoke.py`
+- `packages/feiyue-core/tests/test_provider_free_example_smoke.py`
 
 Update:
 
-- `.github/workflows/ci.yml`：加入 example smoke（若本地测试先证明稳定）。
+- `.github/workflows/ci.yml`：加入 provider-free example smoke。
+- `packages/feiyue-core/tests/test_ci_workflow.py`：覆盖 CI contract。
 - `README.md`：加入 example usage。
 - `docs/Feiyue-self-evolution-development-outline.md`：更新 M14 example 状态。
 
 ### Functional Acceptance
 
 - example project 可在 fresh checkout 中运行 provider-free smoke。
-- smoke 输出明确 `EXAMPLE_PROVIDER_FREE_SMOKE_OK` 或等价稳定 marker。
+- smoke 输出明确 `PROVIDER_FREE_EXAMPLE_SMOKE_OK` 稳定 marker。
 - static export-all pipeline 可消费 example run evidence 并通过 manifest verification。
 - README 中给出可复制命令。
 
@@ -1418,7 +1420,7 @@ Update:
 - provider-free、deterministic、no network。
 - 不包含 API key、token、password、Authorization bearer 或连接串。
 - 不修改真实 Hermes config。
-- tests 覆盖 example path 与 missing/invalid fixture path。
+- tests 覆盖 README contract、SDK smoke、CLI smoke 与 CI workflow contract。
 - `python -m compileall -q feiyue_core`、`python -m pytest -q`、secret scan、GitHub Actions 均通过。
 
 ### Dependencies
@@ -1428,10 +1430,14 @@ Update:
 - M13 CLI/static export。
 - M14 CI skeleton。
 
-### Parallelization
+### Execution Notes
 
-可并行：example README、fixture、test contract。
-必须串行：CI workflow update 必须等本地 example smoke 和 full suite 通过后再加入。
+- 本 slice 已串联现有 M11/M12/M13 资产，未新增真实 provider、网络调用或 Hermes config 修改。
+- CI 已加入 `Provider-free example smoke`，在 Ubuntu 上运行同一 module 并检查 run evidence、handoff、manifest、bundle 与 extracted manifest。
+
+## Recommended Next Slice
+
+当前更稳的下一步是 **M14 Benchmark CI Skeleton**：在 provider-free 前提下定义 deterministic benchmark runner/report artifact，让未来真实 weak/strong model 对照有固定输出格式和 CI contract。
 
 ## Alternative Next Slices
 

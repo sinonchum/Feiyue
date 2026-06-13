@@ -32,3 +32,11 @@ def test_ci_workflow_runs_static_export_all_smoke() -> None:
     assert "STATIC_EXPORT_ALL_OK" in workflow
     assert "test -f \"$TMP/report.zip\"" in workflow
     assert "test -f \"$TMP/report.extracted/manifest.json\"" in workflow
+
+
+def test_ci_workflow_runs_provider_free_example_smoke() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "Provider-free example smoke" in workflow
+    assert "python -m feiyue_core.examples.provider_free_smoke" in workflow
+    assert "PROVIDER_FREE_EXAMPLE_SMOKE_OK" in workflow

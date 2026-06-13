@@ -78,6 +78,22 @@ jobs:
           test -f "$TMP/report.zip"
           test -f "$TMP/report.extracted/manifest.json"
 
+      - name: Provider-free example smoke
+        working-directory: packages/feiyue-core
+        run: |
+          set -euo pipefail
+          TMP=$(mktemp -d)
+          python -m feiyue_core.examples.provider_free_smoke \
+            --root "$TMP/example-project" \
+            --out "$TMP/example-report" \
+            --bundle "$TMP/example-report.zip" | tee "$TMP/provider-free-example.out"
+          grep -q "PROVIDER_FREE_EXAMPLE_SMOKE_OK" "$TMP/provider-free-example.out"
+          test -f "$TMP/example-project/.hermes/runs/m14-provider-free-example-smoke/run-evidence.json"
+          test -f "$TMP/example-project/.hermes/runs/m14-provider-free-example-smoke/handoff-summary.md"
+          test -f "$TMP/example-report/manifest.json"
+          test -f "$TMP/example-report.zip"
+          test -f "$TMP/example-report.extracted/manifest.json"
+
       - name: Secret scan
         run: |
           set -euo pipefail
