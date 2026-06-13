@@ -4,6 +4,10 @@ Feiyue is a Hermes-based Creative Evolution Loop Orchestrator. The current imple
 
 ## System Flow
 
+The static diagram below is checked into the repository and uses only local SVG markup.
+
+![Feiyue architecture flow](assets/feiyue-architecture.svg)
+
 ```text
 Human Creative Direction
   -> Strong Spec / Teacher
@@ -14,7 +18,7 @@ Human Creative Direction
   -> Policy Governor
   -> Run Evidence
   -> Handoff / Dashboard / Static Export Bundle
-  -> Curator / Future Asset Promotion
+  -> Curator / Asset Promotion
 ```
 
 ## Core Roles

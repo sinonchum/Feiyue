@@ -8,6 +8,8 @@ README = REPO_ROOT / "README.md"
 RELEASE_CHECKLIST = REPO_ROOT / "docs" / "release-checklist.md"
 CONTRIBUTING = REPO_ROOT / "CONTRIBUTING.md"
 ARCHITECTURE = REPO_ROOT / "docs" / "architecture.md"
+DOCS_INDEX = REPO_ROOT / "docs" / "index.md"
+ARCHITECTURE_DIAGRAM = REPO_ROOT / "docs" / "assets" / "feiyue-architecture.svg"
 OUTLINE = REPO_ROOT / "docs" / "Feiyue-self-evolution-development-outline.md"
 
 
@@ -17,6 +19,22 @@ def test_readme_indexes_release_contribution_and_architecture_docs() -> None:
     assert "docs/release-checklist.md" in readme
     assert "CONTRIBUTING.md" in readme
     assert "docs/architecture.md" in readme
+    assert "docs/index.md" in readme
+    assert "docs/assets/feiyue-architecture.svg" in readme
+
+
+def test_docs_index_links_canonical_docs_and_provider_free_surfaces() -> None:
+    content = DOCS_INDEX.read_text(encoding="utf-8")
+
+    assert "# Feiyue Docs" in content
+    assert "Feiyue-master-blueprint.md" in content
+    assert "Feiyue-system-doctrine.md" in content
+    assert "architecture.md" in content
+    assert "assets/feiyue-architecture.svg" in content
+    assert "release-checklist.md" in content
+    assert "../CONTRIBUTING.md" in content
+    assert "provider-free example smoke" in content
+    assert "provider-free benchmark smoke" in content
 
 
 def test_release_checklist_captures_m14_gates_and_authorization_boundaries() -> None:
@@ -57,6 +75,29 @@ def test_architecture_doc_explains_provider_free_flow_and_handoff_surfaces() -> 
     assert "Static Export Bundle" in content
     assert "Policy Governor" in content
     assert "Provider-Free Foundation" in content
+    assert "assets/feiyue-architecture.svg" in content
+
+
+def test_architecture_svg_is_static_provider_free_and_has_core_role_labels() -> None:
+    content = ARCHITECTURE_DIAGRAM.read_text(encoding="utf-8")
+
+    assert "<svg" in content
+    assert "Human Creative Direction" in content
+    assert "Strong Spec / Teacher" in content
+    assert "Task Contract" in content
+    assert "Weak Worker / Student" in content
+    assert "Sandbox / Candidate Writes" in content
+    assert "Verifier" in content
+    assert "Policy Governor" in content
+    assert "Run Evidence" in content
+    assert "Handoff / Dashboard / Static Export Bundle" in content
+    assert "Curator / Asset Promotion" in content
+    assert "<script" not in content.lower()
+    assert "cdn" not in content.lower()
+    assert "<image" not in content.lower()
+    assert "href=\"http" not in content.lower()
+    assert "src=\"http" not in content.lower()
+    assert "href=" not in content.lower()
 
 
 def test_outline_marks_docs_release_checklist_slice_done() -> None:
