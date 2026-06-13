@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`507 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, and Wave4-4B human-reviewed routing proposal；remote CI mirrors provider-free smokes）。Current verified baseline: `507 passed`.
+> **Verified baseline**：`511 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `511 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`507 passed`。
+- `python -m pytest -q`：`511 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1698,8 +1698,23 @@ The current feedback loop is audit-only. Wave4-4B adds a human-reviewed route-up
 
 ### Wave4-4B remaining scope
 
-Wave4-4B only proposes routing changes. The next safe slice is Wave4-4C: exact approval for a proposal hash/current routing hash before applying any `.hermes/model-routing.yaml` mutation.
+Wave4-4B only proposes routing changes. Wave4-4C adds exact approval for a proposal hash/current routing hash before applying any `.hermes/model-routing.yaml` mutation.
+
+## Completed Slice: Wave4-4C Approval-gated Routing Apply
+
+### Wave4-4C completed
+
+- Added `RoutingProposalApproval` with exact bindings: proposal_id, approved_action, source_feedback_hash, current_routing_hash, recommended_changes_hash, approver, timestamp, and reason.
+- Added `RoutingApplyGate` with fail-closed behavior for missing approval, proposal mismatch, action mismatch, feedback hash mismatch, routing hash mismatch, recommended changes hash mismatch, and current routing drift.
+- Added `approve-routing-proposal` and `apply-approved-routing` CLI commands.
+- Successful apply writes `.hermes/model-routing.yaml` only after exact approval and records `routing_proposal_approval_applies` in `apply-evidence.json`.
+- Blocked apply writes audit evidence with `missing_routing_proposal_approval` and leaves routing unchanged.
+- Smoke run `wave4-4c-routing-apply-smoke` verified the productized CLI path: feedback -> proposal -> approval -> apply, mutated a temporary routing table worker primary to `steady-4c`, then cleaned local artifacts.
+
+### Wave4-4C remaining scope
+
+Wave4-4C can apply exact approved routing changes. The next safe slice is Wave4-5: multi-worker orchestration hardening using routing/proposal evidence as input, not automatic global Hermes config mutation.
 
 ## Recommended Next Slice
 
-当前下一步是 **Wave4-4C：Approval-gated Routing Apply**。目标是对 `routing-proposal` 生成 exact approval，绑定 proposal_id、source_feedback_hash、current_routing_hash、recommended_changes hash 和 approver；只有匹配时才允许修改 `.hermes/model-routing.yaml`，并写入 apply evidence。
+当前下一步是 **Wave4-5：Multi-worker Orchestration Hardening**。目标是把 routing/proposal/apply evidence 接到多 worker 路由与 escalation gate，但仍保持 provider/config 修改受 approval gate 约束。

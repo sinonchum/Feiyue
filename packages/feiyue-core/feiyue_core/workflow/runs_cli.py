@@ -18,7 +18,16 @@ from feiyue_core.workflow.real_profile_promotion import (
     read_promotion_approval,
     write_promotion_approval,
 )
-from feiyue_core.workflow.routing_proposal import RoutingProposalError, RoutingProposalGenerator
+from feiyue_core.workflow.routing_proposal import (
+    RoutingApplyGate,
+    RoutingProposalApproval,
+    RoutingProposalError,
+    RoutingProposalGenerator,
+    read_routing_proposal,
+    read_routing_proposal_approval,
+    recommended_changes_hash,
+    write_routing_proposal_approval,
+)
 from feiyue_core.workflow.real_profile_workflow_runner import RealProfileWorkflowRunReport
 
 
@@ -63,6 +72,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     proposal_parser = subparsers.add_parser("routing-proposal", help="Generate a human-reviewed routing update proposal from capability feedback")
     proposal_parser.add_argument("--proposal-id", required=True)
     proposal_parser.add_argument("--write-proposal", action="store_true", help="Persist proposal.json and proposal.md under .hermes/routing-proposals")
+
+    approve_routing_parser = subparsers.add_parser("approve-routing-proposal", help="Create exact approval evidence for a routing proposal")
+    approve_routing_parser.add_argument("--proposal-id", required=True)
+    approve_routing_parser.add_argument("--approved-by", required=True)
+    approve_routing_parser.add_argument("--approval-id", required=True)
+    approve_routing_parser.add_argument("--reason", required=True)
+
+    apply_routing_parser = subparsers.add_parser("apply-approved-routing", help="Apply a routing proposal using persisted exact approval evidence")
+    apply_routing_parser.add_argument("--proposal-id", required=True)
 
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
@@ -143,6 +161,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             generator = RoutingProposalGenerator(root)
             proposal = generator.write_proposal(proposal_id=args.proposal_id) if args.write_proposal else generator.build_proposal(proposal_id=args.proposal_id)
             print(proposal.model_dump_json(indent=2))
+            return 0
+        if args.command == "approve-routing-proposal":
+            proposal = read_routing_proposal(root, args.proposal_id)
+            approval = RoutingProposalApproval(
+                approval_id=args.approval_id,
+                approved_by=args.approved_by,
+                proposal_id=proposal.proposal_id,
+                approved_action="apply_reviewed_routing_proposal",
+                source_feedback_hash=proposal.source_feedback_hash,
+                current_routing_hash=proposal.current_routing_hash,
+                recommended_changes_hash=recommended_changes_hash(proposal.recommended_changes),
+                approved_at=datetime.now(UTC).isoformat(),
+                reason=args.reason,
+            )
+            write_routing_proposal_approval(approval, root)
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "apply-approved-routing":
+            proposal = read_routing_proposal(root, args.proposal_id)
+            approval = read_routing_proposal_approval(root, args.proposal_id)
+            result = RoutingApplyGate(root).apply_proposal(proposal=proposal, approval=approval)
+            print(result.model_dump_json(indent=2))
             return 0
     except (RunEvidenceNotFoundError, RoutingProposalError) as exc:
         print(str(exc), file=sys.stderr)

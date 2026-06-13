@@ -3,13 +3,14 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 
 from pydantic import Field
 
 from feiyue_core.schemas.common import FeiyueModel
 from feiyue_core.workflow.capability_feedback import CapabilityFeedbackReport
-from feiyue_core.workflow.model_routing_table import MODEL_ROUTING_FILENAME
+from feiyue_core.workflow.model_routing_table import MODEL_ROUTING_FILENAME, ModelRoutingTable, RoleRoute
 
 
 class RoutingProposalError(RuntimeError):
@@ -100,6 +101,132 @@ class RoutingProposalGenerator:
         (output_dir / "proposal.json").write_text(proposal.model_dump_json(indent=2) + "\n", encoding="utf-8")
         (output_dir / "proposal.md").write_text(proposal.render_markdown(), encoding="utf-8")
         return proposal
+
+
+def recommended_changes_hash(changes: list[RoutingProposalChange]) -> str:
+    stable = json.dumps([change.model_dump(mode="json") for change in changes], sort_keys=True, separators=(",", ":"))
+    return _sha256_text(stable)
+
+
+class RoutingApplyStatus(StrEnum):
+    BLOCKED = "blocked"
+    APPLIED = "applied"
+
+
+class RoutingProposalApproval(FeiyueModel):
+    approval_id: str
+    approved_by: str
+    proposal_id: str
+    approved_action: str
+    source_feedback_hash: str
+    current_routing_hash: str
+    recommended_changes_hash: str
+    approved_at: str
+    reason: str
+
+
+class RoutingApplyResult(FeiyueModel):
+    proposal_id: str
+    status: RoutingApplyStatus
+    reason_codes: list[str]
+    routing_table_mutated: bool
+    applied_profiles: list[str] = Field(default_factory=list)
+    evidence_path: str | None = None
+
+
+class RoutingApplyGate:
+    def __init__(self, project_root: str | Path) -> None:
+        self.project_root = Path(project_root)
+        self.routing_path = self.project_root / ".hermes" / MODEL_ROUTING_FILENAME
+
+    def apply_proposal(self, *, proposal: RoutingUpdateProposal, approval: RoutingProposalApproval | None) -> RoutingApplyResult:
+        reason = self._block_reason(proposal, approval)
+        if reason is not None:
+            return self._write_result(
+                RoutingApplyResult(
+                    proposal_id=proposal.proposal_id,
+                    status=RoutingApplyStatus.BLOCKED,
+                    reason_codes=[reason],
+                    routing_table_mutated=False,
+                )
+            )
+        assert approval is not None
+        routing_text = self.routing_path.read_text(encoding="utf-8")
+        table = ModelRoutingTable.parse_yaml(routing_text)
+        routes = dict(table.routes)
+        applied_profiles: list[str] = []
+        for change in proposal.recommended_changes:
+            if change.recommended_action != "consider_promotion":
+                continue
+            route = routes.get(change.target_role)
+            if route is None:
+                continue
+            routes[change.target_role] = RoleRoute(
+                primary=change.profile,
+                fallback=route.fallback,
+                reviewer=route.reviewer,
+                teacher=route.teacher,
+            )
+            applied_profiles.append(change.profile)
+        updated = ModelRoutingTable(routes=routes).render_yaml()
+        mutated = updated != routing_text
+        if mutated:
+            self.routing_path.write_text(updated, encoding="utf-8")
+        return self._write_result(
+            RoutingApplyResult(
+                proposal_id=proposal.proposal_id,
+                status=RoutingApplyStatus.APPLIED,
+                reason_codes=["routing_proposal_approval_applies"],
+                routing_table_mutated=mutated,
+                applied_profiles=applied_profiles,
+            )
+        )
+
+    def _block_reason(self, proposal: RoutingUpdateProposal, approval: RoutingProposalApproval | None) -> str | None:
+        if approval is None:
+            return "missing_routing_proposal_approval"
+        if approval.proposal_id != proposal.proposal_id:
+            return "approval_proposal_id_mismatch"
+        if approval.approved_action != "apply_reviewed_routing_proposal":
+            return "approval_action_mismatch"
+        if approval.source_feedback_hash != proposal.source_feedback_hash:
+            return "approval_feedback_hash_mismatch"
+        if approval.current_routing_hash != proposal.current_routing_hash:
+            return "approval_routing_hash_mismatch"
+        if approval.recommended_changes_hash != recommended_changes_hash(proposal.recommended_changes):
+            return "approval_recommended_changes_hash_mismatch"
+        if _sha256_text(self.routing_path.read_text(encoding="utf-8")) != proposal.current_routing_hash:
+            return "current_routing_hash_mismatch"
+        return None
+
+    def _write_result(self, result: RoutingApplyResult) -> RoutingApplyResult:
+        output_dir = self.project_root / ".hermes" / "routing-proposals" / result.proposal_id
+        output_dir.mkdir(parents=True, exist_ok=True)
+        evidence_path = output_dir / "apply-evidence.json"
+        result = result.model_copy(update={"evidence_path": str(evidence_path)})
+        evidence_path.write_text(result.model_dump_json(indent=2) + "\n", encoding="utf-8")
+        return result
+
+
+def write_routing_proposal_approval(approval: RoutingProposalApproval, project_root: str | Path) -> Path:
+    path = Path(project_root) / ".hermes" / "routing-proposals" / approval.proposal_id / "approval.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(approval.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    return path
+
+
+def read_routing_proposal_approval(project_root: str | Path, proposal_id: str) -> RoutingProposalApproval:
+    path = Path(project_root) / ".hermes" / "routing-proposals" / proposal_id / "approval.json"
+    if not path.exists():
+        raise RoutingProposalError(f"routing proposal approval not found: {path}")
+    return RoutingProposalApproval.model_validate(json.loads(path.read_text(encoding="utf-8")))
+
+
+def read_routing_proposal(project_root: str | Path, proposal_id: str) -> RoutingUpdateProposal:
+    path = Path(project_root) / ".hermes" / "routing-proposals" / proposal_id / "proposal.json"
+    if not path.exists():
+        raise RoutingProposalError(f"routing proposal not found: {path}")
+    return RoutingUpdateProposal.model_validate(json.loads(path.read_text(encoding="utf-8")))
 
 
 def _sha256_text(text: str) -> str:
