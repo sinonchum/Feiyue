@@ -94,6 +94,20 @@ jobs:
           test -f "$TMP/example-report.zip"
           test -f "$TMP/example-report.extracted/manifest.json"
 
+      - name: Provider-free benchmark smoke
+        working-directory: packages/feiyue-core
+        run: |
+          set -euo pipefail
+          TMP=$(mktemp -d)
+          python -m feiyue_core.evaluation.benchmark_runner \
+            --quick \
+            --output "$TMP/benchmark.json" \
+            --output-markdown "$TMP/benchmark.md" | tee "$TMP/benchmark.out"
+          grep -q "BENCHMARK_SMOKE_OK" "$TMP/benchmark.out"
+          grep -q "pass_rate: 0.6667" "$TMP/benchmark.out"
+          test -f "$TMP/benchmark.json"
+          test -f "$TMP/benchmark.md"
+
       - name: Secret scan
         run: |
           set -euo pipefail

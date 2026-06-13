@@ -40,8 +40,8 @@ Feiyue 追求三个战略结果：
 
 - Core package：`packages/feiyue-core`
 - Python source/test 文件：持续扩展中（当前 provider-free foundation 覆盖 workflow、curation、capability、creative、evaluation、providers）。
-- 当前完整测试：`385 passed`
-- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation、M12 policy governor / run evidence / YAML policy config / human approval primitive / approval evidence handoff / run catalog / `feiyue-runs` local inspection CLI / read-only local API/dashboard/static export manifest+verify+bundle+all-in-one pipeline foundation，以及 GitHub Actions CI contract 与 provider-free example smoke foundation。
+- 当前完整测试：`389 passed`
+- 最新开发状态：已具备 schemas、sandbox、verifier、recovery runtime、candidate/feedback/teacher toy loop、iteration trace replay、fallback resume prompt、provider-free resume demo、M5 workflow assets、M6 curator/distillation、M7 capability、M8 creative、M9 evaluation，以及 M10 safe provider/profile integration foundation、M11 provider-free toy workflow execution / fake teacher-guided retry / verified branch promotion / report persistence foundation、M12 policy governor / run evidence / YAML policy config / human approval primitive / approval evidence handoff / run catalog / `feiyue-runs` local inspection CLI / read-only local API/dashboard/static export manifest+verify+bundle+all-in-one pipeline foundation，以及 GitHub Actions CI contract、provider-free example smoke 与 provider-free benchmark smoke foundation。
 
 ### 1.2 已完成核心资产
 
@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`385 passed`（local full gate for M14 provider-free example smoke；remote CI gate below mirrors this smoke）。
+> **Verified baseline**：`389 passed`（local full gate for M14 provider-free example smoke + benchmark smoke；remote CI gate mirrors both smokes）。
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1338,7 +1338,7 @@ M5 Project Knowledge
 | M11 Real Workflow Execution / Promotion | Provider-free Foundation | CandidateFileWrite、ToyWorkflowExecutor、verifier-gated readiness、BugDossier on failure、fake teacher retry、verified branch promotion、run report persistence、source clean guarantee 已完成；真实 worker/provider patch 与多轮 repair 未完成。 |
 | M12 Safety / Budget / Policy Governor | Done Foundation | PolicyGovernor、budget/risk/privacy gates、PolicyGovernorConfigLoader、HumanApprovalRecord、approval persistence、run-evidence、safe_to_retry/next_safe_action、handoff summary 与 action evidence 已完成。 |
 | M13 Productization / Dashboard / API | Done Foundation | `feiyue-runs` CLI、RunCatalog、read-only API/dashboard、drill-down、static HTML export、manifest SHA256、verifier、portable bundle、export-all pipeline 已完成；lesson/eval/routing/capability/creative proposal UI 尚未完整产品化。 |
-| M14 Release Hardening / CI / Documentation | Partial Foundation | GitHub Actions CI、CI contract tests、compileall、pytest、static export-all smoke、provider-free example smoke、secret scan、Node24 actions runtime opt-in 已完成；benchmark CI、docs site、architecture diagrams、contribution/release checklist 仍未完成。 |
+| M14 Release Hardening / CI / Documentation | Partial Foundation | GitHub Actions CI、CI contract tests、compileall、pytest、static export-all smoke、provider-free example smoke、provider-free benchmark smoke、secret scan、Node24 actions runtime opt-in 已完成；docs site、architecture diagrams、contribution/release checklist 仍未完成。 |
 
 ## 19.1 当前最准确阶段判断
 
@@ -1365,7 +1365,7 @@ Blueprint / Doctrine
 4. Curator proposal 到正式 `.hermes/` asset 的 promotion / rejection / dedup 写入闭环。
 5. 真实项目自动 promotion / rollback 的生产级安全边界。
 6. M13 全面 productization：lesson/eval/routing/capability/creative proposal browser/review UI。
-7. M14 release hardening：benchmark CI、docs site、architecture diagrams、contribution/release checklist。
+7. M14 release hardening：docs site、architecture diagrams、contribution/release checklist。
 
 ---
 
@@ -1435,9 +1435,54 @@ Update:
 - 本 slice 已串联现有 M11/M12/M13 资产，未新增真实 provider、网络调用或 Hermes config 修改。
 - CI 已加入 `Provider-free example smoke`，在 Ubuntu 上运行同一 module 并检查 run evidence、handoff、manifest、bundle 与 extracted manifest。
 
+# 21. Completed Slice: M14 Benchmark CI Skeleton
+
+## 已完成：M14 Benchmark CI Skeleton
+
+### Objective
+
+在 provider-free 前提下新增 deterministic benchmark runner/report artifact，固定未来真实 weak/strong model 对照的 JSON/Markdown 输出格式，并让 CI 运行 quick benchmark smoke。
+
+### Created / Updated Files
+
+Create:
+
+- `packages/feiyue-core/feiyue_core/evaluation/benchmark_runner.py`
+- `packages/feiyue-core/tests/test_benchmark_runner.py`
+
+Update:
+
+- `.github/workflows/ci.yml`：加入 `Provider-free benchmark smoke`。
+- `packages/feiyue-core/tests/test_ci_workflow.py`：覆盖 benchmark CI contract。
+- `README.md`：加入 benchmark smoke command。
+- `docs/Feiyue-self-evolution-development-outline.md`：更新 M14 benchmark status。
+
+### Output Contract
+
+Benchmark JSON schema version: `feiyue.benchmark.v1`。
+
+Quick benchmark emits:
+
+- `suite_id: toy-benchmark-suite`
+- `mode: quick`
+- `cases_total: 3`
+- `pass_rate: 0.6667`
+- `teacher_call_rate: 0.3333`
+- `average_cost: 2.5000`
+- `average_latency: 18.0000`
+- per-case exact match and token F1 metrics。
+
+CLI marker: `BENCHMARK_SMOKE_OK`。
+
+### Execution Notes
+
+- Metrics are deterministic and provider-free: exact match and token-level F1.
+- The quick dataset is tiny and checked into code, suitable for CI.
+- The smoke writes both JSON and Markdown artifacts and asserts their existence in CI.
+
 ## Recommended Next Slice
 
-当前更稳的下一步是 **M14 Benchmark CI Skeleton**：在 provider-free 前提下定义 deterministic benchmark runner/report artifact，让未来真实 weak/strong model 对照有固定输出格式和 CI contract。
+当前更稳的下一步是 **M14 Docs / Release Checklist Skeleton**：补齐 repo-level release checklist、contribution notes、architecture diagram/doc entry，让 example smoke、benchmark smoke、CI gates 和 remaining authorization boundaries 对 reviewer 更清楚。
 
 ## Alternative Next Slices
 

@@ -40,3 +40,11 @@ def test_ci_workflow_runs_provider_free_example_smoke() -> None:
     assert "Provider-free example smoke" in workflow
     assert "python -m feiyue_core.examples.provider_free_smoke" in workflow
     assert "PROVIDER_FREE_EXAMPLE_SMOKE_OK" in workflow
+
+
+def test_ci_workflow_runs_provider_free_benchmark_smoke() -> None:
+    workflow = WORKFLOW_PATH.read_text(encoding="utf-8")
+
+    assert "Provider-free benchmark smoke" in workflow
+    assert "python -m feiyue_core.evaluation.benchmark_runner" in workflow
+    assert "BENCHMARK_SMOKE_OK" in workflow
