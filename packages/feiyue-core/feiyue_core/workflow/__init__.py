@@ -3,6 +3,8 @@
 from feiyue_core.workflow.bug_dossier import BugDossier
 from feiyue_core.workflow.execution import (
     CandidateFileWrite,
+    ProductionPromotionRequest,
+    PromotionSafetyReport,
     PromotionResult,
     PromotionStatus,
     RunCatalog,
@@ -55,7 +57,9 @@ __all__ = [
     "ProjectKnowledge",
     "ProjectKnowledgeInitializer",
     "ProjectKnowledgeLoader",
+    "ProductionPromotionRequest",
     "PromotionResult",
+    "PromotionSafetyReport",
     "PromotionStatus",
     "REQUIRED_MODEL_ROUTING_ROLES",
     "RegressionCheck",
