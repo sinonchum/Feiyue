@@ -41,6 +41,12 @@ class Wave9LocalBranchMaterializationStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class Wave9LocalBranchCommitStatus(StrEnum):
+    COMMITTED = "committed"
+    FAILED = "failed"
+    BLOCKED = "blocked"
+
+
 class Wave9TaskAssignment(FeiyueModel):
     assignment_id: str
     profile_id: str
@@ -344,6 +350,72 @@ class Wave9LocalBranchMaterialization(FeiyueModel):
             raise ValueError("Wave9 materialization cannot push, create PRs, merge, or deploy")
         if self.promotion_attempted or self.global_hermes_config_mutated or self.production_mutated:
             raise ValueError("Wave9 materialization cannot promote, mutate config, or mutate production")
+        return self
+
+
+class Wave9LocalBranchCommitApproval(FeiyueModel):
+    approval_id: str
+    approved_by: str
+    approved_action: str
+    materialization_id: str
+    materialization_hash: str
+    plan_id: str
+    execution_run_id: str
+    local_branch_name: str
+    changed_files: list[str]
+    verifier_commands: list[str]
+    local_only: bool = True
+    provider_call_count: int = 0
+    branch_pushed: bool = False
+    external_pr_created: bool = False
+    merge_performed: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    approved_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    reason: str
+
+    @model_validator(mode="after")
+    def _safe_contract(self) -> "Wave9LocalBranchCommitApproval":
+        if self.approved_action != "commit_wave9_local_branch":
+            raise ValueError("approved_action must be commit_wave9_local_branch")
+        if self.local_only is not True or self.provider_call_count != 0:
+            raise ValueError("Wave9 commit approval must be local-only and provider-free")
+        if self.branch_pushed or self.external_pr_created or self.merge_performed or self.deploy_performed or self.production_mutated:
+            raise ValueError("Wave9 commit approval cannot authorize push, PR, merge, deploy, or production mutation")
+        return self
+
+
+class Wave9LocalBranchCommit(FeiyueModel):
+    commit_id: str
+    materialization_id: str
+    plan_id: str
+    execution_run_id: str
+    status: Wave9LocalBranchCommitStatus
+    approval_id: str | None = None
+    local_branch_name: str
+    worktree_path: str | None = None
+    changed_files: list[str] = Field(default_factory=list)
+    local_commit_created: bool = False
+    local_commit_sha: str | None = None
+    verifier_outputs: list[dict[str, object]] = Field(default_factory=list)
+    provider_call_count: int = 0
+    reason_codes: list[str]
+    branch_pushed: bool = False
+    external_pr_created: bool = False
+    merge_performed: bool = False
+    deploy_performed: bool = False
+    promotion_attempted: bool = False
+    global_hermes_config_mutated: bool = False
+    production_mutated: bool = False
+
+    @model_validator(mode="after")
+    def _local_only_contract(self) -> "Wave9LocalBranchCommit":
+        if self.provider_call_count != 0:
+            raise ValueError("Wave9 local branch commits are provider-free")
+        if self.branch_pushed or self.external_pr_created or self.merge_performed or self.deploy_performed:
+            raise ValueError("Wave9 local branch commits cannot push, create PRs, merge, or deploy")
+        if self.promotion_attempted or self.global_hermes_config_mutated or self.production_mutated:
+            raise ValueError("Wave9 local branch commits cannot promote, mutate config, or mutate production")
         return self
 
 
@@ -930,6 +1002,194 @@ def _wave9_materialization_block_reasons(*, plan: Wave9LocalPRPlan, approval: Wa
 
 def _write_wave9_materialization_evidence(project_root: str | Path, evidence: Wave9LocalBranchMaterialization) -> Path:
     path = wave9_local_branch_materialization_path(project_root, evidence.materialization_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(evidence.model_dump(mode="json"), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def wave9_local_branch_materialization_hash(materialization: Wave9LocalBranchMaterialization) -> str:
+    canonical = json.dumps(materialization.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def wave9_local_branch_commit_approval_path(project_root: str | Path, materialization_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "wave9-local-branch-materializations" / materialization_id / "commit-approval.json"
+
+
+def wave9_local_branch_commit_path(project_root: str | Path, commit_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "wave9-local-branch-commits" / commit_id / "evidence.json"
+
+
+def approve_wave9_local_branch_commit(
+    *,
+    project_root: str | Path,
+    materialization: Wave9LocalBranchMaterialization,
+    approval_id: str,
+    approved_by: str,
+    reason: str,
+) -> Wave9LocalBranchCommitApproval:
+    approval = Wave9LocalBranchCommitApproval(
+        approval_id=approval_id,
+        approved_by=approved_by,
+        approved_action="commit_wave9_local_branch",
+        materialization_id=materialization.materialization_id,
+        materialization_hash=wave9_local_branch_materialization_hash(materialization),
+        plan_id=materialization.plan_id,
+        execution_run_id=materialization.execution_run_id,
+        local_branch_name=materialization.local_branch_name,
+        changed_files=materialization.changed_files,
+        verifier_commands=[str(item.get("command", "")) for item in materialization.verifier_outputs if item.get("command")],
+        local_only=True,
+        provider_call_count=0,
+        branch_pushed=False,
+        external_pr_created=False,
+        merge_performed=False,
+        deploy_performed=False,
+        production_mutated=False,
+        reason=reason,
+    )
+    path = wave9_local_branch_commit_approval_path(project_root, materialization.materialization_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(approval.model_dump(mode="json"), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return approval
+
+
+def read_wave9_local_branch_commit_approval(project_root: str | Path, materialization_id: str) -> Wave9LocalBranchCommitApproval:
+    return Wave9LocalBranchCommitApproval.model_validate_json(
+        wave9_local_branch_commit_approval_path(project_root, materialization_id).read_text(encoding="utf-8")
+    )
+
+
+def read_wave9_local_branch_commit(project_root: str | Path, commit_id: str) -> Wave9LocalBranchCommit:
+    return Wave9LocalBranchCommit.model_validate_json(wave9_local_branch_commit_path(project_root, commit_id).read_text(encoding="utf-8"))
+
+
+def commit_wave9_local_branch(
+    *,
+    project_root: str | Path,
+    materialization: Wave9LocalBranchMaterialization,
+    approval: Wave9LocalBranchCommitApproval | None,
+    commit_id: str,
+    commit_message: str,
+) -> Wave9LocalBranchCommit:
+    root = Path(project_root)
+    worktree = Path(materialization.worktree_path or "")
+    reasons = _wave9_commit_block_reasons(materialization=materialization, approval=approval)
+    if reasons:
+        evidence = _wave9_commit_evidence(
+            commit_id=commit_id,
+            materialization=materialization,
+            status=Wave9LocalBranchCommitStatus.BLOCKED,
+            approval_id=approval.approval_id if approval else None,
+            local_commit_created=False,
+            local_commit_sha=None,
+            verifier_outputs=[],
+            reason_codes=reasons,
+        )
+        _write_wave9_commit_evidence(root, evidence)
+        return evidence
+
+    verifier_outputs = _run_verifiers(worktree, approval.verifier_commands if approval else [])
+    verifier_passed = all(item["exit_code"] == 0 for item in verifier_outputs)
+    if not verifier_passed:
+        evidence = _wave9_commit_evidence(
+            commit_id=commit_id,
+            materialization=materialization,
+            status=Wave9LocalBranchCommitStatus.FAILED,
+            approval_id=approval.approval_id if approval else None,
+            local_commit_created=False,
+            local_commit_sha=None,
+            verifier_outputs=verifier_outputs,
+            reason_codes=["wave9_local_branch_commit_approval_applies", "local_verifier_failed"],
+        )
+        _write_wave9_commit_evidence(root, evidence)
+        return evidence
+
+    subprocess.run(["git", "add", *materialization.changed_files], cwd=worktree, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", commit_message], cwd=worktree, check=True, capture_output=True, text=True)
+    commit_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=worktree, text=True).strip()
+    evidence = _wave9_commit_evidence(
+        commit_id=commit_id,
+        materialization=materialization,
+        status=Wave9LocalBranchCommitStatus.COMMITTED,
+        approval_id=approval.approval_id if approval else None,
+        local_commit_created=True,
+        local_commit_sha=commit_sha,
+        verifier_outputs=verifier_outputs,
+        reason_codes=["wave9_local_branch_commit_approval_applies", "local_verifier_passed", "local_branch_commit_created"],
+    )
+    _write_wave9_commit_evidence(root, evidence)
+    return evidence
+
+
+def _wave9_commit_block_reasons(*, materialization: Wave9LocalBranchMaterialization, approval: Wave9LocalBranchCommitApproval | None) -> list[str]:
+    reasons: list[str] = []
+    if materialization.status is not Wave9LocalBranchMaterializationStatus.VERIFIED:
+        reasons.append("wave9_materialization_not_verified")
+    if not materialization.local_branch_created or materialization.branch_pushed or materialization.external_pr_created or materialization.merge_performed or materialization.deploy_performed or materialization.production_mutated:
+        reasons.append("wave9_materialization_not_local_only")
+    if not materialization.worktree_path or not Path(materialization.worktree_path).exists():
+        reasons.append("missing_wave9_materialization_worktree")
+    if approval is None:
+        reasons.append("missing_wave9_local_branch_commit_approval")
+    else:
+        if approval.materialization_id != materialization.materialization_id:
+            reasons.append("materialization_id_mismatch")
+        if approval.materialization_hash != wave9_local_branch_materialization_hash(materialization):
+            reasons.append("materialization_hash_mismatch")
+        if approval.plan_id != materialization.plan_id:
+            reasons.append("plan_id_mismatch")
+        if approval.execution_run_id != materialization.execution_run_id:
+            reasons.append("execution_run_id_mismatch")
+        if approval.local_branch_name != materialization.local_branch_name:
+            reasons.append("local_branch_name_mismatch")
+        if approval.changed_files != materialization.changed_files:
+            reasons.append("changed_files_mismatch")
+        if approval.approved_action != "commit_wave9_local_branch":
+            reasons.append("approved_action_mismatch")
+        if not approval.local_only or approval.provider_call_count != 0 or approval.branch_pushed or approval.external_pr_created or approval.merge_performed or approval.deploy_performed or approval.production_mutated:
+            reasons.append("approval_not_local_only")
+    return reasons
+
+
+def _wave9_commit_evidence(
+    *,
+    commit_id: str,
+    materialization: Wave9LocalBranchMaterialization,
+    status: Wave9LocalBranchCommitStatus,
+    approval_id: str | None,
+    local_commit_created: bool,
+    local_commit_sha: str | None,
+    verifier_outputs: list[dict[str, object]],
+    reason_codes: list[str],
+) -> Wave9LocalBranchCommit:
+    return Wave9LocalBranchCommit(
+        commit_id=commit_id,
+        materialization_id=materialization.materialization_id,
+        plan_id=materialization.plan_id,
+        execution_run_id=materialization.execution_run_id,
+        status=status,
+        approval_id=approval_id,
+        local_branch_name=materialization.local_branch_name,
+        worktree_path=materialization.worktree_path,
+        changed_files=materialization.changed_files if local_commit_created else [],
+        local_commit_created=local_commit_created,
+        local_commit_sha=local_commit_sha,
+        verifier_outputs=verifier_outputs,
+        provider_call_count=0,
+        reason_codes=reason_codes,
+        branch_pushed=False,
+        external_pr_created=False,
+        merge_performed=False,
+        deploy_performed=False,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+    )
+
+
+def _write_wave9_commit_evidence(project_root: str | Path, evidence: Wave9LocalBranchCommit) -> Path:
+    path = wave9_local_branch_commit_path(project_root, evidence.commit_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(evidence.model_dump(mode="json"), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path

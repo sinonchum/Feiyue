@@ -17,17 +17,21 @@ from feiyue_core.workflow.wave9_task_pack import (
     Wave9ExecutionReport,
     Wave9LocalPRPlanStatus,
     Wave9LocalBranchMaterializationStatus,
+    Wave9LocalBranchCommitStatus,
     Wave9TaskAssignment,
     Wave9TaskPack,
     Wave9TaskPackAuthorization,
     Wave9TaskPackExecutor,
     create_wave9_local_pr_plan,
     approve_wave9_local_pr_plan_materialization,
+    approve_wave9_local_branch_commit,
     materialize_wave9_local_pr_plan,
+    commit_wave9_local_branch,
     approve_wave9_task_pack_execution,
     read_wave9_execution_evidence,
     read_wave9_local_pr_plan,
     read_wave9_local_branch_materialization,
+    read_wave9_local_branch_commit,
     read_wave9_task_pack_authorization,
     task_pack_hash,
     validate_wave9_task_pack_authorization,
@@ -892,3 +896,127 @@ def test_wave9_6_cli_materializes_local_branch_without_external_pr(tmp_path: Pat
     assert payload["production_mutated"] is False
     assert payload["provider_call_count"] == 0
     assert (tmp_path / ".hermes" / "wave9-local-branch-materializations" / "wave9-6-cli-materialization" / "evidence.json").exists()
+
+
+
+def _materialized_branch_for_wave9_7(tmp_path: Path):
+    source, plan = _verified_plan_for_wave9_6(tmp_path)
+    materialization_approval = approve_wave9_local_pr_plan_materialization(
+        project_root=tmp_path,
+        plan=plan,
+        approval_id="wave9-7-materialization-approval",
+        approved_by="test-suite",
+        reason="Approve local materialization for commit tests.",
+    )
+    materialization = materialize_wave9_local_pr_plan(
+        project_root=tmp_path,
+        source_repo=source,
+        plan=plan,
+        approval=materialization_approval,
+        materialization_id="wave9-7-materialization",
+        worktree_path=tmp_path / "worktree",
+    )
+    return source, plan, materialization
+
+
+def test_wave9_7_local_branch_commit_blocks_without_exact_approval(tmp_path: Path) -> None:
+    _source, _plan, materialization = _materialized_branch_for_wave9_7(tmp_path)
+
+    result = commit_wave9_local_branch(
+        project_root=tmp_path,
+        materialization=materialization,
+        approval=None,
+        commit_id="wave9-7-local-commit",
+        commit_message="wave9: add marker smoke files",
+    )
+
+    assert result.status == Wave9LocalBranchCommitStatus.BLOCKED
+    assert result.provider_call_count == 0
+    assert result.local_commit_created is False
+    assert result.branch_pushed is False
+    assert result.external_pr_created is False
+    assert result.merge_performed is False
+    assert result.deploy_performed is False
+    assert result.production_mutated is False
+    assert "missing_wave9_local_branch_commit_approval" in result.reason_codes
+
+
+def test_wave9_7_local_branch_commit_creates_local_commit_only(tmp_path: Path) -> None:
+    _source, _plan, materialization = _materialized_branch_for_wave9_7(tmp_path)
+    approval = approve_wave9_local_branch_commit(
+        project_root=tmp_path,
+        materialization=materialization,
+        approval_id="wave9-7-commit-approval",
+        approved_by="test-suite",
+        reason="Approve local-only commit of materialized Wave9 files.",
+    )
+
+    result = commit_wave9_local_branch(
+        project_root=tmp_path,
+        materialization=materialization,
+        approval=approval,
+        commit_id="wave9-7-local-commit",
+        commit_message="wave9: add marker smoke files",
+    )
+    loaded = read_wave9_local_branch_commit(tmp_path, "wave9-7-local-commit")
+
+    assert loaded == result
+    assert result.status == Wave9LocalBranchCommitStatus.COMMITTED
+    assert result.materialization_id == "wave9-7-materialization"
+    assert result.plan_id == "wave9-6-local-pr-plan"
+    assert result.local_commit_created is True
+    assert result.local_commit_sha
+    assert result.branch_pushed is False
+    assert result.external_pr_created is False
+    assert result.merge_performed is False
+    assert result.deploy_performed is False
+    assert result.production_mutated is False
+    assert result.provider_call_count == 0
+    assert all(item["exit_code"] == 0 for item in result.verifier_outputs)
+    assert "local_branch_commit_created" in result.reason_codes
+    head = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=materialization.worktree_path, text=True).strip()
+    assert head == result.local_commit_sha
+
+
+def test_wave9_7_cli_commits_local_branch_without_push_or_pr(tmp_path: Path) -> None:
+    _source, _plan, materialization = _materialized_branch_for_wave9_7(tmp_path)
+    approve_wave9_local_branch_commit(
+        project_root=tmp_path,
+        materialization=materialization,
+        approval_id="wave9-7-cli-commit-approval",
+        approved_by="test-suite",
+        reason="Approve local-only branch commit via CLI.",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "commit-wave9-local-branch",
+            "--materialization-id",
+            "wave9-7-materialization",
+            "--commit-id",
+            "wave9-7-cli-local-commit",
+            "--commit-message",
+            "wave9: add marker smoke files",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "committed"
+    assert payload["local_commit_created"] is True
+    assert payload["local_commit_sha"]
+    assert payload["branch_pushed"] is False
+    assert payload["external_pr_created"] is False
+    assert payload["merge_performed"] is False
+    assert payload["deploy_performed"] is False
+    assert payload["production_mutated"] is False
+    assert payload["provider_call_count"] == 0
+    assert (tmp_path / ".hermes" / "wave9-local-branch-commits" / "wave9-7-cli-local-commit" / "evidence.json").exists()

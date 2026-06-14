@@ -72,3 +72,5 @@ Generated from the productized `feiyue-runs` command registry.
 - `feiyue-runs wave9-local-pr-plan --execution-run-id <id> --plan-id <id> --target-branch <branch>` — Create provider-free local PR-plan evidence from verified Wave9 dry-run evidence; no external PR, merge, or deploy.
 - `feiyue-runs approve-wave9-local-pr-plan-materialization --plan-id <id> --approval-id <id> --approved-by <user>` — Create exact local-only approval to materialize a Wave9 PR plan into a local worktree branch.
 - `feiyue-runs materialize-wave9-local-pr-plan --plan-id <id> --materialization-id <id> --source-repo <path> --worktree-path <path>` — Materialize approved Wave9 local PR-plan files into a dedicated local worktree branch; no push, PR, merge, or deploy.
+- `feiyue-runs approve-wave9-local-branch-commit --materialization-id <id> --approval-id <id> --approved-by <user>` — Create exact local-only approval to commit a materialized Wave9 local branch.
+- `feiyue-runs commit-wave9-local-branch --materialization-id <id> --commit-id <id> --commit-message <msg>` — Create a local commit from approved Wave9 branch materialization; no push, PR, merge, or deploy.

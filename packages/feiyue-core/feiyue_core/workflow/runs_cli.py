@@ -118,9 +118,13 @@ from feiyue_core.workflow.wave9_task_pack import (
     Wave9TaskPackExecutor,
     approve_wave9_task_pack_execution,
     approve_wave9_local_pr_plan_materialization,
+    approve_wave9_local_branch_commit,
     create_wave9_local_pr_plan,
+    commit_wave9_local_branch,
     materialize_wave9_local_pr_plan,
     read_wave9_execution_evidence,
+    read_wave9_local_branch_commit_approval,
+    read_wave9_local_branch_materialization,
     read_wave9_local_branch_materialization_approval,
     read_wave9_local_pr_plan,
     read_wave9_task_pack,
@@ -485,6 +489,23 @@ def main(argv: Sequence[str] | None = None) -> int:
     materialize_wave9_parser.add_argument("--materialization-id", required=True)
     materialize_wave9_parser.add_argument("--source-repo", required=True)
     materialize_wave9_parser.add_argument("--worktree-path", required=True)
+
+    approve_wave9_commit_parser = subparsers.add_parser(
+        "approve-wave9-local-branch-commit",
+        help="Create exact local-only approval to commit a materialized Wave9 local branch",
+    )
+    approve_wave9_commit_parser.add_argument("--materialization-id", required=True)
+    approve_wave9_commit_parser.add_argument("--approval-id", required=True)
+    approve_wave9_commit_parser.add_argument("--approved-by", required=True)
+    approve_wave9_commit_parser.add_argument("--reason", required=True)
+
+    commit_wave9_parser = subparsers.add_parser(
+        "commit-wave9-local-branch",
+        help="Create a local commit from approved Wave9 branch materialization; no push, PR, merge, or deploy",
+    )
+    commit_wave9_parser.add_argument("--materialization-id", required=True)
+    commit_wave9_parser.add_argument("--commit-id", required=True)
+    commit_wave9_parser.add_argument("--commit-message", required=True)
 
     real_multi_worker_parser = subparsers.add_parser(
         "real-multi-worker-live-dry-run",
@@ -1296,6 +1317,29 @@ def main(argv: Sequence[str] | None = None) -> int:
                 approval=approval,
                 materialization_id=args.materialization_id,
                 worktree_path=Path(args.worktree_path),
+            )
+            print(result.model_dump_json(indent=2))
+            return 0 if result.status != "blocked" else 2
+        if args.command == "approve-wave9-local-branch-commit":
+            materialization = read_wave9_local_branch_materialization(root, args.materialization_id)
+            approval = approve_wave9_local_branch_commit(
+                project_root=root,
+                materialization=materialization,
+                approval_id=args.approval_id,
+                approved_by=args.approved_by,
+                reason=args.reason,
+            )
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "commit-wave9-local-branch":
+            materialization = read_wave9_local_branch_materialization(root, args.materialization_id)
+            approval = read_wave9_local_branch_commit_approval(root, args.materialization_id)
+            result = commit_wave9_local_branch(
+                project_root=root,
+                materialization=materialization,
+                approval=approval,
+                commit_id=args.commit_id,
+                commit_message=args.commit_message,
             )
             print(result.model_dump_json(indent=2))
             return 0 if result.status != "blocked" else 2
