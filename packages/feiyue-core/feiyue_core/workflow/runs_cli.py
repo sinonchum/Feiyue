@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Sequence
 
+from feiyue_core.providers.profile_runner import FakeProfileRunner
 from feiyue_core.curation.live_asset_loop import (
     CuratorLiveAssetLoopError,
     approve_and_promote_curator_asset,
@@ -76,6 +77,17 @@ from feiyue_core.workflow.multi_worker_workflow_dry_run import (
     write_multi_worker_dry_run_approval,
 )
 from feiyue_core.workflow.task_contract import TaskContract
+from feiyue_core.workflow.true_multi_student_workflow import (
+    MultiStudentDryRunApproval,
+    MultiStudentDryRunExecutor,
+    MultiStudentPlan,
+    assignment_hash,
+    read_multi_student_approval,
+    read_multi_student_evidence,
+    read_multi_student_plan,
+    write_multi_student_approval,
+    write_multi_student_plan,
+)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -251,6 +263,38 @@ def main(argv: Sequence[str] | None = None) -> int:
     teacher_retry_parser.add_argument("--worker-initial-run-record")
     teacher_retry_parser.add_argument("--teacher-run-record")
     teacher_retry_parser.add_argument("--worker-retry-run-record")
+
+    approve_multi_student_parser = subparsers.add_parser(
+        "approve-true-multi-student-dry-run",
+        help="Create exact approval evidence for a true multi-student dry-run plan",
+    )
+    approve_multi_student_parser.add_argument("--plan-path", required=True)
+    approve_multi_student_parser.add_argument("--approved-by", required=True)
+    approve_multi_student_parser.add_argument("--approval-id", required=True)
+    approve_multi_student_parser.add_argument("--reason", required=True)
+    approve_multi_student_parser.add_argument("--max-total-profile-calls", type=int)
+
+    run_multi_student_parser = subparsers.add_parser(
+        "run-approved-true-multi-student-dry-run",
+        help="Run an approved true multi-student dry-run with fake profile responses",
+    )
+    run_multi_student_parser.add_argument("--plan-id", required=True)
+    run_multi_student_parser.add_argument("--run-id", required=True)
+    run_multi_student_parser.add_argument("--source-repo", required=True)
+    run_multi_student_parser.add_argument("--project-name", required=True)
+    run_multi_student_parser.add_argument("--task-id", required=True)
+    run_multi_student_parser.add_argument("--title", required=True)
+    run_multi_student_parser.add_argument("--scope", required=True)
+    run_multi_student_parser.add_argument("--file-to-modify", action="append", required=True, dest="files_to_modify")
+    run_multi_student_parser.add_argument("--verification-command", action="append", required=True, dest="verification_commands")
+    run_multi_student_parser.add_argument("--acceptance-criterion", action="append", default=[], dest="acceptance_criteria")
+    run_multi_student_parser.add_argument("--fake-response", action="append", required=True, dest="fake_responses")
+
+    multi_student_inspect_parser = subparsers.add_parser(
+        "true-multi-student-workflow",
+        help="Print true multi-student workflow evidence JSON",
+    )
+    multi_student_inspect_parser.add_argument("run_id")
 
     real_multi_worker_parser = subparsers.add_parser(
         "real-multi-worker-live-dry-run",
@@ -719,6 +763,55 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(result.model_dump_json(indent=2))
             return 0 if result.status != "blocked" else 2
+        if args.command == "approve-true-multi-student-dry-run":
+            plan_path = Path(args.plan_path)
+            plan = MultiStudentPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
+            write_multi_student_plan(plan, root)
+            approval = MultiStudentDryRunApproval(
+                approval_id=args.approval_id,
+                approved_by=args.approved_by,
+                plan_id=plan.plan_id,
+                task_id=plan.task_id,
+                approved_action="execute_true_multi_student_dry_run",
+                worker_assignment_hash=assignment_hash(plan.worker_assignments),
+                worker_profile_ids=[assignment.profile_id for assignment in plan.worker_assignments],
+                merge_strategy=plan.merge_strategy,
+                verifier_strategy=plan.verifier_strategy,
+                dry_run_only=True,
+                max_total_profile_calls=args.max_total_profile_calls or len(plan.worker_assignments),
+                reason=args.reason,
+            )
+            write_multi_student_approval(approval, root)
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "run-approved-true-multi-student-dry-run":
+            plan = read_multi_student_plan(root, args.plan_id)
+            approval = read_multi_student_approval(root, args.plan_id)
+            contract = TaskContract(
+                task_id=args.task_id,
+                title=args.title,
+                scope=args.scope,
+                files_to_modify=args.files_to_modify,
+                acceptance_criteria=args.acceptance_criteria,
+                verification_commands=args.verification_commands,
+                escalation_rule="True multi-student dry-run only; no promotion.",
+            )
+            responses = _parse_fake_response_pairs(args.fake_responses)
+            result = MultiStudentDryRunExecutor(profile_runner=FakeProfileRunner(responses)).run(
+                project_root=root,
+                source_repo=Path(args.source_repo),
+                project_name=args.project_name,
+                contract=contract,
+                plan=plan,
+                approval=approval,
+                run_id=args.run_id,
+            )
+            print(result.model_dump_json(indent=2))
+            return 0 if result.status != "blocked" else 2
+        if args.command == "true-multi-student-workflow":
+            report = read_multi_student_evidence(root, args.run_id)
+            print(report.model_dump_json(indent=2))
+            return 0
         if args.command == "real-multi-worker-live-dry-run":
             plan = _read_multi_worker_plan(root, args.plan_id)
             worker_profile = plan.route.worker_profile_ids[0]
@@ -794,6 +887,19 @@ def _read_multi_worker_plan(root: Path, plan_id: str) -> MultiWorkerOrchestratio
     if not plan_path.exists():
         raise FileNotFoundError(f"Multi-worker plan evidence not found for plan_id: {plan_id}")
     return MultiWorkerOrchestrationPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
+
+
+def _parse_fake_response_pairs(values: Sequence[str]) -> dict[str, str]:
+    responses: dict[str, str] = {}
+    for value in values:
+        if "=" not in value:
+            raise ValueError("--fake-response must use profile=json format")
+        profile, response = value.split("=", 1)
+        profile = profile.strip()
+        if not profile:
+            raise ValueError("--fake-response profile must be non-empty")
+        responses[profile] = response
+    return responses
 
 
 def _read_multi_worker_teacher_authorization(path: Path) -> MultiWorkerTeacherEscalationAuthorization:

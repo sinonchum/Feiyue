@@ -28,6 +28,9 @@ CLI_REFERENCE_COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("feiyue-runs approve-multi-worker-dry-run --plan-id <id> --approved-by <name> --approval-id <id> --reason <text>", "Create exact approval evidence for a multi-worker dry-run plan."),
         ("feiyue-runs run-approved-multi-worker-dry-run --plan-id <id> --run-id <id> --profile-runner fake|hermes ...", "Run an approved selected-worker dry-run."),
         ("feiyue-runs run-approved-multi-worker-teacher-retry --plan-id <id> --run-id <id> --worker-initial-run-record <json> --teacher-run-record <json> --worker-retry-run-record <json>", "Run an approved worker+teacher+retry dry-run using three exact provider run records."),
+        ("feiyue-runs approve-true-multi-student-dry-run --plan-path <json> --approved-by <name> --approval-id <id>", "Create exact approval evidence for a true multi-student dry-run plan."),
+        ("feiyue-runs run-approved-true-multi-student-dry-run --plan-id <id> --run-id <id> --fake-response profile=json", "Run an approved true multi-student fake-first dry-run."),
+        ("feiyue-runs true-multi-student-workflow <run_id>", "Inspect true multi-student workflow evidence."),
         ("feiyue-runs real-multi-worker-live-dry-run --authorization-path <path> --plan-id <id> --run-id <id> ...", "Run an explicitly authorized real multi-worker live dry-run seam."),
     ],
     "Approval-gated operations": [

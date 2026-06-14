@@ -153,6 +153,83 @@ def promotion_lifecycle_dir(project_root: str | Path, run_id: str) -> Path:
     return Path(project_root) / ".hermes" / "promotion-lifecycle" / run_id
 
 
+def create_multi_student_pr_plan(
+    *,
+    project_root: str | Path,
+    run_id: str,
+    source_branch: str,
+    target_branch: str,
+    title_prefix: str = "Create PR from verified true multi-student dry-run",
+) -> PromotionPRPlan:
+    """Create a local-only draft PR plan from verified true multi-student evidence.
+
+    This is the 6A bridge after true multi-student dry-runs: it prepares a PR
+    plan and exact-approval target without opening any external PR, merging, or
+    mutating production. The existing approve/create draft PR gate then enforces
+    the plan hash before fake-first PR evidence is emitted.
+    """
+
+    root = Path(project_root)
+    evidence_path = root / ".hermes" / "multi-student-workflows" / run_id / "evidence.json"
+    reason_codes: list[str] = []
+    evidence: dict[str, object] = {}
+    if not evidence_path.exists():
+        reason_codes.append("missing_multi_student_evidence")
+    else:
+        evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+        if evidence.get("status") != "verified":
+            reason_codes.append("multi_student_run_not_verified")
+        if evidence.get("dry_run_only") is not True:
+            reason_codes.append("multi_student_run_not_dry_run_only")
+        if evidence.get("promotion_attempted") is not False:
+            reason_codes.append("multi_student_run_attempted_promotion")
+        if evidence.get("global_hermes_config_mutated") is not False:
+            reason_codes.append("multi_student_run_mutated_global_config")
+
+    rollback_ref = _safe_current_head(root)
+    raw_task_id = evidence.get("task_id")
+    task_id = raw_task_id if isinstance(raw_task_id, str) else None
+    status = PromotionLifecycleStatus.BLOCKED if reason_codes else PromotionLifecycleStatus.PLANNED
+    title = f"{title_prefix}: {run_id}"
+    body_lines = [
+        f"# True multi-student PR plan: {run_id}",
+        "",
+        "This is a local-only PR plan from verified true multi-student dry-run evidence.",
+        "No GitHub API call, merge, deployment, or production mutation was performed.",
+        "",
+        f"task_id: {task_id or 'unknown'}",
+        f"source_branch: {source_branch}",
+        f"target_branch: {target_branch}",
+        f"rollback_ref: {rollback_ref or 'unknown'}",
+        f"evidence_path: {_rel(root, evidence_path) if evidence_path.exists() else 'missing'}",
+        "",
+        "## Reason codes",
+        *[f"- {reason}" for reason in reason_codes],
+        "",
+    ]
+    plan = PromotionPRPlan(
+        run_id=run_id,
+        task_id=task_id,
+        status=status,
+        title=title,
+        body="\n".join(body_lines),
+        source_branch=source_branch,
+        target_branch=target_branch,
+        promoted_commit=None,
+        rollback_ref=rollback_ref,
+        evidence_refs={"multi_student_evidence": _rel(root, evidence_path)} if evidence_path.exists() else {},
+        reason_codes=reason_codes,
+        external_pr_created=False,
+        draft=True,
+        auto_merge=False,
+        mutates_production=False,
+        written_at=datetime.now(UTC).isoformat(),
+    )
+    plan.plan_hash = compute_pr_plan_hash(plan)
+    _write_json(promotion_lifecycle_dir(root, run_id) / "pr-plan.json", plan.model_dump(mode="json"))
+    return plan
+
+
 def create_promotion_pr_plan(
     *,
     project_root: str | Path,
@@ -569,7 +646,14 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
 def _current_branch(root: Path) -> str | None:
     completed = subprocess.run(["git", "branch", "--show-current"], cwd=root, text=True, capture_output=True, check=False)
     branch = completed.stdout.strip()
-    return branch if completed.returncode == 0 and branch else None
+    return branch or None
+
+
+def _safe_current_head(root: Path) -> str | None:
+    completed = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, text=True, capture_output=True, check=False)
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip() or None
 
 
 def _repo_clean(root: Path) -> bool:
