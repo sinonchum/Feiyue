@@ -49,6 +49,8 @@ CLI_REFERENCE_COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("feiyue-runs execute-approved-merge <readiness_id> --adapter fake|github", "Execute an approved merge through a fail-closed adapter; fake adapter simulates only."),
         ("feiyue-runs approve-pr-ready-for-review <readiness_id> --approved-by <user> --approval-id <id> --reason <text>", "Create exact approval for 8C PR ready-for-review transition."),
         ("feiyue-runs transition-pr-ready-for-review <readiness_id> --adapter fake|github", "Transition an approved PR ready-for-review through a fail-closed adapter; fake adapter simulates only."),
+        ("feiyue-runs approve-pr-ready-for-review-external-mutation <readiness_id> --approved-by <user> --approval-id <id> --reason <text>", "Create exact approval for the real GitHub Draft-to-ready PR mutation only."),
+        ("feiyue-runs transition-pr-ready-for-review <readiness_id> --adapter github --perform-external-mutation", "Perform the exact-approved GitHub Draft-to-ready PR mutation only; no merge/deploy."),
     ],
 }
 

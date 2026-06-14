@@ -13,10 +13,12 @@ from feiyue_core.workflow.release_candidate import (
     MergeRollbackDeployReadinessApproval,
     PRReadyForReviewAdapterResult,
     PRReadyForReviewApproval,
+    PRReadyForReviewExternalMutationApproval,
     ProductionPromotionApproval,
     ReleaseCandidateStatus,
     approve_merge_execution,
     approve_merge_rollback_deploy_readiness,
+    approve_pr_ready_for_review_external_mutation,
     approve_pr_ready_for_review_transition,
     approve_production_promotion,
     create_merge_rollback_deploy_readiness_plan,
@@ -751,3 +753,108 @@ def test_8c_cli_approve_and_fake_ready_for_review_transition(tmp_path: Path) -> 
     assert payload["merge_performed"] is False
     assert payload["deploy_performed"] is False
     assert payload["production_mutated"] is False
+
+
+
+def _write_8c_fake_ready_for_review(repo: Path, *, readiness_id: str = "wave8-8d") -> None:
+    _write_8b_fake_merge_execution(repo, readiness_id=readiness_id)
+    approval = approve_pr_ready_for_review_transition(
+        project_root=repo,
+        readiness_id=readiness_id,
+        approved_by="human-reviewer",
+        approval_id=f"approval-ready-{readiness_id}",
+        reason="Approve fake ready-for-review prerequisite for 8D.",
+    )
+    evidence = transition_pr_ready_for_review(project_root=repo, readiness_id=readiness_id, approval=approval)
+    assert evidence.status == ReleaseCandidateStatus.READY
+    assert evidence.simulated_ready_for_review_performed is True
+
+
+def test_8d_external_ready_for_review_requires_exact_external_mutation_approval(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _write_8c_fake_ready_for_review(repo, readiness_id="wave8-8d")
+    adapter_result = PRReadyForReviewAdapterResult(
+        adapter="github",
+        status=ReleaseCandidateStatus.READY,
+        reason_codes=["github_pr_marked_ready_for_review"],
+        ready_for_review_performed=True,
+        external_side_effect_performed=True,
+    )
+
+    evidence = transition_pr_ready_for_review(project_root=repo, readiness_id="wave8-8d", adapter_result=adapter_result)
+
+    assert evidence.status == ReleaseCandidateStatus.BLOCKED
+    assert "missing_pr_ready_for_review_external_mutation_approval" in evidence.reason_codes
+    assert evidence.ready_for_review_performed is False
+    assert evidence.external_side_effect_performed is False
+    assert evidence.merge_performed is False
+    assert evidence.deploy_performed is False
+    assert evidence.production_mutated is False
+
+
+def test_8d_exact_external_mutation_approval_allows_github_ready_for_review_evidence(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _write_8c_fake_ready_for_review(repo, readiness_id="wave8-8d")
+    approval = approve_pr_ready_for_review_external_mutation(
+        project_root=repo,
+        readiness_id="wave8-8d",
+        approved_by="human-reviewer",
+        approval_id="approval-8d",
+        reason="Approve real GitHub Draft to Ready-for-review transition only; no merge, auto-merge, or deploy.",
+    )
+    adapter_result = PRReadyForReviewAdapterResult(
+        adapter="github",
+        status=ReleaseCandidateStatus.READY,
+        reason_codes=["github_pr_marked_ready_for_review"],
+        ready_for_review_performed=True,
+        external_side_effect_performed=True,
+    )
+
+    evidence = transition_pr_ready_for_review(project_root=repo, readiness_id="wave8-8d", external_mutation_approval=approval, adapter_result=adapter_result)
+
+    assert isinstance(approval, PRReadyForReviewExternalMutationApproval)
+    assert evidence.status == ReleaseCandidateStatus.READY
+    assert evidence.adapter == "github"
+    assert evidence.ready_for_review_performed is True
+    assert evidence.external_side_effect_performed is True
+    assert evidence.merge_performed is False
+    assert evidence.deploy_performed is False
+    assert evidence.production_mutated is False
+    assert evidence.reason_codes == ["pr_ready_for_review_external_mutation_approval_applies", "github_pr_marked_ready_for_review"]
+    persisted = json.loads((repo / ".hermes" / "pr-ready-for-review" / "wave8-8d" / "transition-github.json").read_text(encoding="utf-8"))
+    assert persisted["ready_for_review_performed"] is True
+    assert persisted["merge_performed"] is False
+
+
+def test_8d_cli_approves_external_pr_ready_for_review_mutation(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _write_8c_fake_ready_for_review(repo, readiness_id="wave8-8d-cli")
+
+    approval = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(repo),
+            "approve-pr-ready-for-review-external-mutation",
+            "wave8-8d-cli",
+            "--approved-by",
+            "human-reviewer",
+            "--approval-id",
+            "approval-8d-cli",
+            "--reason",
+            "Approve real GitHub Draft to Ready-for-review transition only.",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+
+    payload = json.loads(approval.stdout)
+    assert payload["approved_action"] == "perform_github_pr_ready_for_review"
+    assert payload["ready_for_review_transition_hash"]

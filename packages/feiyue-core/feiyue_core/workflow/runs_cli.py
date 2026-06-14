@@ -38,6 +38,7 @@ from feiyue_core.workflow.release_candidate import (
     GitHubPRReadyForReviewAdapter,
     approve_merge_execution,
     approve_merge_rollback_deploy_readiness,
+    approve_pr_ready_for_review_external_mutation,
     approve_pr_ready_for_review_transition,
     approve_production_promotion,
     create_merge_rollback_deploy_readiness_plan,
@@ -48,6 +49,7 @@ from feiyue_core.workflow.release_candidate import (
     read_merge_rollback_deploy_readiness_approval,
     read_merge_rollback_deploy_readiness_plan,
     read_pr_ready_for_review_approval,
+    read_pr_ready_for_review_external_mutation_approval,
     read_production_promotion_approval,
     transition_pr_ready_for_review,
     verify_merge_rollback_deploy_readiness,
@@ -195,6 +197,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     ready_review_transition_parser = subparsers.add_parser("transition-pr-ready-for-review", help="Transition an approved PR ready-for-review through a fail-closed adapter; fake adapter simulates only")
     ready_review_transition_parser.add_argument("readiness_id")
     ready_review_transition_parser.add_argument("--adapter", choices=["fake", "github"], default="fake")
+    ready_review_transition_parser.add_argument("--perform-external-mutation", action="store_true", help="With --adapter github, perform the real Draft-to-ready PR mutation using external approval")
+
+    ready_review_external_parser = subparsers.add_parser("approve-pr-ready-for-review-external-mutation", help="Create exact approval for the real GitHub Draft-to-ready PR mutation only")
+    ready_review_external_parser.add_argument("readiness_id")
+    ready_review_external_parser.add_argument("--approved-by", required=True)
+    ready_review_external_parser.add_argument("--approval-id", required=True)
+    ready_review_external_parser.add_argument("--reason", required=True)
 
     approve_parser = subparsers.add_parser("approve-promotion", help="Create exact approval evidence for a verified workflow dry run")
     approve_parser.add_argument("run_id")
@@ -639,11 +648,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "transition-pr-ready-for-review":
             approval = read_pr_ready_for_review_approval(root, args.readiness_id)
             adapter_result = None
+            external_mutation_approval = None
             if args.adapter == "github":
                 merge_execution = read_merge_execution_evidence(root, args.readiness_id, adapter="fake")
-                adapter_result = GitHubPRReadyForReviewAdapter().inspect(merge_execution=merge_execution)
-            transition = transition_pr_ready_for_review(project_root=root, readiness_id=args.readiness_id, approval=approval, adapter_result=adapter_result)
+                if args.perform_external_mutation:
+                    external_mutation_approval = read_pr_ready_for_review_external_mutation_approval(root, args.readiness_id)
+                    adapter_result = GitHubPRReadyForReviewAdapter().execute(project_root=root, pr_number=merge_execution.pr_number or 0, pr_url=merge_execution.pr_url)
+                else:
+                    adapter_result = GitHubPRReadyForReviewAdapter().inspect(merge_execution=merge_execution)
+            transition = transition_pr_ready_for_review(
+                project_root=root,
+                readiness_id=args.readiness_id,
+                approval=approval,
+                adapter_result=adapter_result,
+                external_mutation_approval=external_mutation_approval,
+            )
             print(transition.model_dump_json(indent=2))
+            return 0
+        if args.command == "approve-pr-ready-for-review-external-mutation":
+            approval = approve_pr_ready_for_review_external_mutation(
+                project_root=root,
+                readiness_id=args.readiness_id,
+                approved_by=args.approved_by,
+                approval_id=args.approval_id,
+                reason=args.reason,
+            )
+            print(approval.model_dump_json(indent=2))
             return 0
         if args.command == "approve-promotion":
             dry_run = _load_workflow_smoke_report(root, args.run_id)

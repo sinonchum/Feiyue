@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-14
-> **Verified baseline**：`636 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `636 passed`.
+> **Verified baseline**：`640 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `640 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1562,7 +1562,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`636 passed`。
+- `python -m pytest -q`：`640 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1876,10 +1876,11 @@ Wave5-1 through Wave5-6 are now implemented and locally smoke-verified. Remainin
 - **8A merge/rollback/deploy readiness design**：added `MergeRollbackDeployReadinessPlan` plus CLI commands `merge-rollback-deploy-readiness-plan`, `approve-merge-rollback-deploy-readiness`, and `verify-merge-rollback-deploy-readiness`. Smoke `wave8-8a-pr3-readiness-design` bound PR #3 7D readiness evidence, rollback plan, deploy plan, and post-merge verifier into an exact-approved evidence-only readiness report with status `ready`, approval_applies `true`, merge_performed `false`, auto_merge_enabled `false`, deploy_performed `false`, and production_mutated `false`.
 - **8B approved merge execution smoke**：added `MergeExecutionApproval`, `MergeExecutionAdapterResult`, `approve-merge-execution`, and `execute-approved-merge`. Smoke `wave8-8b-pr3-fake-merge-smoke` ran the fake adapter against `wave8-8a-pr3-readiness-design`, producing `fake_adapter_simulated_merge_only` with simulated_merge_performed `true`, merge_performed `false`, external_side_effect_performed `false`, deploy_performed `false`, and production_mutated `false`; the GitHub adapter inspection returned blocked with `pr_is_draft` for PR #3 before any merge/API side effect.
 - **8C PR ready-for-review transition gate**：added `PRReadyForReviewApproval`, `PRReadyForReviewAdapterResult`, `approve-pr-ready-for-review`, and `transition-pr-ready-for-review`. Smoke `wave8-8b-pr3-fake-merge-smoke` recorded `fake_adapter_simulated_ready_for_review_only` with simulated_ready_for_review_performed `true`, ready_for_review_performed `false`, external_side_effect_performed `false`, merge_performed `false`, deploy_performed `false`, and production_mutated `false`; the GitHub adapter blocked with `external_pr_mutation_not_authorized`, preserving PR #3 as Draft/Open until an explicit external PR mutation approval is given.
+- **8D real PR ready-for-review transition**：added `PRReadyForReviewExternalMutationApproval`, `approve-pr-ready-for-review-external-mutation`, and `transition-pr-ready-for-review --adapter github --perform-external-mutation`. Approval `wave8-8d-pr3-real-ready-for-review-approval` performed the real GitHub Draft-to-ready transition for PR #3 only and persisted `github_pr_marked_ready_for_review` evidence with isDraft `false`, ready_for_review_performed `true`, external_side_effect_performed `true`, merge_performed `false`, autoMergeRequest `null`, deploy_performed `false`, and production_mutated `false`.
 - Observed measurement deltas: pass_rate_delta `+1.0`, teacher_call_rate_delta `-1.0`, retry_count_delta `-2`, repeat_error_count_delta `-2`, with `provider_call_count: 0`, `dry_run_only: true`, `promotion_attempted: false`, `production_mutated: false`, and `global_hermes_config_mutated: false`.
 
 ### Phase B local verification
 
-- `python -m pytest -q`：`636 passed`。
+- `python -m pytest -q`：`640 passed`。
 - New targeted contracts cover review UI disabled actions, CLI reference generation, provider-free semantic review evidence, and creative acceptance/taste metrics.
 - Phase C remains explicit-authorization-gated for external PR/merge/deploy/production promotion and larger real-provider matrices.

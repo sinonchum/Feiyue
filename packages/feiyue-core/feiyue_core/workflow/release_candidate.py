@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -215,6 +216,36 @@ class PRReadyForReviewAdapterResult(FeiyueModel):
     ready_for_review_performed: bool = False
     external_side_effect_performed: bool = False
     pr_url: str | None = None
+
+
+class PRReadyForReviewExternalMutationApproval(FeiyueModel):
+    """Exact approval for the real GitHub Draft -> Ready-for-review mutation only."""
+
+    approval_id: str
+    approved_by: str
+    readiness_id: str
+    approved_action: str
+    ready_for_review_transition_hash: str
+    pr_number: int
+    target_branch: str
+    approved_at: str
+    reason: str
+
+    @field_validator(
+        "approval_id",
+        "approved_by",
+        "readiness_id",
+        "approved_action",
+        "ready_for_review_transition_hash",
+        "target_branch",
+        "approved_at",
+        "reason",
+    )
+    @classmethod
+    def _non_empty_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must be non-empty")
+        return value
 
 
 class PRReadyForReviewEvidence(FeiyueModel):
@@ -725,12 +756,73 @@ def read_pr_ready_for_review_approval(project_root: str | Path, readiness_id: st
     return PRReadyForReviewApproval.model_validate(payload)
 
 
+def compute_pr_ready_for_review_transition_hash(evidence: PRReadyForReviewEvidence) -> str:
+    payload = evidence.model_dump(mode="json")
+    payload["written_at"] = None
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def read_pr_ready_for_review_evidence(project_root: str | Path, readiness_id: str, *, adapter: str = "fake") -> PRReadyForReviewEvidence:
+    path = pr_ready_for_review_dir(project_root, readiness_id) / f"transition-{adapter}.json"
+    if not path.exists():
+        path = pr_ready_for_review_dir(project_root, readiness_id) / "transition.json"
+    if not path.exists():
+        raise FileNotFoundError(f"PR ready-for-review transition evidence not found for readiness_id: {readiness_id}")
+    return PRReadyForReviewEvidence.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def approve_pr_ready_for_review_external_mutation(
+    *,
+    project_root: str | Path,
+    readiness_id: str,
+    approved_by: str,
+    approval_id: str,
+    reason: str,
+) -> PRReadyForReviewExternalMutationApproval:
+    transition = read_pr_ready_for_review_evidence(project_root, readiness_id, adapter="fake")
+    if transition.status != ReleaseCandidateStatus.READY:
+        raise ValueError(f"External PR mutation approval requires ready fake transition evidence, got: {transition.status}")
+    if transition.ready_for_review_performed is not False or transition.external_side_effect_performed is not False:
+        raise ValueError("External PR mutation approval requires no prior real ready-for-review side effect")
+    transition_hash = compute_pr_ready_for_review_transition_hash(transition)
+    approval = PRReadyForReviewExternalMutationApproval(
+        approval_id=approval_id,
+        approved_by=approved_by,
+        readiness_id=readiness_id,
+        approved_action="perform_github_pr_ready_for_review",
+        ready_for_review_transition_hash=transition_hash,
+        pr_number=transition.pr_number or 0,
+        target_branch=transition.target_branch or "",
+        approved_at=datetime.now(UTC).isoformat(),
+        reason=reason,
+    )
+    write_pr_ready_for_review_external_mutation_approval(project_root, approval)
+    return approval
+
+
+def write_pr_ready_for_review_external_mutation_approval(project_root: str | Path, approval: PRReadyForReviewExternalMutationApproval) -> Path:
+    path = pr_ready_for_review_dir(project_root, approval.readiness_id) / "external-mutation-approval.json"
+    _write_json(path, approval.model_dump(mode="json") | {"written_at": datetime.now(UTC).isoformat()})
+    return path
+
+
+def read_pr_ready_for_review_external_mutation_approval(project_root: str | Path, readiness_id: str) -> PRReadyForReviewExternalMutationApproval:
+    path = pr_ready_for_review_dir(project_root, readiness_id) / "external-mutation-approval.json"
+    if not path.exists():
+        raise FileNotFoundError(f"PR ready-for-review external mutation approval not found for readiness_id: {readiness_id}")
+    payload = _read_json(path)
+    payload.pop("written_at", None)
+    return PRReadyForReviewExternalMutationApproval.model_validate(payload)
+
+
 def transition_pr_ready_for_review(
     *,
     project_root: str | Path,
     readiness_id: str,
     approval: PRReadyForReviewApproval | None = None,
     adapter_result: PRReadyForReviewAdapterResult | None = None,
+    external_mutation_approval: PRReadyForReviewExternalMutationApproval | None = None,
 ) -> PRReadyForReviewEvidence:
     root = Path(project_root)
     reasons: list[str] = []
@@ -771,6 +863,30 @@ def transition_pr_ready_for_review(
         if approval.target_branch != (merge_execution.target_branch or ""):
             reasons.append("approval_target_branch_mismatch")
 
+    fake_transition_hash: str | None = None
+    if adapter_result is not None and adapter_result.external_side_effect_performed:
+        try:
+            fake_transition = read_pr_ready_for_review_evidence(root, readiness_id, adapter="fake")
+            fake_transition_hash = compute_pr_ready_for_review_transition_hash(fake_transition)
+        except FileNotFoundError:
+            reasons.append("missing_fake_pr_ready_for_review_transition_evidence")
+        if external_mutation_approval is None:
+            try:
+                external_mutation_approval = read_pr_ready_for_review_external_mutation_approval(root, readiness_id)
+            except FileNotFoundError:
+                reasons.append("missing_pr_ready_for_review_external_mutation_approval")
+        if external_mutation_approval is not None:
+            if external_mutation_approval.readiness_id != readiness_id:
+                reasons.append("external_approval_readiness_id_mismatch")
+            if external_mutation_approval.approved_action != "perform_github_pr_ready_for_review":
+                reasons.append("external_approval_action_mismatch")
+            if fake_transition_hash is not None and external_mutation_approval.ready_for_review_transition_hash != fake_transition_hash:
+                reasons.append("external_approval_transition_hash_mismatch")
+            if merge_execution is not None and external_mutation_approval.pr_number != (merge_execution.pr_number or 0):
+                reasons.append("external_approval_pr_number_mismatch")
+            if merge_execution is not None and external_mutation_approval.target_branch != (merge_execution.target_branch or ""):
+                reasons.append("external_approval_target_branch_mismatch")
+
     if adapter_result is None:
         adapter_result = PRReadyForReviewAdapterResult(
             adapter="fake",
@@ -804,7 +920,13 @@ def transition_pr_ready_for_review(
         merge_performed=False,
         deploy_performed=False,
         production_mutated=False,
-        reason_codes=reasons if reasons else ["pr_ready_for_review_approval_applies", "fake_adapter_simulated_ready_for_review_only"] if adapter == "fake" else ["pr_ready_for_review_approval_applies"],
+        reason_codes=(
+            reasons
+            if reasons
+            else ["pr_ready_for_review_approval_applies", "fake_adapter_simulated_ready_for_review_only"]
+            if adapter == "fake"
+            else ["pr_ready_for_review_external_mutation_approval_applies", *(adapter_result.reason_codes or [])]
+        ),
         written_at=datetime.now(UTC).isoformat(),
     )
     out_dir = pr_ready_for_review_dir(root, readiness_id)
@@ -814,7 +936,7 @@ def transition_pr_ready_for_review(
 
 
 class GitHubPRReadyForReviewAdapter:
-    """Fail-closed 8C adapter shim; real ready-for-review mutation requires separate explicit authorization."""
+    """8C/8D GitHub PR ready-for-review adapter."""
 
     def inspect(self, *, merge_execution: MergeExecutionEvidence) -> PRReadyForReviewAdapterResult:
         return PRReadyForReviewAdapterResult(
@@ -824,6 +946,43 @@ class GitHubPRReadyForReviewAdapter:
             ready_for_review_performed=False,
             external_side_effect_performed=False,
             pr_url=merge_execution.pr_url,
+        )
+
+    def execute(self, *, project_root: str | Path, pr_number: int, pr_url: str | None = None) -> PRReadyForReviewAdapterResult:
+        try:
+            completed = subprocess.run(
+                ["gh", "pr", "ready", str(pr_number)],
+                cwd=str(project_root),
+                text=True,
+                capture_output=True,
+                check=False,
+                timeout=120,
+            )
+        except Exception as exc:  # pragma: no cover - defensive shell boundary
+            return PRReadyForReviewAdapterResult(
+                adapter="github",
+                status=ReleaseCandidateStatus.BLOCKED,
+                reason_codes=[f"github_pr_ready_command_failed:{type(exc).__name__}"],
+                ready_for_review_performed=False,
+                external_side_effect_performed=False,
+                pr_url=pr_url,
+            )
+        if completed.returncode != 0:
+            return PRReadyForReviewAdapterResult(
+                adapter="github",
+                status=ReleaseCandidateStatus.BLOCKED,
+                reason_codes=["github_pr_ready_command_failed"],
+                ready_for_review_performed=False,
+                external_side_effect_performed=False,
+                pr_url=pr_url,
+            )
+        return PRReadyForReviewAdapterResult(
+            adapter="github",
+            status=ReleaseCandidateStatus.READY,
+            reason_codes=["github_pr_marked_ready_for_review"],
+            ready_for_review_performed=True,
+            external_side_effect_performed=True,
+            pr_url=pr_url,
         )
 
 
