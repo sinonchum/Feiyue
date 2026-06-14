@@ -30,6 +30,11 @@ class Wave9ExecutionStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class Wave9LocalPRPlanStatus(StrEnum):
+    PLANNED = "planned"
+    BLOCKED = "blocked"
+
+
 class Wave9TaskAssignment(FeiyueModel):
     assignment_id: str
     profile_id: str
@@ -227,6 +232,49 @@ class Wave9ExecutionReport(FeiyueModel):
     global_hermes_config_mutated: bool = False
     production_mutated: bool = False
     source_repo_clean: bool = True
+
+
+class Wave9LocalPRPlan(FeiyueModel):
+    plan_id: str
+    execution_run_id: str
+    task_pack_id: str
+    task_id: str
+    status: Wave9LocalPRPlanStatus
+    target_branch: str
+    title: str
+    changed_files: list[str] = Field(default_factory=list)
+    verifier_commands: list[str] = Field(default_factory=list)
+    review_checklist: list[str] = Field(default_factory=list)
+    provider_call_count: int = 0
+    reason_codes: list[str]
+    dry_run_only: bool = True
+    promotion_attempted: bool = False
+    external_pr_created: bool = False
+    merge_performed: bool = False
+    deploy_performed: bool = False
+    global_hermes_config_mutated: bool = False
+    production_mutated: bool = False
+    source_repo_clean: bool = True
+
+    @field_validator("plan_id", "execution_run_id", "task_pack_id", "task_id", "target_branch", "title")
+    @classmethod
+    def _required_string(cls, value: str) -> str:
+        normalized = str(value).strip()
+        if not normalized:
+            raise ValueError("Wave9 local PR plan fields must be non-empty")
+        return normalized
+
+    @model_validator(mode="after")
+    def _local_only_contract(self) -> "Wave9LocalPRPlan":
+        if self.provider_call_count != 0:
+            raise ValueError("Wave9 local PR plans are provider-free")
+        if self.dry_run_only is not True:
+            raise ValueError("Wave9 local PR plans must remain dry_run_only")
+        if self.promotion_attempted or self.external_pr_created or self.merge_performed or self.deploy_performed:
+            raise ValueError("Wave9 local PR plans cannot promote, create PRs, merge, or deploy")
+        if self.global_hermes_config_mutated or self.production_mutated:
+            raise ValueError("Wave9 local PR plans cannot mutate global config or production")
+        return self
 
 
 class Wave9TaskPackExecutor:
@@ -552,6 +600,77 @@ def read_wave9_execution_evidence(project_root: str | Path, run_id: str) -> Wave
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload.pop("written_at", None)
     return Wave9ExecutionReport.model_validate(payload)
+
+
+def wave9_local_pr_plan_path(project_root: str | Path, plan_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "wave9-local-pr-plans" / plan_id / "pr-plan.json"
+
+
+def create_wave9_local_pr_plan(
+    *,
+    project_root: str | Path,
+    execution_report: Wave9ExecutionReport,
+    plan_id: str,
+    target_branch: str,
+    title: str,
+) -> Wave9LocalPRPlan:
+    changed_files = sorted(
+        {
+            candidate_file
+            for assignment in execution_report.assignment_reports
+            for candidate_file in assignment.candidate_files
+        }
+    )
+    verified = (
+        execution_report.status is Wave9ExecutionStatus.VERIFIED
+        and execution_report.dry_run_only
+        and not execution_report.promotion_attempted
+        and not execution_report.external_pr_created
+        and not execution_report.merge_performed
+        and not execution_report.deploy_performed
+        and not execution_report.global_hermes_config_mutated
+        and not execution_report.production_mutated
+        and execution_report.source_repo_clean
+    )
+    reason_codes = (
+        ["wave9_verified_execution_evidence_applies", "local_pr_plan_only", "provider_calls_not_started"]
+        if verified
+        else ["execution_not_verified", "local_pr_plan_blocked", "provider_calls_not_started"]
+    )
+    plan = Wave9LocalPRPlan(
+        plan_id=plan_id,
+        execution_run_id=execution_report.run_id,
+        task_pack_id=execution_report.task_pack_id,
+        task_id=execution_report.task_id,
+        status=Wave9LocalPRPlanStatus.PLANNED if verified else Wave9LocalPRPlanStatus.BLOCKED,
+        target_branch=target_branch,
+        title=title,
+        changed_files=changed_files if verified else [],
+        verifier_commands=[str(item.get("command", "")) for item in execution_report.verifier_outputs if item.get("command")],
+        review_checklist=[
+            "Review sandbox diff before any branch copy.",
+            "Re-run verifier commands in a dedicated PR worktree before opening an external PR.",
+            "Keep external PR creation, merge, deploy, promotion, and production mutation disabled until separately authorized.",
+        ],
+        provider_call_count=0,
+        reason_codes=reason_codes,
+        dry_run_only=True,
+        promotion_attempted=False,
+        external_pr_created=False,
+        merge_performed=False,
+        deploy_performed=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        source_repo_clean=execution_report.source_repo_clean,
+    )
+    path = wave9_local_pr_plan_path(project_root, plan_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(plan.model_dump(mode="json"), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return plan
+
+
+def read_wave9_local_pr_plan(project_root: str | Path, plan_id: str) -> Wave9LocalPRPlan:
+    return Wave9LocalPRPlan.model_validate_json(wave9_local_pr_plan_path(project_root, plan_id).read_text(encoding="utf-8"))
 
 
 def _wave9_assignment_prompt(*, project_name: str, task_pack: Wave9TaskPack, assignment: Wave9TaskAssignment) -> str:

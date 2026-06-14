@@ -117,6 +117,8 @@ from feiyue_core.workflow.wave9_task_pack import (
     Wave9TaskPack,
     Wave9TaskPackExecutor,
     approve_wave9_task_pack_execution,
+    create_wave9_local_pr_plan,
+    read_wave9_execution_evidence,
     read_wave9_task_pack,
     read_wave9_task_pack_authorization,
     task_pack_hash,
@@ -452,6 +454,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_wave9_parser.add_argument("--profile-runner", choices=["fake", "hermes"], default="fake")
     run_wave9_parser.add_argument("--fake-response", action="append", dest="fake_responses", default=[], help="profile=json_response")
     run_wave9_parser.add_argument("--hermes-run-record", action="append", dest="hermes_run_records", default=[], help="AuthorizedProviderRunRecord JSON path; repeat once per profile call")
+
+    wave9_pr_plan_parser = subparsers.add_parser(
+        "wave9-local-pr-plan",
+        help="Create a provider-free local PR plan from verified Wave9 dry-run evidence",
+    )
+    wave9_pr_plan_parser.add_argument("--execution-run-id", required=True)
+    wave9_pr_plan_parser.add_argument("--plan-id", required=True)
+    wave9_pr_plan_parser.add_argument("--target-branch", required=True)
+    wave9_pr_plan_parser.add_argument("--title", required=True)
 
     real_multi_worker_parser = subparsers.add_parser(
         "real-multi-worker-live-dry-run",
@@ -1231,6 +1242,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(result.model_dump_json(indent=2))
             return 0 if result.status != "blocked" else 2
+        if args.command == "wave9-local-pr-plan":
+            report = read_wave9_execution_evidence(root, args.execution_run_id)
+            plan = create_wave9_local_pr_plan(
+                project_root=root,
+                execution_report=report,
+                plan_id=args.plan_id,
+                target_branch=args.target_branch,
+                title=args.title,
+            )
+            print(plan.model_dump_json(indent=2))
+            return 0 if plan.status != "blocked" else 2
         if args.command == "real-multi-worker-live-dry-run":
             plan = _read_multi_worker_plan(root, args.plan_id)
             worker_profile = plan.route.worker_profile_ids[0]

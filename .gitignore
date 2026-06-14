@@ -58,3 +58,6 @@ local-notes/
 
 # Feiyue local Wave9 real multi-worker dry-run evidence
 .hermes/wave9-real-multi-worker-runs/
+
+# Feiyue local Wave9 PR-plan evidence
+.hermes/wave9-local-pr-plans/

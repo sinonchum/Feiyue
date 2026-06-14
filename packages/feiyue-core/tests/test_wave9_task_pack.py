@@ -11,17 +11,23 @@ from pydantic import ValidationError
 
 from feiyue_core.providers.profile_runner import FakeProfileRunner
 from feiyue_core.workflow.wave9_task_pack import (
+    Wave9AssignmentExecutionReport,
     Wave9AuthorizationCheckStatus,
     Wave9ExecutionStatus,
+    Wave9ExecutionReport,
+    Wave9LocalPRPlanStatus,
     Wave9TaskAssignment,
     Wave9TaskPack,
     Wave9TaskPackAuthorization,
     Wave9TaskPackExecutor,
+    create_wave9_local_pr_plan,
     approve_wave9_task_pack_execution,
     read_wave9_execution_evidence,
+    read_wave9_local_pr_plan,
     read_wave9_task_pack_authorization,
     task_pack_hash,
     validate_wave9_task_pack_authorization,
+    write_wave9_execution_evidence,
     write_wave9_task_pack,
     read_wave9_task_pack,
 )
@@ -540,3 +546,192 @@ def test_wave9_4_cli_runs_authorized_fake_dry_run(tmp_path: Path) -> None:
     assert payload["deploy_performed"] is False
     assert payload["production_mutated"] is False
     assert (tmp_path / ".hermes" / "wave9-real-multi-worker-runs" / "wave9-4-cli-run" / "evidence.json").exists()
+
+
+
+def _verified_wave9_report(run_id: str = "wave9-5-source-run"):
+    return Wave9TaskPackExecutor(profile_runner=FakeProfileRunner({
+        "feiyue-mid-deepseek-pro": json.dumps({
+            "writes": [{"path": "packages/feiyue-core/feiyue_core/workflow/wave9_marker.py", "content": "def wave9_marker():\n    return 'verified'\n"}]
+        }),
+        "feiyue-strong-gpt55": json.dumps({
+            "writes": [{"path": "packages/feiyue-core/tests/test_wave9_marker.py", "content": "from feiyue_core.workflow.wave9_marker import wave9_marker\n\ndef test_wave9_marker():\n    assert wave9_marker() == 'verified'\n"}]
+        }),
+    }))
+
+
+def test_wave9_5_local_pr_plan_requires_verified_execution(tmp_path: Path) -> None:
+    pack = Wave9TaskPack(
+        task_pack_id="wave9-5-task-pack",
+        task_id="wave9.real-multi-worker.marker",
+        title="Wave9 real multi-worker marker task",
+        summary="Tiny scoped task pack for a future real multi-worker dry-run.",
+        assignments=_assignments(),
+        merge_strategy="reject_on_conflict",
+        verifier_commands=["python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q"],
+        review_criteria=["combined verifier passes", "source checkout remains clean"],
+        dry_run_only=True,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        reason_codes=["wave9_task_pack_pre_execution_only"],
+    )
+    report = Wave9ExecutionReport(
+        run_id="wave9-5-failed-run",
+        task_pack_id=pack.task_pack_id,
+        task_id=pack.task_id,
+        status=Wave9ExecutionStatus.FAILED,
+        authorization_applies=True,
+        provider_call_count=2,
+        reason_codes=["combined_verifier_failed"],
+        dry_run_only=True,
+        promotion_attempted=False,
+        external_pr_created=False,
+        merge_performed=False,
+        deploy_performed=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        source_repo_clean=True,
+    )
+
+    plan = create_wave9_local_pr_plan(
+        project_root=tmp_path,
+        execution_report=report,
+        plan_id="wave9-5-local-pr-plan",
+        target_branch="wave9/real-multi-worker-marker",
+        title="Wave9 marker local PR plan",
+    )
+
+    assert plan.status == Wave9LocalPRPlanStatus.BLOCKED
+    assert plan.provider_call_count == 0
+    assert plan.external_pr_created is False
+    assert plan.merge_performed is False
+    assert plan.deploy_performed is False
+    assert plan.production_mutated is False
+    assert "execution_not_verified" in plan.reason_codes
+
+
+def test_wave9_5_local_pr_plan_from_verified_execution_is_local_only(tmp_path: Path) -> None:
+    source = _source_repo(tmp_path)
+    pack = Wave9TaskPack(
+        task_pack_id="wave9-5-task-pack",
+        task_id="wave9.real-multi-worker.marker",
+        title="Wave9 real multi-worker marker task",
+        summary="Tiny scoped task pack for a future real multi-worker dry-run.",
+        assignments=_assignments(),
+        merge_strategy="reject_on_conflict",
+        verifier_commands=["PYTHONPATH=packages/feiyue-core python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q"],
+        review_criteria=["combined verifier passes", "source checkout remains clean"],
+        dry_run_only=True,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        reason_codes=["wave9_task_pack_pre_execution_only"],
+    )
+    authorization = approve_wave9_task_pack_execution(
+        project_root=tmp_path,
+        task_pack=pack,
+        approval_id="wave9-5-approval",
+        approved_by="test-suite",
+        reason="Authorize Wave9 dry-run execution only.",
+        max_total_profile_calls=2,
+    )
+    report = Wave9TaskPackExecutor(profile_runner=FakeProfileRunner({
+        "feiyue-mid-deepseek-pro": json.dumps({"writes": [{"path": "packages/feiyue-core/feiyue_core/workflow/wave9_marker.py", "content": "def wave9_marker():\n    return 'verified'\n"}]}),
+        "feiyue-strong-gpt55": json.dumps({"writes": [{"path": "packages/feiyue-core/tests/test_wave9_marker.py", "content": "from feiyue_core.workflow.wave9_marker import wave9_marker\n\ndef test_wave9_marker():\n    assert wave9_marker() == 'verified'\n"}]}),
+    })).run(
+        project_root=tmp_path,
+        source_repo=source,
+        project_name="Feiyue",
+        task_pack=pack,
+        authorization=authorization,
+        run_id="wave9-5-source-run",
+    )
+
+    plan = create_wave9_local_pr_plan(
+        project_root=tmp_path,
+        execution_report=report,
+        plan_id="wave9-5-local-pr-plan",
+        target_branch="wave9/real-multi-worker-marker",
+        title="Wave9 marker local PR plan",
+    )
+    loaded = read_wave9_local_pr_plan(tmp_path, "wave9-5-local-pr-plan")
+
+    assert report.status == Wave9ExecutionStatus.VERIFIED
+    assert loaded == plan
+    assert plan.status == Wave9LocalPRPlanStatus.PLANNED
+    assert plan.execution_run_id == "wave9-5-source-run"
+    assert plan.task_pack_id == "wave9-5-task-pack"
+    assert plan.target_branch == "wave9/real-multi-worker-marker"
+    assert plan.provider_call_count == 0
+    assert plan.external_pr_created is False
+    assert plan.merge_performed is False
+    assert plan.deploy_performed is False
+    assert plan.production_mutated is False
+    assert plan.dry_run_only is True
+    assert plan.promotion_attempted is False
+    assert plan.source_repo_clean is True
+    assert sorted(plan.changed_files) == [
+        "packages/feiyue-core/feiyue_core/workflow/wave9_marker.py",
+        "packages/feiyue-core/tests/test_wave9_marker.py",
+    ]
+    assert "local_pr_plan_only" in plan.reason_codes
+
+
+def test_wave9_5_cli_creates_local_pr_plan_from_execution_evidence(tmp_path: Path) -> None:
+    report = Wave9ExecutionReport(
+        run_id="wave9-5-cli-source-run",
+        task_pack_id="wave9-5-cli-task-pack",
+        task_id="wave9.real-multi-worker.marker",
+        status=Wave9ExecutionStatus.VERIFIED,
+        authorization_applies=True,
+        assignment_reports=[
+            Wave9AssignmentExecutionReport(assignment_id="impl", profile_id="feiyue-mid-deepseek-pro", role="implementation", status="candidate_ready", candidate_files=["packages/feiyue-core/feiyue_core/workflow/wave9_marker.py"], allowed_scope=True, exit_code=0, reason_codes=["candidate_writes_scope_ok"]),
+            Wave9AssignmentExecutionReport(assignment_id="tests", profile_id="feiyue-strong-gpt55", role="tests", status="candidate_ready", candidate_files=["packages/feiyue-core/tests/test_wave9_marker.py"], allowed_scope=True, exit_code=0, reason_codes=["candidate_writes_scope_ok"]),
+        ],
+        provider_call_count=2,
+        reason_codes=["combined_verifier_passed"],
+        conflict_files=[],
+        verifier_outputs=[{"command": "python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q", "exit_code": 0, "stdout": "1 passed", "stderr": ""}],
+        dry_run_only=True,
+        promotion_attempted=False,
+        external_pr_created=False,
+        merge_performed=False,
+        deploy_performed=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        source_repo_clean=True,
+    )
+    write_wave9_execution_evidence(report, tmp_path)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "wave9-local-pr-plan",
+            "--execution-run-id",
+            "wave9-5-cli-source-run",
+            "--plan-id",
+            "wave9-5-cli-local-pr-plan",
+            "--target-branch",
+            "wave9/real-multi-worker-marker",
+            "--title",
+            "Wave9 marker local PR plan",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "planned"
+    assert payload["provider_call_count"] == 0
+    assert payload["external_pr_created"] is False
+    assert payload["merge_performed"] is False
+    assert payload["deploy_performed"] is False
+    assert payload["production_mutated"] is False
+    assert (tmp_path / ".hermes" / "wave9-local-pr-plans" / "wave9-5-cli-local-pr-plan" / "pr-plan.json").exists()

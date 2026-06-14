@@ -69,3 +69,4 @@ Generated from the productized `feiyue-runs` command registry.
 - `feiyue-runs wave9-task-pack <task_pack_id> --task-id <id> --assignment <assignment_spec>` — Create provider-free Wave9 real multi-worker task-pack evidence; no provider calls or mutation.
 - `feiyue-runs approve-wave9-real-multi-worker-run --task-pack-id <id> --approved-by <user> --approval-id <id>` — Create exact authorization for a Wave9 real multi-worker dry-run task pack; no provider calls or mutation.
 - `feiyue-runs run-approved-wave9-real-multi-worker-dry-run --task-pack-id <id> --run-id <id> --source-repo <path>` — Execute an exact-authorized Wave9 real multi-worker dry-run in an isolated sandbox; no PR, merge, deploy, or production mutation.
+- `feiyue-runs wave9-local-pr-plan --execution-run-id <id> --plan-id <id> --target-branch <branch>` — Create provider-free local PR-plan evidence from verified Wave9 dry-run evidence; no external PR, merge, or deploy.
