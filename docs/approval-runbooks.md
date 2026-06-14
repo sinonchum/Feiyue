@@ -56,7 +56,25 @@ git log --oneline -1
 
 The promotion evidence must include rollback evidence references or a rollback ref that can be simulated before any remote PR step.
 
-## 4. Approve and apply a routing proposal
+## 4. Create a fake-first draft PR evidence record
+
+Draft PR mode is intentionally local and fake-first by default: it does not call GitHub, push branches, merge, enable auto-merge, or mutate production. Approval must exactly match the persisted PR plan (`plan_hash`, source branch, target branch, rollback ref, approver, and action `create_draft_pr`).
+
+```bash
+cd packages/feiyue-core
+python3 -m feiyue_core.workflow.runs_cli --root ../.. draft-pr-plan <run_id> \
+  --allowed-target-branch feiyue/operator-reviewed-target \
+  --source-branch candidate/<run_id>
+python3 -m feiyue_core.workflow.runs_cli --root ../.. approve-draft-pr <run_id> \
+  --approved-by reviewer-id \
+  --approval-id approval-YYYYMMDD-draft-pr \
+  --reason "Create fake draft PR evidence only; no external PR, merge, or production mutation."
+python3 -m feiyue_core.workflow.runs_cli --root ../.. create-approved-draft-pr <run_id>
+```
+
+Expected evidence: `external_pr_created: false`, `draft: true`, `auto_merge: false`, `mutates_production: false`, `approval_applies: true`, and rollback ref preserved. Any mismatch fails closed with reason codes and still records no external PR creation.
+
+## 5. Approve and apply a routing proposal
 
 Prerequisites:
 
@@ -80,7 +98,7 @@ python3 -m feiyue_core.workflow.runs_cli --root ../.. apply-approved-routing \
   --proposal-id proposal-YYYYMMDD-routing-review
 ```
 
-## 5. Approve a multi-worker dry run
+## 6. Approve a multi-worker dry run
 
 This approval permits a bounded dry run only. It does not permit production promotion.
 

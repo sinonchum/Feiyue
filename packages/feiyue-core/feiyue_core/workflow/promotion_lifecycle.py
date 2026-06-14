@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shlex
 import subprocess
@@ -8,7 +9,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from feiyue_core.schemas.common import FeiyueModel
 
@@ -20,6 +21,11 @@ class PromotionLifecycleStatus(StrEnum):
     FAILED = "failed"
 
 
+class DraftPRStatus(StrEnum):
+    CREATED = "created"
+    BLOCKED = "blocked"
+
+
 class PromotionPRPlan(FeiyueModel):
     """Provider-free local evidence for a PR that a human/tool may open later."""
 
@@ -28,13 +34,94 @@ class PromotionPRPlan(FeiyueModel):
     status: PromotionLifecycleStatus
     title: str
     body: str
+    source_branch: str | None = None
     target_branch: str | None = None
     promoted_commit: str | None = None
     rollback_ref: str | None = None
     evidence_refs: dict[str, str] = Field(default_factory=dict)
     reason_codes: list[str] = Field(default_factory=list)
     external_pr_created: bool = False
+    draft: bool = True
+    auto_merge: bool = False
+    mutates_production: bool = False
+    plan_hash: str | None = None
     written_at: str | None = None
+
+
+class DraftPRApproval(FeiyueModel):
+    """Exact human approval for creating a draft PR from a local PR plan."""
+
+    approval_id: str
+    approved_by: str
+    run_id: str
+    approved_action: str
+    plan_hash: str
+    source_branch: str
+    target_branch: str
+    rollback_ref: str
+    approved_at: str
+    reason: str
+
+    @field_validator(
+        "approval_id",
+        "approved_by",
+        "run_id",
+        "approved_action",
+        "plan_hash",
+        "source_branch",
+        "target_branch",
+        "rollback_ref",
+        "approved_at",
+        "reason",
+    )
+    @classmethod
+    def _non_empty_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must be non-empty")
+        return value
+
+
+class DraftPREvidence(FeiyueModel):
+    run_id: str
+    status: DraftPRStatus
+    adapter: str = "fake"
+    source_branch: str | None = None
+    target_branch: str | None = None
+    rollback_ref: str | None = None
+    plan_hash: str | None = None
+    approval_applies: bool
+    reason_codes: list[str] = Field(default_factory=list)
+    external_pr_created: bool = False
+    draft: bool = True
+    auto_merge: bool = False
+    mutates_production: bool = False
+    pr_number: int | None = None
+    pr_url: str | None = None
+    approval_id: str | None = None
+    written_at: str | None = None
+
+
+class DraftPRAdapter:
+    name = "fake"
+
+    def create_draft_pr(self, *, plan: PromotionPRPlan) -> dict[str, object]:
+        raise NotImplementedError
+
+
+class FakeDraftPRAdapter(DraftPRAdapter):
+    """Fake-first adapter: records intent but never opens an external PR."""
+
+    name = "fake"
+
+    def create_draft_pr(self, *, plan: PromotionPRPlan) -> dict[str, object]:
+        return {
+            "external_pr_created": False,
+            "draft": True,
+            "auto_merge": False,
+            "mutates_production": False,
+            "pr_number": None,
+            "pr_url": f"fake://draft-pr/{plan.run_id}",
+        }
 
 
 class RollbackSandboxEvidence(FeiyueModel):
@@ -72,6 +159,7 @@ def create_promotion_pr_plan(
     run_id: str,
     allowed_target_branches: list[str],
     title_prefix: str = "Promote verified workflow run",
+    source_branch: str | None = None,
 ) -> PromotionPRPlan:
     """Write a local PR plan from promotion evidence without opening a real PR.
 
@@ -97,6 +185,7 @@ def create_promotion_pr_plan(
     target_branch = _target_branch(evidence)
     promoted_commit = _promoted_commit(evidence)
     rollback_ref = _rollback_ref(evidence)
+    resolved_source_branch = source_branch or _current_branch(root)
     raw_task_id = evidence.get("task_id")
     task_id = raw_task_id if isinstance(raw_task_id, str) else None
 
@@ -114,6 +203,7 @@ def create_promotion_pr_plan(
     body = _render_pr_plan_body(
         run_id=run_id,
         task_id=task_id,
+        source_branch=resolved_source_branch,
         target_branch=target_branch,
         promoted_commit=promoted_commit,
         rollback_ref=rollback_ref,
@@ -127,16 +217,161 @@ def create_promotion_pr_plan(
         status=status,
         title=title,
         body=body,
+        source_branch=resolved_source_branch,
         target_branch=target_branch,
         promoted_commit=promoted_commit,
         rollback_ref=rollback_ref,
         evidence_refs={"promotion_evidence": _rel(root, evidence_path)} if evidence_path.exists() else {},
         reason_codes=reason_codes,
         external_pr_created=False,
+        draft=True,
+        auto_merge=False,
+        mutates_production=False,
         written_at=datetime.now(UTC).isoformat(),
     )
+    plan.plan_hash = compute_pr_plan_hash(plan)
     _write_json(promotion_lifecycle_dir(root, run_id) / "pr-plan.json", plan.model_dump(mode="json"))
     return plan
+
+
+def read_promotion_pr_plan(project_root: str | Path, run_id: str) -> PromotionPRPlan:
+    path = promotion_lifecycle_dir(project_root, run_id) / "pr-plan.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Promotion PR plan not found for run_id: {run_id}")
+    return PromotionPRPlan.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def compute_pr_plan_hash(plan: PromotionPRPlan) -> str:
+    payload = plan.model_dump(mode="json")
+    payload["written_at"] = None
+    payload["plan_hash"] = None
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def approve_draft_pr(
+    *,
+    project_root: str | Path,
+    run_id: str,
+    approved_by: str,
+    approval_id: str,
+    reason: str,
+) -> DraftPRApproval:
+    plan = read_promotion_pr_plan(project_root, run_id)
+    plan_hash = plan.plan_hash or compute_pr_plan_hash(plan)
+    approval = DraftPRApproval(
+        approval_id=approval_id,
+        approved_by=approved_by,
+        run_id=run_id,
+        approved_action="create_draft_pr",
+        plan_hash=plan_hash,
+        source_branch=plan.source_branch or "",
+        target_branch=plan.target_branch or "",
+        rollback_ref=plan.rollback_ref or "",
+        approved_at=datetime.now(UTC).isoformat(),
+        reason=reason,
+    )
+    write_draft_pr_approval(project_root, approval)
+    return approval
+
+
+def write_draft_pr_approval(project_root: str | Path, approval: DraftPRApproval) -> Path:
+    path = promotion_lifecycle_dir(project_root, approval.run_id) / "draft-pr-approval.json"
+    _write_json(path, approval.model_dump(mode="json") | {"written_at": datetime.now(UTC).isoformat()})
+    return path
+
+
+def read_draft_pr_approval(project_root: str | Path, run_id: str) -> DraftPRApproval:
+    path = promotion_lifecycle_dir(project_root, run_id) / "draft-pr-approval.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Draft PR approval not found for run_id: {run_id}")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.pop("written_at", None)
+    return DraftPRApproval.model_validate(payload)
+
+
+def create_approved_draft_pr(
+    *,
+    project_root: str | Path,
+    run_id: str,
+    approval: DraftPRApproval | None,
+    adapter: DraftPRAdapter | None = None,
+) -> DraftPREvidence:
+    plan: PromotionPRPlan | None = None
+    reasons: list[str] = []
+    try:
+        plan = read_promotion_pr_plan(project_root, run_id)
+    except FileNotFoundError:
+        reasons.append("missing_pr_plan")
+
+    plan_hash = plan.plan_hash or compute_pr_plan_hash(plan) if plan is not None else None
+    if plan is not None:
+        if plan.status != PromotionLifecycleStatus.PLANNED:
+            reasons.append("pr_plan_not_planned")
+        if not plan.source_branch:
+            reasons.append("missing_source_branch")
+        if not plan.target_branch:
+            reasons.append("missing_target_branch")
+        if not plan.rollback_ref:
+            reasons.append("missing_rollback_ref")
+
+    if approval is None:
+        reasons.append("missing_draft_pr_approval")
+    elif plan is not None:
+        if approval.run_id != run_id:
+            reasons.append("approval_run_id_mismatch")
+        if approval.approved_action != "create_draft_pr":
+            reasons.append("approval_action_mismatch")
+        if approval.plan_hash != plan_hash:
+            reasons.append("approval_plan_hash_mismatch")
+        if approval.source_branch != plan.source_branch:
+            reasons.append("approval_source_branch_mismatch")
+        if approval.target_branch != plan.target_branch:
+            reasons.append("approval_target_branch_mismatch")
+        if approval.rollback_ref != plan.rollback_ref:
+            reasons.append("approval_rollback_ref_mismatch")
+
+    if reasons:
+        evidence = DraftPREvidence(
+            run_id=run_id,
+            status=DraftPRStatus.BLOCKED,
+            adapter=(adapter or FakeDraftPRAdapter()).name,
+            source_branch=plan.source_branch if plan is not None else None,
+            target_branch=plan.target_branch if plan is not None else None,
+            rollback_ref=plan.rollback_ref if plan is not None else None,
+            plan_hash=plan_hash,
+            approval_applies=False,
+            reason_codes=reasons,
+            approval_id=approval.approval_id if approval is not None else None,
+            written_at=datetime.now(UTC).isoformat(),
+        )
+        _write_json(promotion_lifecycle_dir(project_root, run_id) / "draft-pr-evidence.json", evidence.model_dump(mode="json"))
+        return evidence
+
+    assert plan is not None
+    adapter = adapter or FakeDraftPRAdapter()
+    created = adapter.create_draft_pr(plan=plan)
+    evidence = DraftPREvidence(
+        run_id=run_id,
+        status=DraftPRStatus.CREATED,
+        adapter=adapter.name,
+        source_branch=plan.source_branch,
+        target_branch=plan.target_branch,
+        rollback_ref=plan.rollback_ref,
+        plan_hash=plan_hash,
+        approval_applies=True,
+        reason_codes=["draft_pr_approval_applies", "fake_adapter_no_external_pr_created"] if adapter.name == "fake" else ["draft_pr_approval_applies"],
+        external_pr_created=bool(created.get("external_pr_created", False)),
+        draft=bool(created.get("draft", True)),
+        auto_merge=bool(created.get("auto_merge", False)),
+        mutates_production=bool(created.get("mutates_production", False)),
+        pr_number=created.get("pr_number") if isinstance(created.get("pr_number"), int) else None,
+        pr_url=created.get("pr_url") if isinstance(created.get("pr_url"), str) else None,
+        approval_id=approval.approval_id if approval is not None else None,
+        written_at=datetime.now(UTC).isoformat(),
+    )
+    _write_json(promotion_lifecycle_dir(project_root, run_id) / "draft-pr-evidence.json", evidence.model_dump(mode="json"))
+    return evidence
 
 
 def simulate_rollback_sandbox(
@@ -291,6 +526,7 @@ def _render_pr_plan_body(
     *,
     run_id: str,
     task_id: str | None,
+    source_branch: str | None,
     target_branch: str | None,
     promoted_commit: str | None,
     rollback_ref: str | None,
@@ -304,6 +540,7 @@ def _render_pr_plan_body(
         f"- run_id: {run_id}",
         f"- task_id: {task_id or 'None'}",
         f"- status: {status.value}",
+        f"- source_branch: {source_branch or 'None'}",
         f"- target_branch: {target_branch or 'None'}",
         f"- promoted_commit: {promoted_commit or 'None'}",
         f"- rollback_ref: {rollback_ref or 'None'}",
@@ -327,6 +564,12 @@ def _render_pr_plan_body(
 def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _current_branch(root: Path) -> str | None:
+    completed = subprocess.run(["git", "branch", "--show-current"], cwd=root, text=True, capture_output=True, check=False)
+    branch = completed.stdout.strip()
+    return branch if completed.returncode == 0 and branch else None
 
 
 def _repo_clean(root: Path) -> bool:
