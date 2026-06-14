@@ -44,6 +44,7 @@ from feiyue_core.workflow.release_candidate import (
     approve_production_promotion,
     create_merge_rollback_deploy_readiness_plan,
     create_pre_merge_final_audit,
+    create_post_merge_verification_handoff,
     create_release_candidate_plan,
     execute_approved_merge,
     execute_approved_real_merge,
@@ -242,6 +243,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     execute_real_merge_parser = subparsers.add_parser("execute-approved-real-merge", help="Execute exact-approved real merge or fake simulation; no auto-merge/deploy")
     execute_real_merge_parser.add_argument("audit_id")
     execute_real_merge_parser.add_argument("--adapter", choices=["fake", "github"], default="fake")
+
+    post_merge_handoff_parser = subparsers.add_parser("post-merge-handoff", help="Create post-merge verification and no-deploy release handoff evidence")
+    post_merge_handoff_parser.add_argument("handoff_id")
+    post_merge_handoff_parser.add_argument("--pr-number", type=int, required=True)
+    post_merge_handoff_parser.add_argument("--pr-state", required=True)
+    post_merge_handoff_parser.add_argument("--merge-commit-sha")
+    post_merge_handoff_parser.add_argument("--merged-at")
+    post_merge_handoff_parser.add_argument("--main-head-sha", required=True)
+    post_merge_handoff_parser.add_argument("--ci-run-id")
+    post_merge_handoff_parser.add_argument("--ci-conclusion")
+    post_merge_handoff_parser.add_argument("--local-test-baseline", required=True)
+    post_merge_handoff_parser.add_argument("--post-merge-verification-command", action="append", required=True, dest="post_merge_verification_commands")
 
     approve_parser = subparsers.add_parser("approve-promotion", help="Create exact approval evidence for a verified workflow dry run")
     approve_parser.add_argument("run_id")
@@ -801,6 +814,22 @@ def main(argv: Sequence[str] | None = None) -> int:
             evidence = execute_approved_real_merge(project_root=root, audit_id=args.audit_id, approval=approval, adapter_result=adapter_result)
             print(evidence.model_dump_json(indent=2))
             return 0 if evidence.status != "blocked" else 2
+        if args.command == "post-merge-handoff":
+            handoff = create_post_merge_verification_handoff(
+                project_root=root,
+                handoff_id=args.handoff_id,
+                pr_number=args.pr_number,
+                pr_state=args.pr_state,
+                merge_commit_sha=args.merge_commit_sha,
+                merged_at=args.merged_at,
+                main_head_sha=args.main_head_sha,
+                ci_run_id=args.ci_run_id,
+                ci_conclusion=args.ci_conclusion,
+                local_test_baseline=args.local_test_baseline,
+                post_merge_verification_commands=list(args.post_merge_verification_commands),
+            )
+            print(handoff.model_dump_json(indent=2))
+            return 0 if handoff.status != "blocked" else 2
         if args.command == "approve-promotion":
             dry_run = _load_workflow_smoke_report(root, args.run_id)
             if dry_run.workflow_report is None:

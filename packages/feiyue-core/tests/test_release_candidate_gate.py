@@ -13,6 +13,7 @@ from feiyue_core.workflow.release_candidate import (
     PreMergeFinalAudit,
     RealMergeExecutionApproval,
     RealMergeExecutionEvidence,
+    PostMergeVerificationHandoff,
     MergeRollbackDeployReadinessApproval,
     PRReadyForReviewAdapterResult,
     PRReadyForReviewApproval,
@@ -28,6 +29,7 @@ from feiyue_core.workflow.release_candidate import (
     create_merge_rollback_deploy_readiness_plan,
     create_release_candidate_plan,
     create_pre_merge_final_audit,
+    create_post_merge_verification_handoff,
     approve_real_merge_execution,
     execute_approved_real_merge,
     execute_approved_merge,
@@ -1258,3 +1260,107 @@ def test_8f2_cli_approves_and_fake_executes_real_merge_gate(tmp_path: Path) -> N
     assert evidence_payload["auto_merge_enabled"] is False
     assert evidence_payload["deploy_performed"] is False
     assert evidence_payload["production_mutated"] is False
+
+
+
+def test_8g_post_merge_handoff_blocks_unmerged_pr(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+
+    handoff = create_post_merge_verification_handoff(
+        project_root=repo,
+        handoff_id="wave8-8g",
+        pr_number=3,
+        pr_state="OPEN",
+        merge_commit_sha=None,
+        merged_at=None,
+        main_head_sha="main-sha",
+        ci_run_id="123",
+        ci_conclusion="success",
+        local_test_baseline="654 passed",
+        post_merge_verification_commands=["python -m pytest -q"],
+    )
+
+    assert handoff.status == "blocked"
+    assert "pr_not_merged" in handoff.reason_codes
+    assert handoff.deploy_performed is False
+    assert handoff.production_mutated is False
+    assert handoff.release_handoff_ready is False
+
+
+def test_8g_post_merge_handoff_records_no_deploy_release_handoff(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+
+    handoff = create_post_merge_verification_handoff(
+        project_root=repo,
+        handoff_id="wave8-8g",
+        pr_number=3,
+        pr_state="MERGED",
+        merge_commit_sha="merge-sha",
+        merged_at="2026-06-14T19:47:24Z",
+        main_head_sha="main-sha",
+        ci_run_id="27510205254",
+        ci_conclusion="success",
+        local_test_baseline="654 passed",
+        post_merge_verification_commands=["python -m pytest -q", "python -m compileall -q feiyue_core"],
+    )
+
+    assert isinstance(handoff, PostMergeVerificationHandoff)
+    assert handoff.status == "handoff_ready"
+    assert handoff.release_handoff_ready is True
+    assert handoff.pr_number == 3
+    assert handoff.merge_commit_sha == "merge-sha"
+    assert handoff.ci_conclusion == "success"
+    assert handoff.local_test_baseline == "654 passed"
+    assert handoff.deploy_performed is False
+    assert handoff.production_mutated is False
+    assert handoff.reason_codes == ["post_merge_verification_passed", "no_deploy_release_handoff_ready"]
+    persisted = json.loads((repo / ".hermes" / "post-merge-handoffs" / "wave8-8g" / "handoff.json").read_text(encoding="utf-8"))
+    assert persisted["status"] == "handoff_ready"
+    assert persisted["release_handoff_ready"] is True
+
+
+def test_8g_cli_creates_post_merge_handoff(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(repo),
+            "post-merge-handoff",
+            "wave8-8g-cli",
+            "--pr-number",
+            "3",
+            "--pr-state",
+            "MERGED",
+            "--merge-commit-sha",
+            "merge-sha",
+            "--merged-at",
+            "2026-06-14T19:47:24Z",
+            "--main-head-sha",
+            "main-sha",
+            "--ci-run-id",
+            "27510205254",
+            "--ci-conclusion",
+            "success",
+            "--local-test-baseline",
+            "654 passed",
+            "--post-merge-verification-command",
+            "python -m pytest -q",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "handoff_ready"
+    assert payload["release_handoff_ready"] is True
+    assert payload["deploy_performed"] is False
+    assert payload["production_mutated"] is False

@@ -49,3 +49,6 @@ local-notes/
 
 # Feiyue local real merge execution evidence
 .hermes/real-merge-executions/
+
+# Feiyue local post-merge handoff evidence
+.hermes/post-merge-handoffs/

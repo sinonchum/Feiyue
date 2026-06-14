@@ -55,6 +55,7 @@ CLI_REFERENCE_COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("feiyue-runs pre-merge-final-audit <audit_id> --readiness-id <refresh_id> --adapter fake|github", "Create final pre-merge audit and approval-request evidence; no merge/deploy."),
         ("feiyue-runs approve-real-merge <audit_id> --approved-by <user> --approval-id <id> --reason <text> --merge-method squash", "Create exact approval for real GitHub merge only."),
         ("feiyue-runs execute-approved-real-merge <audit_id> --adapter fake|github", "Execute exact-approved real merge or fake simulation; no auto-merge/deploy."),
+        ("feiyue-runs post-merge-handoff <handoff_id> --pr-number <n> --pr-state MERGED --main-head-sha <sha> --local-test-baseline <baseline>", "Create post-merge verification and no-deploy release handoff evidence."),
     ],
 }
 

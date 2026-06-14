@@ -248,6 +248,27 @@ class RealMergeExecutionEvidence(FeiyueModel):
     written_at: str | None = None
 
 
+class PostMergeVerificationHandoff(FeiyueModel):
+    """8G post-merge verification and no-deploy release handoff evidence."""
+
+    handoff_id: str
+    status: str
+    pr_number: int
+    pr_state: str
+    merge_commit_sha: str | None = None
+    merged_at: str | None = None
+    main_head_sha: str
+    ci_run_id: str | None = None
+    ci_conclusion: str | None = None
+    local_test_baseline: str
+    post_merge_verification_commands: list[str] = Field(default_factory=list)
+    release_handoff_ready: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    reason_codes: list[str] = Field(default_factory=list)
+    written_at: str | None = None
+
+
 class MergeExecutionEvidence(FeiyueModel):
     readiness_id: str
     status: ReleaseCandidateStatus
@@ -448,6 +469,60 @@ def read_pre_merge_final_audit(project_root: str | Path, audit_id: str) -> PreMe
 
 def real_merge_execution_dir(project_root: str | Path, audit_id: str) -> Path:
     return Path(project_root) / ".hermes" / "real-merge-executions" / audit_id
+
+
+def post_merge_handoff_dir(project_root: str | Path, handoff_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "post-merge-handoffs" / handoff_id
+
+
+def create_post_merge_verification_handoff(
+    *,
+    project_root: str | Path,
+    handoff_id: str,
+    pr_number: int,
+    pr_state: str,
+    merge_commit_sha: str | None,
+    merged_at: str | None,
+    main_head_sha: str,
+    ci_run_id: str | None,
+    ci_conclusion: str | None,
+    local_test_baseline: str,
+    post_merge_verification_commands: list[str],
+) -> PostMergeVerificationHandoff:
+    reasons: list[str] = []
+    if pr_state.upper() != "MERGED":
+        reasons.append("pr_not_merged")
+    if not merge_commit_sha:
+        reasons.append("missing_merge_commit_sha")
+    if not merged_at:
+        reasons.append("missing_merged_at")
+    if ci_conclusion != "success":
+        reasons.append("ci_not_success")
+    if not local_test_baseline.strip():
+        reasons.append("missing_local_test_baseline")
+    if not post_merge_verification_commands:
+        reasons.append("missing_post_merge_verification_commands")
+    status = "blocked" if reasons else "handoff_ready"
+    handoff = PostMergeVerificationHandoff(
+        handoff_id=handoff_id,
+        status=status,
+        pr_number=pr_number,
+        pr_state=pr_state,
+        merge_commit_sha=merge_commit_sha,
+        merged_at=merged_at,
+        main_head_sha=main_head_sha,
+        ci_run_id=ci_run_id,
+        ci_conclusion=ci_conclusion,
+        local_test_baseline=local_test_baseline,
+        post_merge_verification_commands=post_merge_verification_commands,
+        release_handoff_ready=status == "handoff_ready",
+        deploy_performed=False,
+        production_mutated=False,
+        reason_codes=reasons if reasons else ["post_merge_verification_passed", "no_deploy_release_handoff_ready"],
+        written_at=datetime.now(UTC).isoformat(),
+    )
+    _write_json(post_merge_handoff_dir(project_root, handoff_id) / "handoff.json", handoff.model_dump(mode="json"))
+    return handoff
 
 
 def create_pre_merge_final_audit(
