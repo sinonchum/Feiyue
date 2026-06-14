@@ -43,3 +43,6 @@ local-notes/
 .hermes/task-templates/
 .hermes/assets/
 .hermes/run_*.py
+
+# Feiyue local pre-merge audit evidence
+.hermes/pre-merge-audits/
