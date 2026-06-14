@@ -57,3 +57,5 @@ Generated from the productized `feiyue-runs` command registry.
 - `feiyue-runs verify-merge-rollback-deploy-readiness <readiness_id>` — Verify approved merge/rollback/deploy readiness without merge/deploy side effects.
 - `feiyue-runs approve-merge-execution <readiness_id> --approved-by <user> --approval-id <id> --reason <text>` — Create exact approval for 8B approved merge execution.
 - `feiyue-runs execute-approved-merge <readiness_id> --adapter fake|github` — Execute an approved merge through a fail-closed adapter; fake adapter simulates only.
+- `feiyue-runs approve-pr-ready-for-review <readiness_id> --approved-by <user> --approval-id <id> --reason <text>` — Create exact approval for 8C PR ready-for-review transition.
+- `feiyue-runs transition-pr-ready-for-review <readiness_id> --adapter fake|github` — Transition an approved PR ready-for-review through a fail-closed adapter; fake adapter simulates only.

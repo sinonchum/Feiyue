@@ -35,16 +35,21 @@ from feiyue_core.workflow.promotion_lifecycle import (
 )
 from feiyue_core.workflow.release_candidate import (
     GitHubMergeExecutionAdapter,
+    GitHubPRReadyForReviewAdapter,
     approve_merge_execution,
     approve_merge_rollback_deploy_readiness,
+    approve_pr_ready_for_review_transition,
     approve_production_promotion,
     create_merge_rollback_deploy_readiness_plan,
     create_release_candidate_plan,
     execute_approved_merge,
     read_merge_execution_approval,
+    read_merge_execution_evidence,
     read_merge_rollback_deploy_readiness_approval,
     read_merge_rollback_deploy_readiness_plan,
+    read_pr_ready_for_review_approval,
     read_production_promotion_approval,
+    transition_pr_ready_for_review,
     verify_merge_rollback_deploy_readiness,
     verify_production_promotion_readiness,
 )
@@ -180,6 +185,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     merge_execute_parser = subparsers.add_parser("execute-approved-merge", help="Execute an approved merge through a fail-closed adapter; fake adapter simulates only")
     merge_execute_parser.add_argument("readiness_id")
     merge_execute_parser.add_argument("--adapter", choices=["fake", "github"], default="fake")
+
+    ready_review_approve_parser = subparsers.add_parser("approve-pr-ready-for-review", help="Create exact approval for 8C PR ready-for-review transition")
+    ready_review_approve_parser.add_argument("readiness_id")
+    ready_review_approve_parser.add_argument("--approved-by", required=True)
+    ready_review_approve_parser.add_argument("--approval-id", required=True)
+    ready_review_approve_parser.add_argument("--reason", required=True)
+
+    ready_review_transition_parser = subparsers.add_parser("transition-pr-ready-for-review", help="Transition an approved PR ready-for-review through a fail-closed adapter; fake adapter simulates only")
+    ready_review_transition_parser.add_argument("readiness_id")
+    ready_review_transition_parser.add_argument("--adapter", choices=["fake", "github"], default="fake")
 
     approve_parser = subparsers.add_parser("approve-promotion", help="Create exact approval evidence for a verified workflow dry run")
     approve_parser.add_argument("run_id")
@@ -610,6 +625,25 @@ def main(argv: Sequence[str] | None = None) -> int:
                 adapter_result = GitHubMergeExecutionAdapter().inspect(plan=plan)
             execution = execute_approved_merge(project_root=root, readiness_id=args.readiness_id, approval=approval, adapter_result=adapter_result)
             print(execution.model_dump_json(indent=2))
+            return 0
+        if args.command == "approve-pr-ready-for-review":
+            approval = approve_pr_ready_for_review_transition(
+                project_root=root,
+                readiness_id=args.readiness_id,
+                approved_by=args.approved_by,
+                approval_id=args.approval_id,
+                reason=args.reason,
+            )
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "transition-pr-ready-for-review":
+            approval = read_pr_ready_for_review_approval(root, args.readiness_id)
+            adapter_result = None
+            if args.adapter == "github":
+                merge_execution = read_merge_execution_evidence(root, args.readiness_id, adapter="fake")
+                adapter_result = GitHubPRReadyForReviewAdapter().inspect(merge_execution=merge_execution)
+            transition = transition_pr_ready_for_review(project_root=root, readiness_id=args.readiness_id, approval=approval, adapter_result=adapter_result)
+            print(transition.model_dump_json(indent=2))
             return 0
         if args.command == "approve-promotion":
             dry_run = _load_workflow_smoke_report(root, args.run_id)

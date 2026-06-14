@@ -11,14 +11,18 @@ from feiyue_core.workflow.release_candidate import (
     MergeExecutionApproval,
     MergeExecutionAdapterResult,
     MergeRollbackDeployReadinessApproval,
+    PRReadyForReviewAdapterResult,
+    PRReadyForReviewApproval,
     ProductionPromotionApproval,
     ReleaseCandidateStatus,
     approve_merge_execution,
     approve_merge_rollback_deploy_readiness,
+    approve_pr_ready_for_review_transition,
     approve_production_promotion,
     create_merge_rollback_deploy_readiness_plan,
     create_release_candidate_plan,
     execute_approved_merge,
+    transition_pr_ready_for_review,
     verify_merge_rollback_deploy_readiness,
     verify_production_promotion_readiness,
 )
@@ -601,3 +605,149 @@ def test_8b_cli_approve_and_fake_execute_merge_smoke(tmp_path: Path) -> None:
     assert execution_payload["external_side_effect_performed"] is False
     assert execution_payload["deploy_performed"] is False
     assert execution_payload["production_mutated"] is False
+
+
+
+def _write_8b_fake_merge_execution(repo: Path, *, readiness_id: str = "wave8-8c") -> None:
+    _write_8a_ready_evidence(repo, readiness_id=readiness_id, is_draft=True)
+    approval = approve_merge_execution(
+        project_root=repo,
+        readiness_id=readiness_id,
+        approved_by="human-reviewer",
+        approval_id=f"approval-merge-{readiness_id}",
+        reason="Approve fake merge execution prerequisite for 8C.",
+    )
+    evidence = execute_approved_merge(project_root=repo, readiness_id=readiness_id, approval=approval)
+    assert evidence.status == ReleaseCandidateStatus.READY
+    assert evidence.simulated_merge_performed is True
+
+
+def test_8c_pr_ready_for_review_transition_fails_closed_without_exact_approval(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _write_8b_fake_merge_execution(repo, readiness_id="wave8-8c")
+
+    evidence = transition_pr_ready_for_review(project_root=repo, readiness_id="wave8-8c", approval=None)
+
+    assert evidence.status == ReleaseCandidateStatus.BLOCKED
+    assert "missing_pr_ready_for_review_approval" in evidence.reason_codes
+    assert evidence.ready_for_review_performed is False
+    assert evidence.external_side_effect_performed is False
+    assert evidence.merge_performed is False
+    assert evidence.deploy_performed is False
+    assert evidence.production_mutated is False
+
+
+def test_8c_fake_adapter_simulates_ready_for_review_without_external_side_effects(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _write_8b_fake_merge_execution(repo, readiness_id="wave8-8c")
+    approval = approve_pr_ready_for_review_transition(
+        project_root=repo,
+        readiness_id="wave8-8c",
+        approved_by="human-reviewer",
+        approval_id="approval-8c",
+        reason="Approve fake ready-for-review transition smoke only.",
+    )
+
+    evidence = transition_pr_ready_for_review(project_root=repo, readiness_id="wave8-8c", approval=approval)
+
+    assert isinstance(approval, PRReadyForReviewApproval)
+    assert evidence.status == ReleaseCandidateStatus.READY
+    assert evidence.adapter == "fake"
+    assert evidence.simulated_ready_for_review_performed is True
+    assert evidence.ready_for_review_performed is False
+    assert evidence.external_side_effect_performed is False
+    assert evidence.merge_performed is False
+    assert evidence.deploy_performed is False
+    assert evidence.production_mutated is False
+    assert evidence.reason_codes == ["pr_ready_for_review_approval_applies", "fake_adapter_simulated_ready_for_review_only"]
+    assert (repo / ".hermes" / "pr-ready-for-review" / "wave8-8c" / "transition-fake.json").exists()
+
+
+def test_8c_github_adapter_blocks_without_external_pr_mutation_authorization(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _write_8b_fake_merge_execution(repo, readiness_id="wave8-8c")
+    approval = approve_pr_ready_for_review_transition(
+        project_root=repo,
+        readiness_id="wave8-8c",
+        approved_by="human-reviewer",
+        approval_id="approval-8c-github",
+        reason="Approve only inspection unless external PR mutation is explicitly authorized.",
+    )
+    adapter_result = PRReadyForReviewAdapterResult(
+        adapter="github",
+        status=ReleaseCandidateStatus.BLOCKED,
+        reason_codes=["external_pr_mutation_not_authorized"],
+        ready_for_review_performed=False,
+        external_side_effect_performed=False,
+    )
+
+    evidence = transition_pr_ready_for_review(project_root=repo, readiness_id="wave8-8c", approval=approval, adapter_result=adapter_result)
+
+    assert evidence.status == ReleaseCandidateStatus.BLOCKED
+    assert evidence.adapter == "github"
+    assert "external_pr_mutation_not_authorized" in evidence.reason_codes
+    assert evidence.ready_for_review_performed is False
+    assert evidence.external_side_effect_performed is False
+    assert evidence.merge_performed is False
+    assert evidence.deploy_performed is False
+    assert evidence.production_mutated is False
+    assert (repo / ".hermes" / "pr-ready-for-review" / "wave8-8c" / "transition-github.json").exists()
+
+
+def test_8c_cli_approve_and_fake_ready_for_review_transition(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _write_8b_fake_merge_execution(repo, readiness_id="wave8-8c-cli")
+
+    approval = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(repo),
+            "approve-pr-ready-for-review",
+            "wave8-8c-cli",
+            "--approved-by",
+            "human-reviewer",
+            "--approval-id",
+            "approval-8c-cli",
+            "--reason",
+            "Approve fake ready-for-review transition smoke only.",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+    approval_payload = json.loads(approval.stdout)
+    assert approval_payload["approved_action"] == "transition_pr_ready_for_review"
+
+    transition = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(repo),
+            "transition-pr-ready-for-review",
+            "wave8-8c-cli",
+            "--adapter",
+            "fake",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+    payload = json.loads(transition.stdout)
+    assert payload["status"] == "ready"
+    assert payload["simulated_ready_for_review_performed"] is True
+    assert payload["ready_for_review_performed"] is False
+    assert payload["external_side_effect_performed"] is False
+    assert payload["merge_performed"] is False
+    assert payload["deploy_performed"] is False
+    assert payload["production_mutated"] is False

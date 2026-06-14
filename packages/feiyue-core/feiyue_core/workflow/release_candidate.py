@@ -178,6 +178,65 @@ class MergeExecutionEvidence(FeiyueModel):
     written_at: str | None = None
 
 
+class PRReadyForReviewApproval(FeiyueModel):
+    """Exact approval for 8C PR ready-for-review transition."""
+
+    approval_id: str
+    approved_by: str
+    readiness_id: str
+    approved_action: str
+    merge_execution_hash: str
+    pr_number: int
+    target_branch: str
+    approved_at: str
+    reason: str
+
+    @field_validator(
+        "approval_id",
+        "approved_by",
+        "readiness_id",
+        "approved_action",
+        "merge_execution_hash",
+        "target_branch",
+        "approved_at",
+        "reason",
+    )
+    @classmethod
+    def _non_empty_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must be non-empty")
+        return value
+
+
+class PRReadyForReviewAdapterResult(FeiyueModel):
+    adapter: str
+    status: ReleaseCandidateStatus
+    reason_codes: list[str] = Field(default_factory=list)
+    ready_for_review_performed: bool = False
+    external_side_effect_performed: bool = False
+    pr_url: str | None = None
+
+
+class PRReadyForReviewEvidence(FeiyueModel):
+    readiness_id: str
+    status: ReleaseCandidateStatus
+    pr_number: int | None = None
+    pr_url: str | None = None
+    target_branch: str | None = None
+    merge_execution_hash: str | None = None
+    approval_id: str | None = None
+    approval_applies: bool = False
+    adapter: str = "fake"
+    simulated_ready_for_review_performed: bool = False
+    ready_for_review_performed: bool = False
+    external_side_effect_performed: bool = False
+    merge_performed: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    reason_codes: list[str] = Field(default_factory=list)
+    written_at: str | None = None
+
+
 class ProductionPromotionApproval(FeiyueModel):
     """Exact human approval for production-promotion readiness only."""
 
@@ -230,6 +289,10 @@ def merge_rollback_deploy_readiness_dir(project_root: str | Path, readiness_id: 
 
 def merge_execution_dir(project_root: str | Path, readiness_id: str) -> Path:
     return Path(project_root) / ".hermes" / "merge-executions" / readiness_id
+
+
+def pr_ready_for_review_dir(project_root: str | Path, readiness_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "pr-ready-for-review" / readiness_id
 
 
 def create_merge_rollback_deploy_readiness_plan(
@@ -599,6 +662,168 @@ class GitHubMergeExecutionAdapter:
             merge_performed=False,
             external_side_effect_performed=False,
             pr_url=plan.pr_url,
+        )
+
+
+def compute_merge_execution_hash(evidence: MergeExecutionEvidence) -> str:
+    payload = evidence.model_dump(mode="json")
+    payload["written_at"] = None
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def read_merge_execution_evidence(project_root: str | Path, readiness_id: str, *, adapter: str = "fake") -> MergeExecutionEvidence:
+    path = merge_execution_dir(project_root, readiness_id) / f"execution-{adapter}.json"
+    if not path.exists():
+        path = merge_execution_dir(project_root, readiness_id) / "execution.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Merge execution evidence not found for readiness_id: {readiness_id}")
+    return MergeExecutionEvidence.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def approve_pr_ready_for_review_transition(
+    *,
+    project_root: str | Path,
+    readiness_id: str,
+    approved_by: str,
+    approval_id: str,
+    reason: str,
+) -> PRReadyForReviewApproval:
+    merge_execution = read_merge_execution_evidence(project_root, readiness_id, adapter="fake")
+    if merge_execution.status != ReleaseCandidateStatus.READY:
+        raise ValueError(f"PR ready-for-review approval requires ready merge execution evidence, got: {merge_execution.status}")
+    if merge_execution.merge_performed is not False or merge_execution.external_side_effect_performed is not False:
+        raise ValueError("PR ready-for-review approval requires no prior real merge or external side effect")
+    execution_hash = compute_merge_execution_hash(merge_execution)
+    approval = PRReadyForReviewApproval(
+        approval_id=approval_id,
+        approved_by=approved_by,
+        readiness_id=readiness_id,
+        approved_action="transition_pr_ready_for_review",
+        merge_execution_hash=execution_hash,
+        pr_number=merge_execution.pr_number or 0,
+        target_branch=merge_execution.target_branch or "",
+        approved_at=datetime.now(UTC).isoformat(),
+        reason=reason,
+    )
+    write_pr_ready_for_review_approval(project_root, approval)
+    return approval
+
+
+def write_pr_ready_for_review_approval(project_root: str | Path, approval: PRReadyForReviewApproval) -> Path:
+    path = pr_ready_for_review_dir(project_root, approval.readiness_id) / "approval.json"
+    _write_json(path, approval.model_dump(mode="json") | {"written_at": datetime.now(UTC).isoformat()})
+    return path
+
+
+def read_pr_ready_for_review_approval(project_root: str | Path, readiness_id: str) -> PRReadyForReviewApproval:
+    path = pr_ready_for_review_dir(project_root, readiness_id) / "approval.json"
+    if not path.exists():
+        raise FileNotFoundError(f"PR ready-for-review approval not found for readiness_id: {readiness_id}")
+    payload = _read_json(path)
+    payload.pop("written_at", None)
+    return PRReadyForReviewApproval.model_validate(payload)
+
+
+def transition_pr_ready_for_review(
+    *,
+    project_root: str | Path,
+    readiness_id: str,
+    approval: PRReadyForReviewApproval | None = None,
+    adapter_result: PRReadyForReviewAdapterResult | None = None,
+) -> PRReadyForReviewEvidence:
+    root = Path(project_root)
+    reasons: list[str] = []
+    try:
+        merge_execution = read_merge_execution_evidence(root, readiness_id, adapter="fake")
+    except FileNotFoundError:
+        merge_execution = None
+        reasons.append("missing_merge_execution_evidence")
+
+    if approval is None:
+        try:
+            approval = read_pr_ready_for_review_approval(root, readiness_id)
+        except FileNotFoundError:
+            reasons.append("missing_pr_ready_for_review_approval")
+
+    execution_hash = compute_merge_execution_hash(merge_execution) if merge_execution is not None else None
+    if merge_execution is not None:
+        if merge_execution.status != ReleaseCandidateStatus.READY:
+            reasons.append("merge_execution_not_ready")
+        if merge_execution.merge_performed is not False:
+            reasons.append("merge_execution_indicates_real_merge")
+        if merge_execution.external_side_effect_performed is not False:
+            reasons.append("merge_execution_indicates_external_side_effect")
+        if merge_execution.deploy_performed is not False:
+            reasons.append("merge_execution_indicates_deploy")
+        if merge_execution.production_mutated is not False:
+            reasons.append("merge_execution_indicates_production_mutation")
+
+    if approval is not None and merge_execution is not None:
+        if approval.readiness_id != readiness_id:
+            reasons.append("approval_readiness_id_mismatch")
+        if approval.approved_action != "transition_pr_ready_for_review":
+            reasons.append("approval_action_mismatch")
+        if approval.merge_execution_hash != execution_hash:
+            reasons.append("approval_merge_execution_hash_mismatch")
+        if approval.pr_number != (merge_execution.pr_number or 0):
+            reasons.append("approval_pr_number_mismatch")
+        if approval.target_branch != (merge_execution.target_branch or ""):
+            reasons.append("approval_target_branch_mismatch")
+
+    if adapter_result is None:
+        adapter_result = PRReadyForReviewAdapterResult(
+            adapter="fake",
+            status=ReleaseCandidateStatus.READY,
+            reason_codes=["fake_adapter_simulated_ready_for_review_only"],
+            ready_for_review_performed=False,
+            external_side_effect_performed=False,
+            pr_url=merge_execution.pr_url if merge_execution is not None else None,
+        )
+
+    if adapter_result.status != ReleaseCandidateStatus.READY:
+        reasons.extend(adapter_result.reason_codes)
+    if adapter_result.external_side_effect_performed and not adapter_result.ready_for_review_performed:
+        reasons.append("adapter_external_side_effect_without_ready_for_review")
+
+    status = ReleaseCandidateStatus.BLOCKED if reasons else ReleaseCandidateStatus.READY
+    adapter = adapter_result.adapter
+    evidence = PRReadyForReviewEvidence(
+        readiness_id=readiness_id,
+        status=status,
+        pr_number=merge_execution.pr_number if merge_execution is not None else None,
+        pr_url=adapter_result.pr_url or (merge_execution.pr_url if merge_execution is not None else None),
+        target_branch=merge_execution.target_branch if merge_execution is not None else None,
+        merge_execution_hash=execution_hash,
+        approval_id=approval.approval_id if approval is not None else None,
+        approval_applies=status == ReleaseCandidateStatus.READY,
+        adapter=adapter,
+        simulated_ready_for_review_performed=status == ReleaseCandidateStatus.READY and adapter == "fake",
+        ready_for_review_performed=status == ReleaseCandidateStatus.READY and adapter_result.ready_for_review_performed,
+        external_side_effect_performed=status == ReleaseCandidateStatus.READY and adapter_result.external_side_effect_performed,
+        merge_performed=False,
+        deploy_performed=False,
+        production_mutated=False,
+        reason_codes=reasons if reasons else ["pr_ready_for_review_approval_applies", "fake_adapter_simulated_ready_for_review_only"] if adapter == "fake" else ["pr_ready_for_review_approval_applies"],
+        written_at=datetime.now(UTC).isoformat(),
+    )
+    out_dir = pr_ready_for_review_dir(root, readiness_id)
+    _write_json(out_dir / "transition.json", evidence.model_dump(mode="json"))
+    _write_json(out_dir / f"transition-{adapter}.json", evidence.model_dump(mode="json"))
+    return evidence
+
+
+class GitHubPRReadyForReviewAdapter:
+    """Fail-closed 8C adapter shim; real ready-for-review mutation requires separate explicit authorization."""
+
+    def inspect(self, *, merge_execution: MergeExecutionEvidence) -> PRReadyForReviewAdapterResult:
+        return PRReadyForReviewAdapterResult(
+            adapter="github",
+            status=ReleaseCandidateStatus.BLOCKED,
+            reason_codes=["external_pr_mutation_not_authorized"],
+            ready_for_review_performed=False,
+            external_side_effect_performed=False,
+            pr_url=merge_execution.pr_url,
         )
 
 
