@@ -1,5 +1,6 @@
 """Workflow support utilities for Feiyue."""
 
+from feiyue_core.workflow.asset_reuse_smoke import AssetReuseSmokeHarness, AssetReuseSmokeReport, run_asset_reuse_smoke
 from feiyue_core.workflow.bug_dossier import BugDossier
 from feiyue_core.workflow.execution import (
     CandidateFileWrite,
@@ -53,6 +54,8 @@ from feiyue_core.workflow.regression_eval import (
 from feiyue_core.workflow.task_contract import TaskContract, build_task_contract
 
 __all__ = [
+    "AssetReuseSmokeHarness",
+    "AssetReuseSmokeReport",
     "BugDossier",
     "CandidateFileWrite",
     "KNOWLEDGE_FILENAMES",
@@ -94,5 +97,6 @@ __all__ = [
     "build_task_contract",
     "build_worker_context",
     "create_promotion_pr_plan",
+    "run_asset_reuse_smoke",
     "simulate_rollback_sandbox",
 ]
