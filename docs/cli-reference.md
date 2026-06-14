@@ -48,7 +48,7 @@ Generated from the productized `feiyue-runs` command registry.
 - `feiyue-runs promote-approved <run_id> --commit-message <text>` — Promote a dry-run using persisted approval evidence.
 - `feiyue-runs draft-pr-plan <run_id> --allowed-target-branch <branch>` — Create a local-only draft PR plan from verified promotion evidence.
 - `feiyue-runs approve-draft-pr <run_id> --approved-by <name> --approval-id <id> --reason <text>` — Create exact approval evidence for fake-first draft PR creation.
-- `feiyue-runs create-approved-draft-pr <run_id>` — Create draft PR evidence through the fake adapter; no external PR is opened.
+- `feiyue-runs create-approved-draft-pr <run_id> --adapter fake|github` — Create exact-approved draft PR evidence; github mode opens a draft PR only.
 - `feiyue-runs release-candidate-plan <release_id> --run-id <id> --allowed-target-branch <branch> --ci-evidence-path <path> --post-promotion-verification-command <cmd>` — Create a fail-closed local-only release-candidate plan.
 - `feiyue-runs approve-production-promotion <release_id> --approved-by <name> --approval-id <id> --reason <text>` — Create exact approval evidence for production-promotion readiness only.
 - `feiyue-runs verify-production-promotion-readiness <release_id>` — Verify production-promotion readiness without mutating production.

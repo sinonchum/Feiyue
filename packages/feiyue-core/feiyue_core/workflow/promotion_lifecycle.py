@@ -124,6 +124,64 @@ class FakeDraftPRAdapter(DraftPRAdapter):
         }
 
 
+class GitHubDraftPRAdapter(DraftPRAdapter):
+    """Create a real GitHub draft PR with no auto-merge or production mutation."""
+
+    name = "github"
+
+    def __init__(self, *, project_root: str | Path, subprocess_runner=subprocess.run) -> None:
+        self.project_root = Path(project_root)
+        self._subprocess_runner = subprocess_runner
+
+    def create_draft_pr(self, *, plan: PromotionPRPlan) -> dict[str, object]:
+        if not plan.source_branch or not plan.target_branch:
+            raise PromotionLifecycleError("GitHub draft PR requires source_branch and target_branch")
+        command = [
+            "gh",
+            "pr",
+            "create",
+            "--draft",
+            "--base",
+            plan.target_branch,
+            "--head",
+            plan.source_branch,
+            "--title",
+            plan.title,
+            "--body",
+            plan.body,
+        ]
+        completed = self._subprocess_runner(command, cwd=self.project_root, text=True, capture_output=True, check=False)
+        if completed.returncode != 0:
+            raise PromotionLifecycleError(completed.stderr.strip() or completed.stdout.strip() or "gh pr create failed")
+        pr_url = _extract_pr_url(completed.stdout)
+        if not pr_url:
+            raise PromotionLifecycleError("gh pr create did not return a PR URL")
+        view = self._subprocess_runner(
+            ["gh", "pr", "view", pr_url, "--json", "number,url,isDraft,state,headRefName,baseRefName"],
+            cwd=self.project_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if view.returncode != 0:
+            raise PromotionLifecycleError(view.stderr.strip() or view.stdout.strip() or "gh pr view failed")
+        payload = json.loads(view.stdout or "{}")
+        if payload.get("isDraft") is not True:
+            raise PromotionLifecycleError("GitHub PR was not created as a draft")
+        if payload.get("baseRefName") != plan.target_branch:
+            raise PromotionLifecycleError("GitHub PR base branch mismatch")
+        if payload.get("headRefName") != plan.source_branch:
+            raise PromotionLifecycleError("GitHub PR head branch mismatch")
+        return {
+            "external_pr_created": True,
+            "draft": True,
+            "auto_merge": False,
+            "mutates_production": False,
+            "pr_number": payload.get("number") if isinstance(payload.get("number"), int) else None,
+            "pr_url": payload.get("url") if isinstance(payload.get("url"), str) else None,
+        }
+
+
 class RollbackSandboxEvidence(FeiyueModel):
     """Local-only rollback simulation evidence for a promoted workflow run."""
 
@@ -437,7 +495,11 @@ def create_approved_draft_pr(
         rollback_ref=plan.rollback_ref,
         plan_hash=plan_hash,
         approval_applies=True,
-        reason_codes=["draft_pr_approval_applies", "fake_adapter_no_external_pr_created"] if adapter.name == "fake" else ["draft_pr_approval_applies"],
+        reason_codes=(
+            ["draft_pr_approval_applies", "fake_adapter_no_external_pr_created"]
+            if adapter.name == "fake"
+            else ["draft_pr_approval_applies", "github_draft_pr_created"]
+        ),
         external_pr_created=bool(created.get("external_pr_created", False)),
         draft=bool(created.get("draft", True)),
         auto_merge=bool(created.get("auto_merge", False)),
@@ -654,6 +716,13 @@ def _safe_current_head(root: Path) -> str | None:
     if completed.returncode != 0:
         return None
     return completed.stdout.strip() or None
+
+
+def _extract_pr_url(stdout: str) -> str | None:
+    for token in stdout.split():
+        if token.startswith("https://") and "/pull/" in token:
+            return token.strip()
+    return None
 
 
 def _repo_clean(root: Path) -> bool:

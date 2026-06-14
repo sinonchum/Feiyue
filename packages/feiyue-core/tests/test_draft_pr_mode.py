@@ -11,6 +11,7 @@ from feiyue_core.workflow.promotion_lifecycle import (
     DraftPRStatus,
     approve_draft_pr,
     compute_pr_plan_hash,
+    GitHubDraftPRAdapter,
     create_approved_draft_pr,
     create_promotion_pr_plan,
 )
@@ -60,6 +61,72 @@ def test_create_approved_draft_pr_uses_fake_adapter_and_never_mutates_production
     persisted = json.loads((repo / ".hermes" / "promotion-lifecycle" / run_id / "draft-pr-evidence.json").read_text(encoding="utf-8"))
     assert persisted["external_pr_created"] is False
     assert persisted["mutates_production"] is False
+
+
+def test_github_draft_pr_adapter_creates_draft_pr_without_automerge_or_production_mutation(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    run_id = _promote_with_production_request(repo, run_id="run-github-draft", target_branch="production/main")
+    plan = create_promotion_pr_plan(
+        project_root=repo,
+        run_id=run_id,
+        allowed_target_branches=["production/main"],
+        source_branch="candidate/run-github-draft",
+    )
+    approval = approve_draft_pr(
+        project_root=repo,
+        run_id=run_id,
+        approved_by="human-reviewer",
+        approval_id="approval-github-draft-pr",
+        reason="Open a GitHub draft PR for human review only.",
+    )
+    calls: list[list[str]] = []
+
+    def fake_runner(command: list[str], **kwargs):
+        calls.append(command)
+        assert kwargs["cwd"] == repo
+        if command[:3] == ["gh", "pr", "create"]:
+            assert "--draft" in command
+            assert "--base" in command and "production/main" in command
+            assert "--head" in command and "candidate/run-github-draft" in command
+            assert "--title" in command
+            assert "--json" not in command
+            return subprocess.CompletedProcess(command, 0, stdout="https://github.com/example/repo/pull/42\n", stderr="")
+        assert command[:3] == ["gh", "pr", "view"]
+        assert "https://github.com/example/repo/pull/42" in command
+        return subprocess.CompletedProcess(
+            command,
+            0,
+            stdout=json.dumps(
+                {
+                    "number": 42,
+                    "url": "https://github.com/example/repo/pull/42",
+                    "isDraft": True,
+                    "state": "OPEN",
+                    "headRefName": "candidate/run-github-draft",
+                    "baseRefName": "production/main",
+                }
+            ),
+            stderr="",
+        )
+
+    evidence = create_approved_draft_pr(
+        project_root=repo,
+        run_id=run_id,
+        approval=approval,
+        adapter=GitHubDraftPRAdapter(project_root=repo, subprocess_runner=fake_runner),
+    )
+
+    assert evidence.status == DraftPRStatus.CREATED
+    assert evidence.adapter == "github"
+    assert evidence.external_pr_created is True
+    assert evidence.draft is True
+    assert evidence.auto_merge is False
+    assert evidence.mutates_production is False
+    assert evidence.pr_number == 42
+    assert evidence.pr_url == "https://github.com/example/repo/pull/42"
+    assert evidence.reason_codes == ["draft_pr_approval_applies", "github_draft_pr_created"]
+    assert calls and calls[0][:3] == ["gh", "pr", "create"]
 
 
 def test_draft_pr_creation_fails_closed_for_missing_approval(tmp_path: Path) -> None:

@@ -27,6 +27,7 @@ from feiyue_core.workflow.review_inbox import ReviewInbox
 from feiyue_core.workflow.semantic_reviewer import ProviderFreeSemanticReviewer, SemanticReviewRequest
 from feiyue_core.workflow.sequenced_profile_runner import SequencedHermesProfileRunner, load_authorized_provider_run_record
 from feiyue_core.workflow.promotion_lifecycle import (
+    GitHubDraftPRAdapter,
     approve_draft_pr,
     create_approved_draft_pr,
     create_promotion_pr_plan,
@@ -124,8 +125,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     approve_draft_pr_parser.add_argument("--approval-id", required=True)
     approve_draft_pr_parser.add_argument("--reason", required=True)
 
-    create_draft_pr_parser = subparsers.add_parser("create-approved-draft-pr", help="Create a draft PR through the fake adapter using persisted approval")
+    create_draft_pr_parser = subparsers.add_parser("create-approved-draft-pr", help="Create a draft PR through an approved adapter using persisted approval")
     create_draft_pr_parser.add_argument("run_id")
+    create_draft_pr_parser.add_argument("--adapter", choices=["fake", "github"], default="fake")
 
     rc_plan_parser = subparsers.add_parser("release-candidate-plan", help="Create a fail-closed local-only release candidate plan")
     rc_plan_parser.add_argument("release_id")
@@ -495,7 +497,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "create-approved-draft-pr":
             approval = read_draft_pr_approval(root, args.run_id)
-            evidence = create_approved_draft_pr(project_root=root, run_id=args.run_id, approval=approval)
+            adapter = GitHubDraftPRAdapter(project_root=root) if args.adapter == "github" else None
+            evidence = create_approved_draft_pr(project_root=root, run_id=args.run_id, approval=approval, adapter=adapter)
             print(evidence.model_dump_json(indent=2))
             return 0
         if args.command == "release-candidate-plan":

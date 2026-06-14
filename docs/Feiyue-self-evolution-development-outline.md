@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-14
-> **Verified baseline**：`618 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `618 passed`.
+> **Verified baseline**：`620 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `620 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1562,7 +1562,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`618 passed`。
+- `python -m pytest -q`：`620 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1871,10 +1871,11 @@ Wave5-1 through Wave5-6 are now implemented and locally smoke-verified. Remainin
 - **5A–5B true multi-student dry-run productization**：added `MultiStudentDryRunExecutor`, exact `MultiStudentDryRunApproval`, assignment hashing, `reject_on_conflict` merge behavior, `.hermes/multi-student-workflows/<run_id>/` evidence, and CLI commands `approve-true-multi-student-dry-run`, `run-approved-true-multi-student-dry-run`, and `true-multi-student-workflow`.
 - **5C–5D real Feiyue repo smokes**：`real-repo-5c-one-real-one-fake-dry-run` verified one real + one fake student assignment; `real-repo-5d-all-real-multi-student-dry-run` verified `feiyue-mid-deepseek-pro` + `feiyue-strong-gpt55` as distinct real student assignments with provider_call_count `2`, conflict_files `[]`, `dry_run_only: true`, `promotion_attempted: false`, `global_hermes_config_mutated: false`, and clean source worktrees.
 - **6A approval-gated PR plan bridge**：added `create_multi_student_pr_plan` to convert verified true multi-student evidence into a local-only PR plan. The 6A smoke exact-approved the 5D plan and emitted fake draft PR evidence with approval_applies `true`, external_pr_created `false`, auto_merge `false`, and mutates_production `false`.
+- **6B GitHub draft PR adapter smoke**：added `GitHubDraftPRAdapter` and `create-approved-draft-pr --adapter github`. Real smoke created draft PR #2 (`https://github.com/sinonchum/Feiyue/pull/2`) from branch `feiyue/6b-draft-pr-smoke` to `main`; PR verification showed isDraft `true`, state `OPEN`, autoMergeRequest `null`, checks passed, and no merge/deployment/production mutation.
 - Observed measurement deltas: pass_rate_delta `+1.0`, teacher_call_rate_delta `-1.0`, retry_count_delta `-2`, repeat_error_count_delta `-2`, with `provider_call_count: 0`, `dry_run_only: true`, `promotion_attempted: false`, `production_mutated: false`, and `global_hermes_config_mutated: false`.
 
 ### Phase B local verification
 
-- `python -m pytest -q`：`618 passed`。
+- `python -m pytest -q`：`620 passed`。
 - New targeted contracts cover review UI disabled actions, CLI reference generation, provider-free semantic review evidence, and creative acceptance/taste metrics.
 - Phase C remains explicit-authorization-gated for external PR/merge/deploy/production promotion and larger real-provider matrices.
