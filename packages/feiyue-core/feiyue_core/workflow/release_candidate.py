@@ -42,6 +42,80 @@ class ReleaseCandidatePlan(FeiyueModel):
     written_at: str | None = None
 
 
+class MergeRollbackDeployReadinessPlan(FeiyueModel):
+    """Explicit merge/rollback/deploy readiness design; evidence only."""
+
+    readiness_id: str
+    status: ReleaseCandidateStatus
+    merge_readiness_evidence_path: str
+    pr_number: int | None = None
+    pr_url: str | None = None
+    source_branch: str | None = None
+    target_branch: str | None = None
+    head_sha: str | None = None
+    checks_passed: bool = False
+    rollback_plan: list[str] = Field(default_factory=list)
+    deploy_plan: list[str] = Field(default_factory=list)
+    post_merge_verification_plan: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list)
+    merge_performed: bool = False
+    auto_merge_enabled: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    readiness_plan_hash: str | None = None
+    written_at: str | None = None
+
+
+class MergeRollbackDeployReadinessApproval(FeiyueModel):
+    """Exact human approval for readiness design only; no execution."""
+
+    approval_id: str
+    approved_by: str
+    readiness_id: str
+    approved_action: str
+    readiness_plan_hash: str
+    pr_number: int
+    target_branch: str
+    approved_at: str
+    reason: str
+
+    @field_validator(
+        "approval_id",
+        "approved_by",
+        "readiness_id",
+        "approved_action",
+        "readiness_plan_hash",
+        "target_branch",
+        "approved_at",
+        "reason",
+    )
+    @classmethod
+    def _non_empty_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must be non-empty")
+        return value
+
+
+class MergeRollbackDeployReadinessEvidence(FeiyueModel):
+    readiness_id: str
+    status: ReleaseCandidateStatus
+    pr_number: int | None = None
+    pr_url: str | None = None
+    target_branch: str | None = None
+    readiness_plan_hash: str | None = None
+    approval_id: str | None = None
+    approval_applies: bool = False
+    reason_codes: list[str] = Field(default_factory=list)
+    rollback_plan: list[str] = Field(default_factory=list)
+    deploy_plan: list[str] = Field(default_factory=list)
+    post_merge_verification_plan: list[str] = Field(default_factory=list)
+    merge_performed: bool = False
+    auto_merge_enabled: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    written_at: str | None = None
+
+
 class ProductionPromotionApproval(FeiyueModel):
     """Exact human approval for production-promotion readiness only."""
 
@@ -86,6 +160,202 @@ class ProductionPromotionReadiness(FeiyueModel):
     dry_run: bool = True
     production_mutated: bool = False
     written_at: str | None = None
+
+
+def merge_rollback_deploy_readiness_dir(project_root: str | Path, readiness_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "merge-rollback-deploy-readiness" / readiness_id
+
+
+def create_merge_rollback_deploy_readiness_plan(
+    *,
+    project_root: str | Path,
+    readiness_id: str,
+    merge_readiness_evidence_path: str | Path,
+    rollback_plan: list[str],
+    deploy_plan: list[str],
+    post_merge_verification_plan: list[str],
+) -> MergeRollbackDeployReadinessPlan:
+    root = Path(project_root)
+    reasons: list[str] = []
+    evidence_path = Path(merge_readiness_evidence_path)
+    if not evidence_path.is_absolute():
+        evidence_path = root / evidence_path
+
+    evidence: dict[str, object] = {}
+    if not evidence_path.exists():
+        reasons.append("missing_merge_readiness_evidence")
+    else:
+        evidence = _read_json(evidence_path)
+        if evidence.get("status") != "ready_for_human_merge_review":
+            reasons.append("merge_readiness_not_ready_for_human_review")
+        if evidence.get("checks_passed") is not True:
+            reasons.append("pr_checks_not_passed")
+        if evidence.get("merge_performed") is not False:
+            reasons.append("merge_already_performed")
+        if evidence.get("auto_merge_enabled") is not False:
+            reasons.append("auto_merge_already_enabled")
+        if evidence.get("deploy_performed") is not False:
+            reasons.append("deploy_already_performed")
+        if evidence.get("production_mutated") is not False:
+            reasons.append("production_already_mutated")
+
+    if not rollback_plan or any(not step.strip() for step in rollback_plan):
+        reasons.append("missing_rollback_plan")
+    if not deploy_plan or any(not step.strip() for step in deploy_plan):
+        reasons.append("missing_deploy_plan")
+    if not post_merge_verification_plan or any(not step.strip() for step in post_merge_verification_plan):
+        reasons.append("missing_post_merge_verification_plan")
+
+    status = ReleaseCandidateStatus.BLOCKED if reasons else ReleaseCandidateStatus.PLANNED
+    plan = MergeRollbackDeployReadinessPlan(
+        readiness_id=readiness_id,
+        status=status,
+        merge_readiness_evidence_path=_rel(root, evidence_path),
+        pr_number=_int(evidence.get("pr_number")),
+        pr_url=_str(evidence.get("pr_url")),
+        source_branch=_str(evidence.get("source_branch")),
+        target_branch=_str(evidence.get("target_branch")),
+        head_sha=_str(evidence.get("head_sha")),
+        checks_passed=evidence.get("checks_passed") is True,
+        rollback_plan=rollback_plan,
+        deploy_plan=deploy_plan,
+        post_merge_verification_plan=post_merge_verification_plan,
+        reason_codes=reasons,
+        merge_performed=False,
+        auto_merge_enabled=False,
+        deploy_performed=False,
+        production_mutated=False,
+        written_at=datetime.now(UTC).isoformat(),
+    )
+    plan.readiness_plan_hash = compute_merge_rollback_deploy_readiness_plan_hash(plan)
+    _write_json(merge_rollback_deploy_readiness_dir(root, readiness_id) / "plan.json", plan.model_dump(mode="json"))
+    return plan
+
+
+def read_merge_rollback_deploy_readiness_plan(project_root: str | Path, readiness_id: str) -> MergeRollbackDeployReadinessPlan:
+    path = merge_rollback_deploy_readiness_dir(project_root, readiness_id) / "plan.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Merge/rollback/deploy readiness plan not found for readiness_id: {readiness_id}")
+    return MergeRollbackDeployReadinessPlan.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def compute_merge_rollback_deploy_readiness_plan_hash(plan: MergeRollbackDeployReadinessPlan) -> str:
+    payload = plan.model_dump(mode="json")
+    payload["written_at"] = None
+    payload["readiness_plan_hash"] = None
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def approve_merge_rollback_deploy_readiness(
+    *,
+    project_root: str | Path,
+    readiness_id: str,
+    approved_by: str,
+    approval_id: str,
+    reason: str,
+) -> MergeRollbackDeployReadinessApproval:
+    plan = read_merge_rollback_deploy_readiness_plan(project_root, readiness_id)
+    plan_hash = plan.readiness_plan_hash or compute_merge_rollback_deploy_readiness_plan_hash(plan)
+    approval = MergeRollbackDeployReadinessApproval(
+        approval_id=approval_id,
+        approved_by=approved_by,
+        readiness_id=readiness_id,
+        approved_action="approve_merge_rollback_deploy_readiness_design_only",
+        readiness_plan_hash=plan_hash,
+        pr_number=plan.pr_number or 0,
+        target_branch=plan.target_branch or "",
+        approved_at=datetime.now(UTC).isoformat(),
+        reason=reason,
+    )
+    _write_json(merge_rollback_deploy_readiness_dir(project_root, readiness_id) / "approval.json", approval.model_dump(mode="json") | {"written_at": datetime.now(UTC).isoformat()})
+    return approval
+
+
+def read_merge_rollback_deploy_readiness_approval(project_root: str | Path, readiness_id: str) -> MergeRollbackDeployReadinessApproval:
+    path = merge_rollback_deploy_readiness_dir(project_root, readiness_id) / "approval.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Merge/rollback/deploy readiness approval not found for readiness_id: {readiness_id}")
+    payload = _read_json(path)
+    payload.pop("written_at", None)
+    return MergeRollbackDeployReadinessApproval.model_validate(payload)
+
+
+def verify_merge_rollback_deploy_readiness(
+    *,
+    project_root: str | Path,
+    readiness_id: str,
+    approval: MergeRollbackDeployReadinessApproval | None = None,
+) -> MergeRollbackDeployReadinessEvidence:
+    root = Path(project_root)
+    reasons: list[str] = []
+    try:
+        plan = read_merge_rollback_deploy_readiness_plan(root, readiness_id)
+    except FileNotFoundError:
+        plan = None
+        reasons.append("missing_merge_rollback_deploy_readiness_plan")
+
+    if approval is None:
+        try:
+            approval = read_merge_rollback_deploy_readiness_approval(root, readiness_id)
+        except FileNotFoundError:
+            reasons.append("missing_merge_rollback_deploy_readiness_approval")
+
+    plan_hash = plan.readiness_plan_hash or compute_merge_rollback_deploy_readiness_plan_hash(plan) if plan is not None else None
+    if plan is not None:
+        if plan.status != ReleaseCandidateStatus.PLANNED:
+            reasons.append("merge_rollback_deploy_readiness_plan_not_planned")
+        if not plan.checks_passed:
+            reasons.append("pr_checks_not_passed")
+        if plan.merge_performed is not False:
+            reasons.append("plan_indicates_merge_performed")
+        if plan.auto_merge_enabled is not False:
+            reasons.append("plan_indicates_auto_merge_enabled")
+        if plan.deploy_performed is not False:
+            reasons.append("plan_indicates_deploy_performed")
+        if plan.production_mutated is not False:
+            reasons.append("plan_indicates_production_mutation")
+        if not plan.rollback_plan:
+            reasons.append("missing_rollback_plan")
+        if not plan.deploy_plan:
+            reasons.append("missing_deploy_plan")
+        if not plan.post_merge_verification_plan:
+            reasons.append("missing_post_merge_verification_plan")
+
+    if approval is not None and plan is not None:
+        if approval.readiness_id != readiness_id:
+            reasons.append("approval_readiness_id_mismatch")
+        if approval.approved_action != "approve_merge_rollback_deploy_readiness_design_only":
+            reasons.append("approval_action_mismatch")
+        if approval.readiness_plan_hash != plan_hash:
+            reasons.append("approval_readiness_plan_hash_mismatch")
+        if approval.pr_number != (plan.pr_number or 0):
+            reasons.append("approval_pr_number_mismatch")
+        if approval.target_branch != (plan.target_branch or ""):
+            reasons.append("approval_target_branch_mismatch")
+
+    status = ReleaseCandidateStatus.BLOCKED if reasons else ReleaseCandidateStatus.READY
+    evidence = MergeRollbackDeployReadinessEvidence(
+        readiness_id=readiness_id,
+        status=status,
+        pr_number=plan.pr_number if plan is not None else None,
+        pr_url=plan.pr_url if plan is not None else None,
+        target_branch=plan.target_branch if plan is not None else None,
+        readiness_plan_hash=plan_hash,
+        approval_id=approval.approval_id if approval is not None else None,
+        approval_applies=status == ReleaseCandidateStatus.READY,
+        reason_codes=reasons if reasons else ["merge_rollback_deploy_readiness_approval_applies", "evidence_only_no_merge_deploy_mutation"],
+        rollback_plan=plan.rollback_plan if plan is not None else [],
+        deploy_plan=plan.deploy_plan if plan is not None else [],
+        post_merge_verification_plan=plan.post_merge_verification_plan if plan is not None else [],
+        merge_performed=False,
+        auto_merge_enabled=False,
+        deploy_performed=False,
+        production_mutated=False,
+        written_at=datetime.now(UTC).isoformat(),
+    )
+    _write_json(merge_rollback_deploy_readiness_dir(root, readiness_id) / "readiness.json", evidence.model_dump(mode="json"))
+    return evidence
 
 
 def release_candidate_dir(project_root: str | Path, release_id: str) -> Path:
@@ -353,6 +623,16 @@ def _target_branch(evidence: dict[str, object]) -> str | None:
 
 def _str(value: object) -> str | None:
     return value if isinstance(value, str) and value else None
+
+
+def _int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
 
 
 def _read_json(path: Path) -> dict[str, object]:

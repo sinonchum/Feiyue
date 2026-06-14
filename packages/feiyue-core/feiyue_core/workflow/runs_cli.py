@@ -34,9 +34,13 @@ from feiyue_core.workflow.promotion_lifecycle import (
     read_draft_pr_approval,
 )
 from feiyue_core.workflow.release_candidate import (
+    approve_merge_rollback_deploy_readiness,
     approve_production_promotion,
+    create_merge_rollback_deploy_readiness_plan,
     create_release_candidate_plan,
+    read_merge_rollback_deploy_readiness_approval,
     read_production_promotion_approval,
+    verify_merge_rollback_deploy_readiness,
     verify_production_promotion_readiness,
 )
 from feiyue_core.workflow.real_profile_promotion import (
@@ -145,6 +149,22 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     verify_production_parser = subparsers.add_parser("verify-production-promotion-readiness", help="Verify production promotion readiness without mutating production")
     verify_production_parser.add_argument("release_id")
+
+    mrd_plan_parser = subparsers.add_parser("merge-rollback-deploy-readiness-plan", help="Create explicit merge/rollback/deploy readiness design evidence without executing it")
+    mrd_plan_parser.add_argument("readiness_id")
+    mrd_plan_parser.add_argument("--merge-readiness-evidence-path", required=True)
+    mrd_plan_parser.add_argument("--rollback-command", action="append", required=True, dest="rollback_plan")
+    mrd_plan_parser.add_argument("--deploy-step", action="append", required=True, dest="deploy_plan")
+    mrd_plan_parser.add_argument("--post-merge-verification-command", action="append", required=True, dest="post_merge_verification_plan")
+
+    mrd_approve_parser = subparsers.add_parser("approve-merge-rollback-deploy-readiness", help="Create exact approval for merge/rollback/deploy readiness design only")
+    mrd_approve_parser.add_argument("readiness_id")
+    mrd_approve_parser.add_argument("--approved-by", required=True)
+    mrd_approve_parser.add_argument("--approval-id", required=True)
+    mrd_approve_parser.add_argument("--reason", required=True)
+
+    mrd_verify_parser = subparsers.add_parser("verify-merge-rollback-deploy-readiness", help="Verify approved merge/rollback/deploy readiness without merge/deploy side effects")
+    mrd_verify_parser.add_argument("readiness_id")
 
     approve_parser = subparsers.add_parser("approve-promotion", help="Create exact approval evidence for a verified workflow dry run")
     approve_parser.add_argument("run_id")
@@ -526,6 +546,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "verify-production-promotion-readiness":
             approval = read_production_promotion_approval(root, args.release_id)
             readiness = verify_production_promotion_readiness(project_root=root, release_id=args.release_id, approval=approval)
+            print(readiness.model_dump_json(indent=2))
+            return 0
+        if args.command == "merge-rollback-deploy-readiness-plan":
+            plan = create_merge_rollback_deploy_readiness_plan(
+                project_root=root,
+                readiness_id=args.readiness_id,
+                merge_readiness_evidence_path=args.merge_readiness_evidence_path,
+                rollback_plan=args.rollback_plan,
+                deploy_plan=args.deploy_plan,
+                post_merge_verification_plan=args.post_merge_verification_plan,
+            )
+            print(plan.model_dump_json(indent=2))
+            return 0
+        if args.command == "approve-merge-rollback-deploy-readiness":
+            approval = approve_merge_rollback_deploy_readiness(
+                project_root=root,
+                readiness_id=args.readiness_id,
+                approved_by=args.approved_by,
+                approval_id=args.approval_id,
+                reason=args.reason,
+            )
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "verify-merge-rollback-deploy-readiness":
+            approval = read_merge_rollback_deploy_readiness_approval(root, args.readiness_id)
+            readiness = verify_merge_rollback_deploy_readiness(project_root=root, readiness_id=args.readiness_id, approval=approval)
             print(readiness.model_dump_json(indent=2))
             return 0
         if args.command == "approve-promotion":

@@ -8,10 +8,14 @@ from pathlib import Path
 
 from feiyue_core.workflow.promotion_lifecycle import DraftPRApproval, DraftPRStatus, compute_pr_plan_hash, create_approved_draft_pr, create_promotion_pr_plan
 from feiyue_core.workflow.release_candidate import (
+    MergeRollbackDeployReadinessApproval,
     ProductionPromotionApproval,
     ReleaseCandidateStatus,
+    approve_merge_rollback_deploy_readiness,
     approve_production_promotion,
+    create_merge_rollback_deploy_readiness_plan,
     create_release_candidate_plan,
+    verify_merge_rollback_deploy_readiness,
     verify_production_promotion_readiness,
 )
 from tests.test_draft_pr_mode import _cli_env
@@ -263,4 +267,169 @@ def test_release_candidate_cli_plan_approve_and_verify_fake_first(tmp_path: Path
     )
     readiness_payload = json.loads(readiness.stdout)
     assert readiness_payload["status"] == "ready"
+    assert readiness_payload["production_mutated"] is False
+
+
+def _write_merge_readiness_evidence(repo: Path, *, readiness_id: str = "wave7-7d") -> Path:
+    path = repo / ".hermes" / "merge-readiness" / readiness_id / "evidence.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "readiness_id": readiness_id,
+                "status": "ready_for_human_merge_review",
+                "pr_number": 3,
+                "pr_url": "https://github.com/sinonchum/Feiyue/pull/3",
+                "source_branch": "feiyue/7b-real-feature-pr",
+                "target_branch": "main",
+                "head_sha": "abc123",
+                "checks_passed": True,
+                "is_draft": True,
+                "auto_merge_request": None,
+                "merge_performed": False,
+                "auto_merge_enabled": False,
+                "deploy_performed": False,
+                "production_mutated": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_8a_merge_rollback_deploy_readiness_fails_closed_for_missing_exact_approval(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    evidence_path = _write_merge_readiness_evidence(repo)
+    plan = create_merge_rollback_deploy_readiness_plan(
+        project_root=repo,
+        readiness_id="wave8-8a",
+        merge_readiness_evidence_path=evidence_path,
+        rollback_plan=["git revert <merge-sha>", "python -m pytest -q"],
+        deploy_plan=["deploy smoke only after explicit deploy approval"],
+        post_merge_verification_plan=["python -m pytest -q"],
+    )
+
+    readiness = verify_merge_rollback_deploy_readiness(project_root=repo, readiness_id="wave8-8a")
+
+    assert plan.status == ReleaseCandidateStatus.PLANNED
+    assert readiness.status == ReleaseCandidateStatus.BLOCKED
+    assert "missing_merge_rollback_deploy_readiness_approval" in readiness.reason_codes
+    assert readiness.merge_performed is False
+    assert readiness.auto_merge_enabled is False
+    assert readiness.deploy_performed is False
+    assert readiness.production_mutated is False
+
+
+def test_8a_merge_rollback_deploy_readiness_exact_approval_is_evidence_only(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    evidence_path = _write_merge_readiness_evidence(repo)
+    plan = create_merge_rollback_deploy_readiness_plan(
+        project_root=repo,
+        readiness_id="wave8-8a",
+        merge_readiness_evidence_path=evidence_path,
+        rollback_plan=["git revert <merge-sha>", "python -m pytest -q"],
+        deploy_plan=["deploy smoke only after explicit deploy approval"],
+        post_merge_verification_plan=["python -m pytest -q"],
+    )
+    approval = approve_merge_rollback_deploy_readiness(
+        project_root=repo,
+        readiness_id="wave8-8a",
+        approved_by="human-reviewer",
+        approval_id="approval-8a",
+        reason="Approve readiness design only; do not execute merge/deploy.",
+    )
+
+    readiness = verify_merge_rollback_deploy_readiness(project_root=repo, readiness_id="wave8-8a", approval=approval)
+
+    assert approval.readiness_plan_hash == plan.readiness_plan_hash
+    assert readiness.status == ReleaseCandidateStatus.READY
+    assert readiness.approval_applies is True
+    assert readiness.reason_codes == ["merge_rollback_deploy_readiness_approval_applies", "evidence_only_no_merge_deploy_mutation"]
+    assert readiness.merge_performed is False
+    assert readiness.auto_merge_enabled is False
+    assert readiness.deploy_performed is False
+    assert readiness.production_mutated is False
+    persisted = json.loads((repo / ".hermes" / "merge-rollback-deploy-readiness" / "wave8-8a" / "readiness.json").read_text(encoding="utf-8"))
+    assert persisted["production_mutated"] is False
+
+
+def test_8a_cli_plan_approve_verify_is_evidence_only(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    evidence_path = _write_merge_readiness_evidence(repo, readiness_id="wave7-7d-cli")
+
+    plan = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(repo),
+            "merge-rollback-deploy-readiness-plan",
+            "wave8-8a-cli",
+            "--merge-readiness-evidence-path",
+            str(evidence_path),
+            "--rollback-command",
+            "git revert <merge-sha>",
+            "--deploy-step",
+            "deploy smoke only after explicit deploy approval",
+            "--post-merge-verification-command",
+            "python -m pytest -q",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+    plan_payload = json.loads(plan.stdout)
+    assert plan_payload["status"] == "planned"
+    assert plan_payload["merge_performed"] is False
+    assert plan_payload["deploy_performed"] is False
+
+    approval = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(repo),
+            "approve-merge-rollback-deploy-readiness",
+            "wave8-8a-cli",
+            "--approved-by",
+            "human-reviewer",
+            "--approval-id",
+            "approval-8a-cli",
+            "--reason",
+            "Approve readiness design only.",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+    approval_payload = json.loads(approval.stdout)
+    assert approval_payload["readiness_plan_hash"] == plan_payload["readiness_plan_hash"]
+
+    readiness = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(repo),
+            "verify-merge-rollback-deploy-readiness",
+            "wave8-8a-cli",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+    readiness_payload = json.loads(readiness.stdout)
+    assert readiness_payload["status"] == "ready"
+    assert readiness_payload["merge_performed"] is False
+    assert readiness_payload["auto_merge_enabled"] is False
+    assert readiness_payload["deploy_performed"] is False
     assert readiness_payload["production_mutated"] is False

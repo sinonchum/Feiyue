@@ -40,8 +40,11 @@ CLI_REFERENCE_COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("feiyue-runs approve-draft-pr <run_id> --approved-by <name> --approval-id <id> --reason <text>", "Create exact approval evidence for fake-first draft PR creation."),
         ("feiyue-runs create-approved-draft-pr <run_id> --adapter fake|github", "Create exact-approved draft PR evidence; github mode opens a draft PR only."),
         ("feiyue-runs release-candidate-plan <release_id> --run-id <id> --allowed-target-branch <branch> --ci-evidence-path <path> --post-promotion-verification-command <cmd>", "Create a fail-closed local-only release-candidate plan."),
-        ("feiyue-runs approve-production-promotion <release_id> --approved-by <name> --approval-id <id> --reason <text>", "Create exact approval evidence for production-promotion readiness only."),
+        ("feiyue-runs approve-production-promotion <release_id> --approved-by <user> --approval-id <id> --reason <text>", "Create exact approval evidence for production-promotion readiness."),
         ("feiyue-runs verify-production-promotion-readiness <release_id>", "Verify production-promotion readiness without mutating production."),
+        ("feiyue-runs merge-rollback-deploy-readiness-plan <readiness_id> --merge-readiness-evidence-path <path> --rollback-command <cmd> --deploy-step <step> --post-merge-verification-command <cmd>", "Create explicit merge/rollback/deploy readiness design evidence without executing merge/deploy."),
+        ("feiyue-runs approve-merge-rollback-deploy-readiness <readiness_id> --approved-by <user> --approval-id <id> --reason <text>", "Create exact approval for merge/rollback/deploy readiness design only."),
+        ("feiyue-runs verify-merge-rollback-deploy-readiness <readiness_id>", "Verify approved merge/rollback/deploy readiness without merge/deploy side effects."),
     ],
 }
 

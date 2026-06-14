@@ -29,6 +29,7 @@ local-notes/
 .hermes/promotion-lifecycle/
 .hermes/semantic-reviews/
 .hermes/merge-readiness/
+.hermes/merge-rollback-deploy-readiness/
 .hermes/live-smoke-plans/
 .hermes/live-smoke-sandboxes/
 .hermes/asset-reuse/
