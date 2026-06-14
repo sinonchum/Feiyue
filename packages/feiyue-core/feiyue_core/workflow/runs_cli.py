@@ -180,11 +180,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     curator_live_parser.add_argument("--proposal-id", required=True)
     curator_live_parser.add_argument("--write-proposal", action="store_true")
 
-    promote_curator_parser = subparsers.add_parser("promote-curator-asset", help="Approve and promote one project-local curator asset proposal patch")
+    promote_curator_parser = subparsers.add_parser(
+        "promote-curator-asset",
+        help="Approve and promote one project-local curator asset proposal patch selected by --patch-id or --patch-index",
+    )
     promote_curator_parser.add_argument("--proposal-id", required=True)
     promote_curator_parser.add_argument("--reviewer", required=True)
     promote_curator_parser.add_argument("--reason", required=True)
     promote_curator_parser.add_argument("--rollback-ref", required=True)
+    promote_curator_parser.add_argument("--patch-id")
     promote_curator_parser.add_argument("--patch-index", type=int, default=0)
 
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -208,6 +212,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 reviewer=args.reviewer,
                 reason=args.reason,
                 rollback_ref=args.rollback_ref,
+                patch_id=args.patch_id,
                 patch_index=args.patch_index,
             )
             print(evidence.model_dump_json(indent=2))
