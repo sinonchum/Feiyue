@@ -248,6 +248,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     real_multi_worker_parser.add_argument("--cost-usd", type=float, default=0.0)
     real_multi_worker_parser.add_argument("--latency-ms", type=float, default=0.0)
 
+    live_matrix_parser = subparsers.add_parser("live-profile-matrix", help="Print retained Phase C live profile matrix summary JSON")
+    live_matrix_parser.add_argument("run_id")
+
+    controlled_teacher_parser = subparsers.add_parser("controlled-teacher-escalation", help="Print retained controlled teacher escalation summary JSON")
+    controlled_teacher_parser.add_argument("run_id")
+
     review_inbox_parser = subparsers.add_parser("review-inbox", help="List pending local approval/review items without mutating state")
     review_inbox_parser.add_argument("--format", choices=["json"], default="json")
 
@@ -349,6 +355,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             summary = collector.summary(write_summary=args.write_summary)
             print(summary.model_dump_json(indent=2))
+            return 0
+        if args.command == "live-profile-matrix":
+            evidence_path = root / ".hermes" / "live-matrices" / args.run_id / "matrix-summary.json"
+            if not evidence_path.exists():
+                print(f"Live profile matrix summary not found for run_id: {args.run_id}", file=sys.stderr)
+                return 2
+            print(json.dumps(json.loads(evidence_path.read_text(encoding="utf-8")), indent=2, sort_keys=True))
+            return 0
+        if args.command == "controlled-teacher-escalation":
+            evidence_path = root / ".hermes" / "live-teacher-escalations" / args.run_id / "summary.json"
+            if not evidence_path.exists():
+                print(f"Controlled teacher escalation summary not found for run_id: {args.run_id}", file=sys.stderr)
+                return 2
+            print(json.dumps(json.loads(evidence_path.read_text(encoding="utf-8")), indent=2, sort_keys=True))
             return 0
         if args.command == "list":
             catalog = RunCatalog(root)

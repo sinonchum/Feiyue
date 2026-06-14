@@ -19,6 +19,8 @@ Generated from the productized `feiyue-runs` command registry.
 - `feiyue-runs creative-metrics-record --proposal-id <id> --seed-id <id> --decision <accepted|rejected|deferred>` — Record human creative proposal acceptance/taste metrics without provider calls.
 - `feiyue-runs workflow-smoke <run_id>` — Inspect real-profile workflow dry-run evidence.
 - `feiyue-runs workflow-promotion <run_id>` — Inspect approval-gated workflow promotion evidence.
+- `feiyue-runs live-profile-matrix <run_id>` — Inspect retained Phase C live profile matrix summary evidence.
+- `feiyue-runs controlled-teacher-escalation <run_id>` — Inspect retained controlled teacher-escalation summary evidence.
 
 ## Capability and learning loop
 

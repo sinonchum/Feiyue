@@ -153,6 +153,15 @@ class CapabilityHistoryCollector:
                 )
             )
 
+        for path, payload in self._load_live_profile_matrix_summaries():
+            records.append(self._record_from_live_profile_matrix_summary(payload, path=path, generated_at=generated_at))
+
+        for path, payload in self._load_evidence_files("live-teacher-escalations", "summary.json"):
+            records.append(self._record_from_controlled_teacher_escalation(payload, path=path, generated_at=generated_at))
+
+        for path, payload in self._load_evidence_files("real-creative-e2e", "summary.json"):
+            records.append(self._record_from_real_creative_e2e(payload, path=path, generated_at=generated_at))
+
         for run_id, promotion in sorted(promotions.items()):
             if run_id in consumed_promotion_run_ids:
                 continue
@@ -204,6 +213,106 @@ class CapabilityHistoryCollector:
             if isinstance(payload, dict):
                 records.append((path, payload))
         return records
+
+    def _load_live_profile_matrix_summaries(self) -> list[tuple[Path, dict[str, Any]]]:
+        parent = self.project_root / ".hermes" / "live-matrices"
+        if not parent.exists():
+            return []
+        records: list[tuple[Path, dict[str, Any]]] = []
+        for path in sorted(parent.glob("*/profiles/*/*/summary.json")):
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(payload, dict):
+                records.append((path, payload))
+        return records
+
+    def _record_from_live_profile_matrix_summary(
+        self,
+        payload: dict[str, Any],
+        *,
+        path: Path,
+        generated_at: str,
+    ) -> CapabilityHistoryRecord:
+        verifier = _dict(payload.get("verifier"))
+        worker_result = _dict(payload.get("worker_result"))
+        run_id = _first_string(payload.get("run_id"), path.parents[3].name) or path.parents[3].name
+        profile_id = _first_string(payload.get("profile_id"), path.parents[1].name) or path.parents[1].name
+        round_number = _coerce_int(payload.get("round"))
+        case_id = _first_string(payload.get("case_id"), path.parent.name) or path.parent.name
+        return CapabilityHistoryRecord(
+            profile_id=profile_id,
+            capability="phase_c_live_profile_matrix",
+            task_id=case_id,
+            run_id=f"{run_id}:{profile_id}:round-{round_number}:{case_id}",
+            source_kind="live_profile_matrix",
+            status="verified" if _bool(verifier.get("passed")) else "failed",
+            verified=_bool(verifier.get("passed")),
+            teacher_used=_bool(payload.get("teacher_escalation_attempted")),
+            provider_call_count=_coerce_int(payload.get("profile_call_count")),
+            latency_ms=_coerce_float(worker_result.get("duration_ms")),
+            promotion_attempted=False,
+            promoted=False,
+            source_evidence_path=self._relative_source(path),
+            observed_at=generated_at,
+            routing_table_mutated=False,
+        )
+
+    def _record_from_controlled_teacher_escalation(
+        self,
+        payload: dict[str, Any],
+        *,
+        path: Path,
+        generated_at: str,
+    ) -> CapabilityHistoryRecord:
+        durations = _dict(payload.get("durations_ms"))
+        latency_ms = sum(
+            value for value in (_coerce_float(durations.get("initial_worker")), _coerce_float(durations.get("teacher")), _coerce_float(durations.get("retry_worker"))) if value is not None
+        )
+        variants = payload.get("variants")
+        variants_completed = isinstance(variants, list) and bool(variants) and all(_string(_dict(item).get("status")) == "completed" for item in variants)
+        return CapabilityHistoryRecord(
+            profile_id=_first_string(payload.get("worker_profile"), payload.get("profile_id")) or "unknown",
+            capability="teacher_escalation_recovery",
+            task_id=_first_string(payload.get("run_id"), path.parent.name) or path.parent.name,
+            run_id=_first_string(payload.get("run_id"), path.parent.name) or path.parent.name,
+            source_kind="controlled_teacher_escalation",
+            status=_first_string(payload.get("status")) or "unknown",
+            verified=_bool(payload.get("final_verifier_passed")) or variants_completed,
+            teacher_used=_bool(payload.get("teacher_escalation_attempted")) or _coerce_int(payload.get("teacher_escalation_count")) > 0,
+            provider_call_count=_coerce_int(payload.get("provider_call_count")),
+            latency_ms=latency_ms,
+            promotion_attempted=_bool(payload.get("promotion_attempted")),
+            promoted=False,
+            source_evidence_path=self._relative_source(path),
+            completed_at=_first_string(payload.get("ended_at")),
+            observed_at=_first_string(payload.get("ended_at"), generated_at) or generated_at,
+            routing_table_mutated=False,
+        )
+
+    def _record_from_real_creative_e2e(
+        self,
+        payload: dict[str, Any],
+        *,
+        path: Path,
+        generated_at: str,
+    ) -> CapabilityHistoryRecord:
+        return CapabilityHistoryRecord(
+            profile_id=_first_string(payload.get("strong_profile"), payload.get("profile_id")) or "unknown",
+            capability="real_creative_to_execution",
+            task_id=_first_string(payload.get("run_id"), path.parent.name) or path.parent.name,
+            run_id=_first_string(payload.get("run_id"), path.parent.name) or path.parent.name,
+            source_kind="real_creative_e2e",
+            status=_first_string(payload.get("status")) or "unknown",
+            verified=_bool(payload.get("verifier_passed")),
+            teacher_used=False,
+            provider_call_count=_coerce_int(payload.get("provider_call_count")),
+            latency_ms=_coerce_float(payload.get("duration_ms")),
+            promotion_attempted=_bool(payload.get("promotion_attempted")),
+            promoted=False,
+            source_evidence_path=self._relative_source(path),
+            completed_at=_first_string(payload.get("ended_at")),
+            observed_at=_first_string(payload.get("ended_at"), generated_at) or generated_at,
+            routing_table_mutated=False,
+        )
 
     def _record_from_payload(
         self,
