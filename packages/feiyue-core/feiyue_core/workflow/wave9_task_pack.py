@@ -35,6 +35,12 @@ class Wave9LocalPRPlanStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class Wave9LocalBranchMaterializationStatus(StrEnum):
+    VERIFIED = "verified"
+    FAILED = "failed"
+    BLOCKED = "blocked"
+
+
 class Wave9TaskAssignment(FeiyueModel):
     assignment_id: str
     profile_id: str
@@ -274,6 +280,70 @@ class Wave9LocalPRPlan(FeiyueModel):
             raise ValueError("Wave9 local PR plans cannot promote, create PRs, merge, or deploy")
         if self.global_hermes_config_mutated or self.production_mutated:
             raise ValueError("Wave9 local PR plans cannot mutate global config or production")
+        return self
+
+
+class Wave9LocalBranchMaterializationApproval(FeiyueModel):
+    approval_id: str
+    approved_by: str
+    approved_action: str
+    plan_id: str
+    execution_run_id: str
+    plan_hash: str
+    target_branch: str
+    changed_files: list[str]
+    verifier_commands: list[str]
+    local_only: bool = True
+    provider_call_count: int = 0
+    external_pr_created: bool = False
+    branch_pushed: bool = False
+    merge_performed: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    approved_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    reason: str
+
+    @model_validator(mode="after")
+    def _safe_contract(self) -> "Wave9LocalBranchMaterializationApproval":
+        if self.approved_action != "materialize_wave9_local_pr_plan":
+            raise ValueError("approved_action must be materialize_wave9_local_pr_plan")
+        if self.local_only is not True or self.provider_call_count != 0:
+            raise ValueError("Wave9 materialization approval must be local-only and provider-free")
+        if self.external_pr_created or self.branch_pushed or self.merge_performed or self.deploy_performed or self.production_mutated:
+            raise ValueError("Wave9 materialization approval cannot authorize external PRs, push, merge, deploy, or production mutation")
+        return self
+
+
+class Wave9LocalBranchMaterialization(FeiyueModel):
+    materialization_id: str
+    plan_id: str
+    execution_run_id: str
+    status: Wave9LocalBranchMaterializationStatus
+    approval_id: str | None = None
+    local_branch_name: str
+    worktree_path: str | None = None
+    changed_files: list[str] = Field(default_factory=list)
+    verifier_outputs: list[dict[str, object]] = Field(default_factory=list)
+    provider_call_count: int = 0
+    reason_codes: list[str]
+    local_branch_created: bool = False
+    branch_pushed: bool = False
+    external_pr_created: bool = False
+    merge_performed: bool = False
+    deploy_performed: bool = False
+    promotion_attempted: bool = False
+    global_hermes_config_mutated: bool = False
+    production_mutated: bool = False
+    source_repo_clean: bool = True
+
+    @model_validator(mode="after")
+    def _local_only_contract(self) -> "Wave9LocalBranchMaterialization":
+        if self.provider_call_count != 0:
+            raise ValueError("Wave9 materialization is provider-free")
+        if self.branch_pushed or self.external_pr_created or self.merge_performed or self.deploy_performed:
+            raise ValueError("Wave9 materialization cannot push, create PRs, merge, or deploy")
+        if self.promotion_attempted or self.global_hermes_config_mutated or self.production_mutated:
+            raise ValueError("Wave9 materialization cannot promote, mutate config, or mutate production")
         return self
 
 
@@ -671,6 +741,198 @@ def create_wave9_local_pr_plan(
 
 def read_wave9_local_pr_plan(project_root: str | Path, plan_id: str) -> Wave9LocalPRPlan:
     return Wave9LocalPRPlan.model_validate_json(wave9_local_pr_plan_path(project_root, plan_id).read_text(encoding="utf-8"))
+
+
+def wave9_local_pr_plan_hash(plan: Wave9LocalPRPlan) -> str:
+    canonical = json.dumps(plan.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def wave9_local_branch_materialization_approval_path(project_root: str | Path, plan_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "wave9-local-pr-plans" / plan_id / "materialization-approval.json"
+
+
+def wave9_local_branch_materialization_path(project_root: str | Path, materialization_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "wave9-local-branch-materializations" / materialization_id / "evidence.json"
+
+
+def approve_wave9_local_pr_plan_materialization(
+    *,
+    project_root: str | Path,
+    plan: Wave9LocalPRPlan,
+    approval_id: str,
+    approved_by: str,
+    reason: str,
+) -> Wave9LocalBranchMaterializationApproval:
+    approval = Wave9LocalBranchMaterializationApproval(
+        approval_id=approval_id,
+        approved_by=approved_by,
+        approved_action="materialize_wave9_local_pr_plan",
+        plan_id=plan.plan_id,
+        execution_run_id=plan.execution_run_id,
+        plan_hash=wave9_local_pr_plan_hash(plan),
+        target_branch=plan.target_branch,
+        changed_files=plan.changed_files,
+        verifier_commands=plan.verifier_commands,
+        local_only=True,
+        provider_call_count=0,
+        external_pr_created=False,
+        branch_pushed=False,
+        merge_performed=False,
+        deploy_performed=False,
+        production_mutated=False,
+        reason=reason,
+    )
+    path = wave9_local_branch_materialization_approval_path(project_root, plan.plan_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(approval.model_dump(mode="json"), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return approval
+
+
+def read_wave9_local_branch_materialization_approval(project_root: str | Path, plan_id: str) -> Wave9LocalBranchMaterializationApproval:
+    return Wave9LocalBranchMaterializationApproval.model_validate_json(
+        wave9_local_branch_materialization_approval_path(project_root, plan_id).read_text(encoding="utf-8")
+    )
+
+
+def read_wave9_local_branch_materialization(project_root: str | Path, materialization_id: str) -> Wave9LocalBranchMaterialization:
+    return Wave9LocalBranchMaterialization.model_validate_json(
+        wave9_local_branch_materialization_path(project_root, materialization_id).read_text(encoding="utf-8")
+    )
+
+
+def materialize_wave9_local_pr_plan(
+    *,
+    project_root: str | Path,
+    source_repo: str | Path,
+    plan: Wave9LocalPRPlan,
+    approval: Wave9LocalBranchMaterializationApproval | None,
+    materialization_id: str,
+    worktree_path: str | Path,
+) -> Wave9LocalBranchMaterialization:
+    root = Path(project_root)
+    source = Path(source_repo)
+    worktree = Path(worktree_path)
+    reasons = _wave9_materialization_block_reasons(plan=plan, approval=approval)
+    if reasons:
+        evidence = Wave9LocalBranchMaterialization(
+            materialization_id=materialization_id,
+            plan_id=plan.plan_id,
+            execution_run_id=plan.execution_run_id,
+            status=Wave9LocalBranchMaterializationStatus.BLOCKED,
+            approval_id=approval.approval_id if approval else None,
+            local_branch_name=plan.target_branch,
+            worktree_path=str(worktree),
+            changed_files=[],
+            verifier_outputs=[],
+            provider_call_count=0,
+            reason_codes=reasons,
+            local_branch_created=False,
+            branch_pushed=False,
+            external_pr_created=False,
+            merge_performed=False,
+            deploy_performed=False,
+            promotion_attempted=False,
+            global_hermes_config_mutated=False,
+            production_mutated=False,
+            source_repo_clean=_source_clean(source),
+        )
+        _write_wave9_materialization_evidence(root, evidence)
+        return evidence
+
+    execution_report = read_wave9_execution_evidence(root, plan.execution_run_id)
+    sandbox = Path(execution_report.sandbox_path or "")
+    if not sandbox.exists():
+        evidence = Wave9LocalBranchMaterialization(
+            materialization_id=materialization_id,
+            plan_id=plan.plan_id,
+            execution_run_id=plan.execution_run_id,
+            status=Wave9LocalBranchMaterializationStatus.BLOCKED,
+            approval_id=approval.approval_id if approval else None,
+            local_branch_name=plan.target_branch,
+            worktree_path=str(worktree),
+            changed_files=[],
+            verifier_outputs=[],
+            provider_call_count=0,
+            reason_codes=["missing_wave9_execution_sandbox"],
+            source_repo_clean=_source_clean(source),
+        )
+        _write_wave9_materialization_evidence(root, evidence)
+        return evidence
+
+    if worktree.exists():
+        shutil.rmtree(worktree)
+    subprocess.run(["git", "worktree", "add", "-B", plan.target_branch, str(worktree)], cwd=source, check=True, capture_output=True, text=True)
+    copied: list[str] = []
+    for changed_file in plan.changed_files:
+        src = sandbox / changed_file
+        dst = worktree / changed_file
+        if not src.exists():
+            continue
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dst)
+        copied.append(changed_file)
+    verifier_outputs = _run_verifiers(worktree, plan.verifier_commands)
+    verified = bool(copied) and len(copied) == len(plan.changed_files) and all(item["exit_code"] == 0 for item in verifier_outputs)
+    evidence = Wave9LocalBranchMaterialization(
+        materialization_id=materialization_id,
+        plan_id=plan.plan_id,
+        execution_run_id=plan.execution_run_id,
+        status=Wave9LocalBranchMaterializationStatus.VERIFIED if verified else Wave9LocalBranchMaterializationStatus.FAILED,
+        approval_id=approval.approval_id if approval else None,
+        local_branch_name=plan.target_branch,
+        worktree_path=str(worktree),
+        changed_files=copied,
+        verifier_outputs=verifier_outputs,
+        provider_call_count=0,
+        reason_codes=["wave9_local_branch_materialization_approval_applies", "local_branch_materialized", "local_verifier_passed"] if verified else ["wave9_local_branch_materialization_approval_applies", "local_branch_materialized", "local_verifier_failed"],
+        local_branch_created=True,
+        branch_pushed=False,
+        external_pr_created=False,
+        merge_performed=False,
+        deploy_performed=False,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        source_repo_clean=_source_clean(source),
+    )
+    _write_wave9_materialization_evidence(root, evidence)
+    return evidence
+
+
+def _wave9_materialization_block_reasons(*, plan: Wave9LocalPRPlan, approval: Wave9LocalBranchMaterializationApproval | None) -> list[str]:
+    reasons: list[str] = []
+    if plan.status is not Wave9LocalPRPlanStatus.PLANNED:
+        reasons.append("wave9_local_pr_plan_not_planned")
+    if plan.provider_call_count != 0 or plan.external_pr_created or plan.merge_performed or plan.deploy_performed or plan.production_mutated:
+        reasons.append("wave9_local_pr_plan_not_local_only")
+    if approval is None:
+        reasons.append("missing_wave9_local_branch_materialization_approval")
+    else:
+        if approval.plan_id != plan.plan_id:
+            reasons.append("plan_id_mismatch")
+        if approval.execution_run_id != plan.execution_run_id:
+            reasons.append("execution_run_id_mismatch")
+        if approval.plan_hash != wave9_local_pr_plan_hash(plan):
+            reasons.append("plan_hash_mismatch")
+        if approval.target_branch != plan.target_branch:
+            reasons.append("target_branch_mismatch")
+        if approval.changed_files != plan.changed_files:
+            reasons.append("changed_files_mismatch")
+        if approval.verifier_commands != plan.verifier_commands:
+            reasons.append("verifier_commands_mismatch")
+        if approval.approved_action != "materialize_wave9_local_pr_plan":
+            reasons.append("approved_action_mismatch")
+        if not approval.local_only or approval.provider_call_count != 0 or approval.external_pr_created or approval.branch_pushed or approval.merge_performed or approval.deploy_performed or approval.production_mutated:
+            reasons.append("approval_not_local_only")
+    return reasons
+
+
+def _write_wave9_materialization_evidence(project_root: str | Path, evidence: Wave9LocalBranchMaterialization) -> Path:
+    path = wave9_local_branch_materialization_path(project_root, evidence.materialization_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(evidence.model_dump(mode="json"), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
 
 
 def _wave9_assignment_prompt(*, project_name: str, task_pack: Wave9TaskPack, assignment: Wave9TaskAssignment) -> str:

@@ -16,14 +16,18 @@ from feiyue_core.workflow.wave9_task_pack import (
     Wave9ExecutionStatus,
     Wave9ExecutionReport,
     Wave9LocalPRPlanStatus,
+    Wave9LocalBranchMaterializationStatus,
     Wave9TaskAssignment,
     Wave9TaskPack,
     Wave9TaskPackAuthorization,
     Wave9TaskPackExecutor,
     create_wave9_local_pr_plan,
+    approve_wave9_local_pr_plan_materialization,
+    materialize_wave9_local_pr_plan,
     approve_wave9_task_pack_execution,
     read_wave9_execution_evidence,
     read_wave9_local_pr_plan,
+    read_wave9_local_branch_materialization,
     read_wave9_task_pack_authorization,
     task_pack_hash,
     validate_wave9_task_pack_authorization,
@@ -735,3 +739,156 @@ def test_wave9_5_cli_creates_local_pr_plan_from_execution_evidence(tmp_path: Pat
     assert payload["deploy_performed"] is False
     assert payload["production_mutated"] is False
     assert (tmp_path / ".hermes" / "wave9-local-pr-plans" / "wave9-5-cli-local-pr-plan" / "pr-plan.json").exists()
+
+
+
+def _verified_plan_for_wave9_6(tmp_path: Path):
+    source = _source_repo(tmp_path)
+    pack = Wave9TaskPack(
+        task_pack_id="wave9-6-task-pack",
+        task_id="wave9.real-multi-worker.marker",
+        title="Wave9 real multi-worker marker task",
+        summary="Tiny scoped task pack for local branch materialization.",
+        assignments=_assignments(),
+        merge_strategy="reject_on_conflict",
+        verifier_commands=["PYTHONPATH=packages/feiyue-core python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q"],
+        review_criteria=["combined verifier passes", "source checkout remains clean"],
+        dry_run_only=True,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        reason_codes=["wave9_task_pack_pre_execution_only"],
+    )
+    authorization = approve_wave9_task_pack_execution(
+        project_root=tmp_path,
+        task_pack=pack,
+        approval_id="wave9-6-exec-approval",
+        approved_by="test-suite",
+        reason="Authorize Wave9 dry-run execution only.",
+        max_total_profile_calls=2,
+    )
+    report = Wave9TaskPackExecutor(profile_runner=FakeProfileRunner({
+        "feiyue-mid-deepseek-pro": json.dumps({"writes": [{"path": "packages/feiyue-core/feiyue_core/workflow/wave9_marker.py", "content": "def wave9_marker():\n    return 'verified'\n"}]}),
+        "feiyue-strong-gpt55": json.dumps({"writes": [{"path": "packages/feiyue-core/tests/test_wave9_marker.py", "content": "from feiyue_core.workflow.wave9_marker import wave9_marker\n\ndef test_wave9_marker():\n    assert wave9_marker() == 'verified'\n"}]}),
+    })).run(
+        project_root=tmp_path,
+        source_repo=source,
+        project_name="Feiyue",
+        task_pack=pack,
+        authorization=authorization,
+        run_id="wave9-6-source-run",
+    )
+    plan = create_wave9_local_pr_plan(
+        project_root=tmp_path,
+        execution_report=report,
+        plan_id="wave9-6-local-pr-plan",
+        target_branch="wave9/local-materialization-marker",
+        title="Wave9 marker local branch plan",
+    )
+    return source, plan
+
+
+def test_wave9_6_materialization_blocks_without_exact_approval(tmp_path: Path) -> None:
+    source, plan = _verified_plan_for_wave9_6(tmp_path)
+
+    result = materialize_wave9_local_pr_plan(
+        project_root=tmp_path,
+        source_repo=source,
+        plan=plan,
+        approval=None,
+        materialization_id="wave9-6-materialization",
+        worktree_path=tmp_path / "worktree",
+    )
+
+    assert result.status == Wave9LocalBranchMaterializationStatus.BLOCKED
+    assert result.provider_call_count == 0
+    assert result.external_pr_created is False
+    assert result.branch_pushed is False
+    assert result.merge_performed is False
+    assert result.deploy_performed is False
+    assert result.production_mutated is False
+    assert "missing_wave9_local_branch_materialization_approval" in result.reason_codes
+
+
+def test_wave9_6_materializes_verified_plan_to_local_worktree_only(tmp_path: Path) -> None:
+    source, plan = _verified_plan_for_wave9_6(tmp_path)
+    approval = approve_wave9_local_pr_plan_materialization(
+        project_root=tmp_path,
+        plan=plan,
+        approval_id="wave9-6-materialization-approval",
+        approved_by="test-suite",
+        reason="Approve local-only Wave9 branch materialization.",
+    )
+
+    result = materialize_wave9_local_pr_plan(
+        project_root=tmp_path,
+        source_repo=source,
+        plan=plan,
+        approval=approval,
+        materialization_id="wave9-6-materialization",
+        worktree_path=tmp_path / "worktree",
+    )
+    loaded = read_wave9_local_branch_materialization(tmp_path, "wave9-6-materialization")
+
+    assert loaded == result
+    assert result.status == Wave9LocalBranchMaterializationStatus.VERIFIED
+    assert result.plan_id == "wave9-6-local-pr-plan"
+    assert result.execution_run_id == "wave9-6-source-run"
+    assert result.local_branch_created is True
+    assert result.local_branch_name == "wave9/local-materialization-marker"
+    assert result.branch_pushed is False
+    assert result.external_pr_created is False
+    assert result.merge_performed is False
+    assert result.deploy_performed is False
+    assert result.production_mutated is False
+    assert result.provider_call_count == 0
+    assert result.source_repo_clean is True
+    assert all(item["exit_code"] == 0 for item in result.verifier_outputs)
+    assert "local_branch_materialized" in result.reason_codes
+    assert (tmp_path / "worktree" / "packages" / "feiyue-core" / "feiyue_core" / "workflow" / "wave9_marker.py").read_text(encoding="utf-8").strip().endswith("'verified'")
+    assert (source / "packages" / "feiyue-core" / "feiyue_core" / "workflow" / "wave9_marker.py").read_text(encoding="utf-8").strip().endswith("'pending'")
+
+
+def test_wave9_6_cli_materializes_local_branch_without_external_pr(tmp_path: Path) -> None:
+    source, plan = _verified_plan_for_wave9_6(tmp_path)
+    approve_wave9_local_pr_plan_materialization(
+        project_root=tmp_path,
+        plan=plan,
+        approval_id="wave9-6-cli-materialization-approval",
+        approved_by="test-suite",
+        reason="Approve local-only materialization via CLI.",
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "materialize-wave9-local-pr-plan",
+            "--plan-id",
+            "wave9-6-local-pr-plan",
+            "--materialization-id",
+            "wave9-6-cli-materialization",
+            "--source-repo",
+            str(source),
+            "--worktree-path",
+            str(tmp_path / "cli-worktree"),
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "verified"
+    assert payload["local_branch_created"] is True
+    assert payload["branch_pushed"] is False
+    assert payload["external_pr_created"] is False
+    assert payload["merge_performed"] is False
+    assert payload["deploy_performed"] is False
+    assert payload["production_mutated"] is False
+    assert payload["provider_call_count"] == 0
+    assert (tmp_path / ".hermes" / "wave9-local-branch-materializations" / "wave9-6-cli-materialization" / "evidence.json").exists()

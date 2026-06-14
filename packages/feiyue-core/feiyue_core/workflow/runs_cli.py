@@ -117,8 +117,12 @@ from feiyue_core.workflow.wave9_task_pack import (
     Wave9TaskPack,
     Wave9TaskPackExecutor,
     approve_wave9_task_pack_execution,
+    approve_wave9_local_pr_plan_materialization,
     create_wave9_local_pr_plan,
+    materialize_wave9_local_pr_plan,
     read_wave9_execution_evidence,
+    read_wave9_local_branch_materialization_approval,
+    read_wave9_local_pr_plan,
     read_wave9_task_pack,
     read_wave9_task_pack_authorization,
     task_pack_hash,
@@ -463,6 +467,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     wave9_pr_plan_parser.add_argument("--plan-id", required=True)
     wave9_pr_plan_parser.add_argument("--target-branch", required=True)
     wave9_pr_plan_parser.add_argument("--title", required=True)
+
+    approve_wave9_materialization_parser = subparsers.add_parser(
+        "approve-wave9-local-pr-plan-materialization",
+        help="Create exact local-only approval to materialize a Wave9 PR plan into a local worktree branch",
+    )
+    approve_wave9_materialization_parser.add_argument("--plan-id", required=True)
+    approve_wave9_materialization_parser.add_argument("--approval-id", required=True)
+    approve_wave9_materialization_parser.add_argument("--approved-by", required=True)
+    approve_wave9_materialization_parser.add_argument("--reason", required=True)
+
+    materialize_wave9_parser = subparsers.add_parser(
+        "materialize-wave9-local-pr-plan",
+        help="Materialize an approved Wave9 local PR plan into a dedicated local worktree branch",
+    )
+    materialize_wave9_parser.add_argument("--plan-id", required=True)
+    materialize_wave9_parser.add_argument("--materialization-id", required=True)
+    materialize_wave9_parser.add_argument("--source-repo", required=True)
+    materialize_wave9_parser.add_argument("--worktree-path", required=True)
 
     real_multi_worker_parser = subparsers.add_parser(
         "real-multi-worker-live-dry-run",
@@ -1253,6 +1275,30 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(plan.model_dump_json(indent=2))
             return 0 if plan.status != "blocked" else 2
+        if args.command == "approve-wave9-local-pr-plan-materialization":
+            plan = read_wave9_local_pr_plan(root, args.plan_id)
+            approval = approve_wave9_local_pr_plan_materialization(
+                project_root=root,
+                plan=plan,
+                approval_id=args.approval_id,
+                approved_by=args.approved_by,
+                reason=args.reason,
+            )
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "materialize-wave9-local-pr-plan":
+            plan = read_wave9_local_pr_plan(root, args.plan_id)
+            approval = read_wave9_local_branch_materialization_approval(root, args.plan_id)
+            result = materialize_wave9_local_pr_plan(
+                project_root=root,
+                source_repo=Path(args.source_repo),
+                plan=plan,
+                approval=approval,
+                materialization_id=args.materialization_id,
+                worktree_path=Path(args.worktree_path),
+            )
+            print(result.model_dump_json(indent=2))
+            return 0 if result.status != "blocked" else 2
         if args.command == "real-multi-worker-live-dry-run":
             plan = _read_multi_worker_plan(root, args.plan_id)
             worker_profile = plan.route.worker_profile_ids[0]

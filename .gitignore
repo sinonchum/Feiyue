@@ -61,3 +61,6 @@ local-notes/
 
 # Feiyue local Wave9 PR-plan evidence
 .hermes/wave9-local-pr-plans/
+
+# Feiyue local Wave9 branch materialization evidence
+.hermes/wave9-local-branch-materializations/
