@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-14
-> **Verified baseline**：`608 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `608 passed`.
+> **Verified baseline**：`612 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `612 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1342,7 +1342,7 @@ M5 Project Knowledge
 
 ## 19.1 Blueprint Status Sync v2：当前最准确阶段判断
 
-旧状态矩阵已压缩：当前 Feiyue 约 **75–80%** 完成 Master Blueprint 的工程目标。它已经完成 provider-free safety foundation、真实 Hermes profile evidence、Phase C live evidence ingestion、real_creative_e2e creative dry-run、asset/review/promotion gates、capability-history、longitudinal-gain reporting 与首个 longitudinal mini-program；但仍不是完全自治的真实生产开发组织。
+旧状态矩阵已压缩：当前 Feiyue 约 **75–80%** 完成 Master Blueprint 的工程目标。它已经完成 provider-free safety foundation、真实 Hermes profile evidence、Phase C live evidence ingestion、real_creative_e2e creative dry-run、asset/review/promotion gates、capability-history、longitudinal-gain reporting、首个 longitudinal mini-program 与 productized real teacher-retry CLI；但仍不是完全自治的真实生产开发组织。
 
 当前已证明的闭环是：
 
@@ -1562,7 +1562,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`608 passed`。
+- `python -m pytest -q`：`612 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1866,10 +1866,12 @@ Wave5-1 through Wave5-6 are now implemented and locally smoke-verified. Remainin
 
 - **Blueprint Status Sync v2**：compressed the current matrix against Master Blueprint into a 75–80% engineering-completion assessment, clarifying that Phase C live evidence ingestion, `real_creative_e2e`, capability-history, longitudinal-gain, approval gates, and release-readiness seams are complete while real multi-worker project execution and production side effects remain gated.
 - **Longitudinal Mini-Program 20260614**：added `LongitudinalMiniProgramRunner` and `feiyue-runs longitudinal-mini-program --run-id longitudinal-mini-program-20260614 --write-report`. The provider-free 3-batch run persisted `.hermes/longitudinal-mini-programs/longitudinal-mini-program-20260614/evidence.json`, recorded baseline → lesson_injected → routing_adjusted phases, and ingested 3 `longitudinal_mini_program` records into capability-history.
+- **4A Productized real teacher retry**：added `SequencedHermesProfileRunner` and `feiyue-runs run-approved-multi-worker-teacher-retry` so the real worker initial call, real teacher guidance call, and real worker retry call are bound to three exact `AuthorizedProviderRunRecord` files instead of a temporary script. Real Feiyue repo smoke `real-repo-4a-productized-teacher-retry-dry-run` verified `feiyue-mid-deepseek-pro` + `feiyue-strong-gpt55` with provider_call_count `3`, retry_performed `true`, teacher_guidance_events `1`, `dry_run_only: true`, `promotion_attempted: false`, and `global_hermes_config_mutated: false`.
+- **4C true multi-student planner design**：added `docs/true-multi-student-planner-design.md`, explicitly separating the current one student + teacher retry lane from future multiple student workers with assignment scopes, merge strategy, conflict handling, and combined verifier evidence. The design states that promotion remains out of scope for the first true multi-student slice.
 - Observed measurement deltas: pass_rate_delta `+1.0`, teacher_call_rate_delta `-1.0`, retry_count_delta `-2`, repeat_error_count_delta `-2`, with `provider_call_count: 0`, `dry_run_only: true`, `promotion_attempted: false`, `production_mutated: false`, and `global_hermes_config_mutated: false`.
 
 ### Phase B local verification
 
-- `python -m pytest -q`：`608 passed`。
+- `python -m pytest -q`：`612 passed`。
 - New targeted contracts cover review UI disabled actions, CLI reference generation, provider-free semantic review evidence, and creative acceptance/taste metrics.
 - Phase C remains explicit-authorization-gated for external PR/merge/deploy/production promotion and larger real-provider matrices.

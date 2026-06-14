@@ -20,6 +20,7 @@ from feiyue_core.workflow.multi_worker_workflow_dry_run import (
     MultiWorkerTeacherEscalationAuthorization,
     build_multi_worker_profile_runner,
 )
+from feiyue_core.workflow.sequenced_profile_runner import SequencedHermesProfileRunner
 from feiyue_core.workflow.task_contract import TaskContract
 
 
@@ -122,6 +123,36 @@ def _provider_run_record(profile: str = "steady-4c") -> AuthorizedProviderRunRec
         approved_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
     return AuthorizedProviderRunRecord(run_id="run-hermes-seam", authorization=auth)
+
+
+def _provider_record_path(tmp_path: Path, record: AuthorizedProviderRunRecord, name: str) -> Path:
+    path = tmp_path / f"{name}.json"
+    path.write_text(record.model_dump_json(indent=2), encoding="utf-8")
+    return path
+
+
+def _python_provider_run_record(
+    *,
+    run_id: str,
+    profile: str,
+    stdout_json: str,
+    tmp_path: Path,
+) -> AuthorizedProviderRunRecord:
+    auth = RealProviderAuthorization(
+        approved_by="test-suite",
+        authorized_scope=AuthorizedScope.HERMES_PROFILE_SUBPROCESS,
+        provider_or_profile=profile,
+        command=(sys.executable, "-c", f"print({stdout_json!r})", profile),
+        cwd=str(tmp_path),
+        max_requests=1,
+        timeout_seconds=20,
+        budget_ceiling="0.00 USD",
+        network_scope="local subprocess fixture only",
+        evidence_retention=".hermes/provider-runs retained locally",
+        no_global_config_mutation=True,
+        approved_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    return AuthorizedProviderRunRecord(run_id=run_id, authorization=auth)
 
 
 
@@ -622,3 +653,250 @@ def test_multi_worker_dry_run_rejects_mismatched_plan_authorization(tmp_path: Pa
     assert report.provider_call_count == 0
     assert "authorization_plan_id_mismatch" in report.reason_codes
     assert runner.requests == []
+
+
+def test_sequenced_hermes_profile_runner_consumes_exact_records_by_profile(tmp_path: Path) -> None:
+    worker = "steady-4c"
+    teacher = "teacher-strong"
+    records = [
+        _python_provider_run_record(
+            run_id="worker-initial",
+            profile=worker,
+            stdout_json=json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a - b\n"}]}),
+            tmp_path=tmp_path,
+        ),
+        _python_provider_run_record(
+            run_id="teacher-guidance",
+            profile=teacher,
+            stdout_json=json.dumps({"guidance": "Use addition."}),
+            tmp_path=tmp_path,
+        ),
+        _python_provider_run_record(
+            run_id="worker-retry",
+            profile=worker,
+            stdout_json=json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a + b\n"}]}),
+            tmp_path=tmp_path,
+        ),
+    ]
+    runner = SequencedHermesProfileRunner(project_root=tmp_path, run_records=records)
+
+    assert runner.run(ProfileRunRequest(profile=worker, role="worker", prompt="initial", source_ids=("test",))).exit_code == 0
+    assert runner.run(ProfileRunRequest(profile=teacher, role="teacher", prompt="teacher", source_ids=("test",))).exit_code == 0
+    assert runner.run(ProfileRunRequest(profile=worker, role="worker", prompt="retry", source_ids=("test",))).exit_code == 0
+    exhausted = runner.run(ProfileRunRequest(profile=worker, role="worker", prompt="extra", source_ids=("test",)))
+    assert exhausted.exit_code == 126
+    assert "no authorized provider run record remains" in exhausted.stderr
+
+
+def test_runs_cli_productized_teacher_retry_with_sequenced_records(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _plan(tmp_path)
+
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "approve-multi-worker-dry-run",
+            "--plan-id",
+            "wave4-5b-plan",
+            "--approved-by",
+            "test-suite",
+            "--approval-id",
+            "auth.wave4-5f-worker",
+            "--reason",
+            "Approve sequenced teacher retry CLI smoke.",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+    teacher_auth = _teacher_authorization()
+    teacher_auth_path = tmp_path / ".hermes" / "multi-worker-plans" / "wave4-5b-plan" / "teacher-approval.json"
+    teacher_auth_path.write_text(teacher_auth.model_dump_json(indent=2), encoding="utf-8")
+    initial = _provider_record_path(
+        tmp_path,
+        _python_provider_run_record(
+            run_id="worker-initial-cli",
+            profile="steady-4c",
+            stdout_json=json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a - b\n"}]}),
+            tmp_path=tmp_path,
+        ),
+        "worker-initial-record",
+    )
+    teacher = _provider_record_path(
+        tmp_path,
+        _python_provider_run_record(
+            run_id="teacher-cli",
+            profile="teacher-strong",
+            stdout_json=json.dumps({"guidance": "Use addition."}),
+            tmp_path=tmp_path,
+        ),
+        "teacher-record",
+    )
+    retry = _provider_record_path(
+        tmp_path,
+        _python_provider_run_record(
+            run_id="worker-retry-cli",
+            profile="steady-4c",
+            stdout_json=json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a + b\n"}]}),
+            tmp_path=tmp_path,
+        ),
+        "worker-retry-record",
+    )
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "run-approved-multi-worker-teacher-retry",
+            "--plan-id",
+            "wave4-5b-plan",
+            "--run-id",
+            "wave4-5f-productized-teacher-retry",
+            "--source-repo",
+            str(repo),
+            "--project-name",
+            "toy-calculator",
+            "--task-id",
+            "task.wave4-5b",
+            "--title",
+            "Fix calculator add",
+            "--scope",
+            "Make add return a sum.",
+            "--file-to-modify",
+            "calc.py",
+            "--verification-command",
+            "python -m pytest -q",
+            "--teacher-authorization-path",
+            str(teacher_auth_path),
+            "--worker-initial-run-record",
+            str(initial),
+            "--teacher-run-record",
+            str(teacher),
+            "--worker-retry-run-record",
+            str(retry),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=_cli_env(),
+    )
+
+    assert run.returncode == 0, run.stderr or run.stdout
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "verified"
+    assert payload["worker_profile"] == "steady-4c"
+    assert payload["teacher_profile"] == "teacher-strong"
+    assert payload["provider_call_count"] == 3
+    assert payload["retry_performed"] is True
+    assert len(payload["teacher_guidance_events"]) == 1
+    assert payload["dry_run_only"] is True
+    assert payload["promotion_attempted"] is False
+    assert payload["global_hermes_config_mutated"] is False
+    evidence = tmp_path / ".hermes" / "multi-worker-workflows" / "wave4-5f-productized-teacher-retry" / "evidence.json"
+    assert evidence.exists()
+    assert (repo / "calc.py").read_text(encoding="utf-8") == "def add(a, b):\n    return a - b\n"
+
+
+def test_runs_cli_teacher_retry_blocks_missing_retry_record_before_provider_calls(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _plan(tmp_path)
+    subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "approve-multi-worker-dry-run",
+            "--plan-id",
+            "wave4-5b-plan",
+            "--approved-by",
+            "test-suite",
+            "--approval-id",
+            "auth.wave4-5f-missing-retry",
+            "--reason",
+            "Approve sequenced teacher retry CLI smoke.",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+    teacher_auth_path = tmp_path / "teacher-approval.json"
+    teacher_auth_path.write_text(_teacher_authorization().model_dump_json(indent=2), encoding="utf-8")
+    initial = _provider_record_path(
+        tmp_path,
+        _python_provider_run_record(
+            run_id="worker-initial-missing-retry",
+            profile="steady-4c",
+            stdout_json=json.dumps({"writes": [{"path": "calc.py", "content": "def add(a, b):\n    return a - b\n"}]}),
+            tmp_path=tmp_path,
+        ),
+        "worker-initial-missing-retry-record",
+    )
+    teacher = _provider_record_path(
+        tmp_path,
+        _python_provider_run_record(
+            run_id="teacher-missing-retry",
+            profile="teacher-strong",
+            stdout_json=json.dumps({"guidance": "Use addition."}),
+            tmp_path=tmp_path,
+        ),
+        "teacher-missing-retry-record",
+    )
+
+    run = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "run-approved-multi-worker-teacher-retry",
+            "--plan-id",
+            "wave4-5b-plan",
+            "--run-id",
+            "wave4-5f-missing-retry-record",
+            "--source-repo",
+            str(repo),
+            "--project-name",
+            "toy-calculator",
+            "--task-id",
+            "task.wave4-5b",
+            "--title",
+            "Fix calculator add",
+            "--scope",
+            "Make add return a sum.",
+            "--file-to-modify",
+            "calc.py",
+            "--verification-command",
+            "python -m pytest -q",
+            "--teacher-authorization-path",
+            str(teacher_auth_path),
+            "--worker-initial-run-record",
+            str(initial),
+            "--teacher-run-record",
+            str(teacher),
+        ],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=_cli_env(),
+    )
+
+    assert run.returncode == 2
+    payload = json.loads(run.stdout)
+    assert payload["status"] == "blocked"
+    assert payload["provider_call_count"] == 0
+    assert "profile_runner_selection_failed" in payload["reason_codes"]
+    assert any("--worker-retry-run-record is required" in reason for reason in payload["reason_codes"])

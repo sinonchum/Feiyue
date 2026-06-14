@@ -24,6 +24,7 @@ from feiyue_core.workflow.longitudinal_mini_program import LongitudinalMiniProgr
 from feiyue_core.workflow.profile_worker_bridge import _parse_candidate_writes
 from feiyue_core.workflow.review_inbox import ReviewInbox
 from feiyue_core.workflow.semantic_reviewer import ProviderFreeSemanticReviewer, SemanticReviewRequest
+from feiyue_core.workflow.sequenced_profile_runner import SequencedHermesProfileRunner, load_authorized_provider_run_record
 from feiyue_core.workflow.promotion_lifecycle import (
     approve_draft_pr,
     create_approved_draft_pr,
@@ -65,6 +66,7 @@ from feiyue_core.workflow.real_multi_worker_live_dry_run import (
 from feiyue_core.workflow.multi_worker_orchestration import MultiWorkerOrchestrationPlan, MultiWorkerOrchestrationPlanner, MultiWorkerPlanError
 from feiyue_core.workflow.multi_worker_workflow_dry_run import (
     MultiWorkerProfileRunnerSelectionError,
+    MultiWorkerTeacherEscalationAuthorization,
     MultiWorkerWorkflowDryRunAuthorization,
     MultiWorkerWorkflowDryRunOrchestrator,
     MultiWorkerWorkflowDryRunReport,
@@ -229,6 +231,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_multi_worker_parser.add_argument("--profile-runner", choices=["fake", "hermes"], default="fake")
     run_multi_worker_parser.add_argument("--fake-worker-response-json")
     run_multi_worker_parser.add_argument("--hermes-run-record", help="Path to a persisted AuthorizedProviderRunRecord JSON for the selected worker")
+
+    teacher_retry_parser = subparsers.add_parser(
+        "run-approved-multi-worker-teacher-retry",
+        help="Run an approved worker+teacher+retry dry-run with three exact provider run records",
+    )
+    teacher_retry_parser.add_argument("--plan-id", required=True)
+    teacher_retry_parser.add_argument("--run-id", required=True)
+    teacher_retry_parser.add_argument("--source-repo", required=True)
+    teacher_retry_parser.add_argument("--project-name", required=True)
+    teacher_retry_parser.add_argument("--task-id", required=True)
+    teacher_retry_parser.add_argument("--title", required=True)
+    teacher_retry_parser.add_argument("--scope", required=True)
+    teacher_retry_parser.add_argument("--file-to-modify", action="append", required=True, dest="files_to_modify")
+    teacher_retry_parser.add_argument("--verification-command", action="append", required=True, dest="verification_commands")
+    teacher_retry_parser.add_argument("--acceptance-criterion", action="append", default=[], dest="acceptance_criteria")
+    teacher_retry_parser.add_argument("--escalation-rule", default="Approved multi-worker teacher retry dry-run only.")
+    teacher_retry_parser.add_argument("--teacher-authorization-path", required=True)
+    teacher_retry_parser.add_argument("--worker-initial-run-record")
+    teacher_retry_parser.add_argument("--teacher-run-record")
+    teacher_retry_parser.add_argument("--worker-retry-run-record")
 
     real_multi_worker_parser = subparsers.add_parser(
         "real-multi-worker-live-dry-run",
@@ -653,6 +675,50 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(result.model_dump_json(indent=2))
             return 0
+        if args.command == "run-approved-multi-worker-teacher-retry":
+            plan = _read_multi_worker_plan(root, args.plan_id)
+            approval = read_multi_worker_dry_run_approval(root, args.plan_id)
+            contract = TaskContract(
+                task_id=args.task_id,
+                title=args.title,
+                scope=args.scope,
+                files_to_modify=args.files_to_modify,
+                acceptance_criteria=args.acceptance_criteria,
+                verification_commands=args.verification_commands,
+                escalation_rule=args.escalation_rule,
+            )
+            try:
+                teacher_authorization = _read_multi_worker_teacher_authorization(Path(args.teacher_authorization_path))
+                runner = _build_sequenced_teacher_retry_runner(
+                    root=root,
+                    plan=plan,
+                    teacher_authorization=teacher_authorization,
+                    worker_initial_run_record=args.worker_initial_run_record,
+                    teacher_run_record=args.teacher_run_record,
+                    worker_retry_run_record=args.worker_retry_run_record,
+                )
+            except (FileNotFoundError, MultiWorkerProfileRunnerSelectionError, ValueError) as exc:
+                result = _profile_runner_selection_blocked_report(
+                    root=root,
+                    run_id=args.run_id,
+                    contract=contract,
+                    plan=plan,
+                    reason=str(exc),
+                )
+                print(result.model_dump_json(indent=2))
+                return 2
+            result = MultiWorkerWorkflowDryRunOrchestrator(profile_runner=runner).run(
+                project_root=root,
+                source_repo=Path(args.source_repo),
+                contract=contract,
+                project_name=args.project_name,
+                plan=plan,
+                authorization=approval,
+                run_id=args.run_id,
+                teacher_escalation_authorization=teacher_authorization,
+            )
+            print(result.model_dump_json(indent=2))
+            return 0 if result.status != "blocked" else 2
         if args.command == "real-multi-worker-live-dry-run":
             plan = _read_multi_worker_plan(root, args.plan_id)
             worker_profile = plan.route.worker_profile_ids[0]
@@ -728,6 +794,44 @@ def _read_multi_worker_plan(root: Path, plan_id: str) -> MultiWorkerOrchestratio
     if not plan_path.exists():
         raise FileNotFoundError(f"Multi-worker plan evidence not found for plan_id: {plan_id}")
     return MultiWorkerOrchestrationPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
+
+
+def _read_multi_worker_teacher_authorization(path: Path) -> MultiWorkerTeacherEscalationAuthorization:
+    if not path.exists():
+        raise FileNotFoundError(f"Multi-worker teacher escalation authorization not found: {path}")
+    return MultiWorkerTeacherEscalationAuthorization.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def _build_sequenced_teacher_retry_runner(
+    *,
+    root: Path,
+    plan: MultiWorkerOrchestrationPlan,
+    teacher_authorization: MultiWorkerTeacherEscalationAuthorization,
+    worker_initial_run_record: str | Path | None,
+    teacher_run_record: str | Path | None,
+    worker_retry_run_record: str | Path | None,
+) -> SequencedHermesProfileRunner:
+    if worker_initial_run_record is None:
+        raise MultiWorkerProfileRunnerSelectionError("--worker-initial-run-record is required")
+    if teacher_run_record is None:
+        raise MultiWorkerProfileRunnerSelectionError("--teacher-run-record is required")
+    if worker_retry_run_record is None:
+        raise MultiWorkerProfileRunnerSelectionError("--worker-retry-run-record is required")
+    worker_profile = plan.route.worker_profile_ids[0] if plan.route.worker_profile_ids else ""
+    teacher_profile = teacher_authorization.teacher_profile_id
+    records = [
+        load_authorized_provider_run_record(worker_initial_run_record),
+        load_authorized_provider_run_record(teacher_run_record),
+        load_authorized_provider_run_record(worker_retry_run_record),
+    ]
+    expected_profiles = [worker_profile, teacher_profile, worker_profile]
+    for record, expected_profile in zip(records, expected_profiles, strict=True):
+        actual_profile = record.authorization.provider_or_profile
+        if actual_profile != expected_profile:
+            raise MultiWorkerProfileRunnerSelectionError(
+                f"sequenced run record profile mismatch: expected {expected_profile}, got {actual_profile}"
+            )
+    return SequencedHermesProfileRunner(project_root=root, run_records=records)
 
 
 def _read_real_multi_worker_authorization(path: Path) -> RealMultiWorkerLiveDryRunAuthorization:

@@ -35,7 +35,8 @@ Generated from the productized `feiyue-runs` command registry.
 
 - `feiyue-runs multi-worker-plan --plan-id <id> --task-id <id> --capability <name>` — Create a provider-free multi-worker route plan.
 - `feiyue-runs approve-multi-worker-dry-run --plan-id <id> --approved-by <name> --approval-id <id> --reason <text>` — Create exact approval evidence for a multi-worker dry-run plan.
-- `feiyue-runs run-approved-multi-worker-dry-run --plan-id <id> --run-id <id> ...` — Run an approved fake-first multi-worker workflow dry-run.
+- `feiyue-runs run-approved-multi-worker-dry-run --plan-id <id> --run-id <id> --profile-runner fake|hermes ...` — Run an approved selected-worker dry-run.
+- `feiyue-runs run-approved-multi-worker-teacher-retry --plan-id <id> --run-id <id> --worker-initial-run-record <json> --teacher-run-record <json> --worker-retry-run-record <json>` — Run an approved worker+teacher+retry dry-run using three exact provider run records.
 - `feiyue-runs real-multi-worker-live-dry-run --authorization-path <path> --plan-id <id> --run-id <id> ...` — Run an explicitly authorized real multi-worker live dry-run seam.
 
 ## Approval-gated operations
