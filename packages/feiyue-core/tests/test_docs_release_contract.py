@@ -15,6 +15,18 @@ OUTLINE = REPO_ROOT / "docs" / "Feiyue-self-evolution-development-outline.md"
 PRD = REPO_ROOT / "docs" / "Feiyue-PRD.md"
 SYSTEM_DOCTRINE = REPO_ROOT / "docs" / "Feiyue-system-doctrine.md"
 DEVELOPMENT_OUTLINE = REPO_ROOT / "docs" / "Feiyue-development-outline.md"
+OPERATOR_GUIDE = REPO_ROOT / "docs" / "operator-guide.md"
+APPROVAL_RUNBOOKS = REPO_ROOT / "docs" / "approval-runbooks.md"
+LIVE_SMOKE_PLAYBOOK = REPO_ROOT / "docs" / "live-smoke-playbook.md"
+SECURITY_BOUNDARIES = REPO_ROOT / "docs" / "security-boundaries.md"
+ROLLBACK_GUIDE = REPO_ROOT / "docs" / "rollback-guide.md"
+OPERATOR_DOCS = (
+    OPERATOR_GUIDE,
+    APPROVAL_RUNBOOKS,
+    LIVE_SMOKE_PLAYBOOK,
+    SECURITY_BOUNDARIES,
+    ROLLBACK_GUIDE,
+)
 
 
 def test_readme_indexes_release_contribution_and_architecture_docs() -> None:
@@ -40,6 +52,46 @@ def test_docs_index_links_canonical_docs_and_provider_free_surfaces() -> None:
     assert "../CONTRIBUTING.md" in content
     assert "provider-free example smoke" in content
     assert "provider-free benchmark smoke" in content
+
+
+def test_operator_docs_are_indexed_from_readme_and_docs_index() -> None:
+    readme = README.read_text(encoding="utf-8")
+    docs_index = DOCS_INDEX.read_text(encoding="utf-8")
+
+    for path in OPERATOR_DOCS:
+        assert path.exists(), path
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        assert rel in readme
+        assert path.name in docs_index
+
+
+def test_operator_docs_capture_safety_boundaries_and_required_phrases() -> None:
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in OPERATOR_DOCS)
+
+    assert "no global Hermes config mutation" in combined
+    assert "dry_run_only: true" in combined
+    assert "exact authorization" in combined
+    assert "production PR/promotion disabled by default" in combined
+    assert "rollback evidence" in combined
+    assert "review inbox read-only" in combined
+    assert "promotion_attempted: false" in combined
+
+
+def test_operator_docs_include_actionable_local_cli_examples_without_live_execution() -> None:
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in OPERATOR_DOCS)
+
+    assert "python3 -m feiyue_core.workflow.runs_cli --root ../.. review-inbox --format json" in combined
+    assert "approve-promotion <run_id>" in combined
+    assert "promote-approved <run_id>" in combined
+    assert "workflow-smoke <run_id>" in combined
+    assert "workflow-promotion <run_id>" in combined
+    assert "approve-routing-proposal" in combined
+    assert "apply-approved-routing" in combined
+    assert "approve-multi-worker-dry-run" in combined
+    assert "run-approved-multi-worker-dry-run" in combined
+    assert "PROVIDER_FREE_EXAMPLE_SMOKE_OK" in combined
+    assert "BENCHMARK_SMOKE_OK" in combined
+    assert "Do not execute live provider/profile calls unless" in combined
 
 
 def test_release_checklist_captures_m14_gates_and_authorization_boundaries() -> None:

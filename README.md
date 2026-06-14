@@ -80,6 +80,11 @@ GET /runs/<task_id>/handoff
 - [`docs/architecture.md`](docs/architecture.md) — provider-free architecture flow, roles, evidence/handoff surfaces, and gated future work.
 - [`docs/assets/feiyue-architecture.svg`](docs/assets/feiyue-architecture.svg) — static flat SVG diagram of the Feiyue provider-free workflow.
 - [`docs/release-checklist.md`](docs/release-checklist.md) — release gate checklist covering local commands, CI requirements, secret scan, and authorization boundaries.
+- [`docs/operator-guide.md`](docs/operator-guide.md) — operator entrypoint for daily checks, evidence paths, no global Hermes config mutation, and dry-run defaults.
+- [`docs/approval-runbooks.md`](docs/approval-runbooks.md) — exact authorization procedures for promotion, routing, and multi-worker dry-run approvals.
+- [`docs/live-smoke-playbook.md`](docs/live-smoke-playbook.md) — provider-free rehearsal, live/profile smoke authorization checklist, and abort gates.
+- [`docs/security-boundaries.md`](docs/security-boundaries.md) — forbidden actions, review inbox read-only behavior, secrets, and production PR/promotion disabled by default.
+- [`docs/rollback-guide.md`](docs/rollback-guide.md) — rollback evidence requirements, local rollback simulation, and stop conditions.
 - [`docs/real-provider-integration-plan.md`](docs/real-provider-integration-plan.md) — plan-only sequence and safety checklist for explicitly authorized real provider execution, Hermes profile subprocess smoke, teacher escalation, and real weak/strong benchmark work.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution rules for TDD, provider-free defaults, secret handling, and CI expectations.
 - [`docs/resilient-session-runtime.md`](docs/resilient-session-runtime.md) — feature design for anti-amnesia runtime recovery across model fallback, network/power loss, and unknown side effects.

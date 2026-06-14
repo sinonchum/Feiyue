@@ -14,6 +14,11 @@ This index is a static documentation stub for the provider-free Feiyue foundatio
 - [Architecture](architecture.md) — provider-free system flow, role boundaries, evidence surfaces, and gated future work.
 - [Static architecture diagram](assets/feiyue-architecture.svg) — flat SVG diagram of the human-to-curator workflow.
 - [Release Checklist](release-checklist.md) — local verification commands, CI gates, secret scan, and authorization boundaries.
+- [Operator Guide](operator-guide.md) — daily operator checks, evidence locations, no global Hermes config mutation, and dry-run defaults.
+- [Approval Runbooks](approval-runbooks.md) — exact authorization commands for workflow promotion, routing apply, and multi-worker dry-run approvals.
+- [Live Smoke Playbook](live-smoke-playbook.md) — provider-free rehearsal, live/profile smoke authorization checklist, and abort gates.
+- [Security Boundaries](security-boundaries.md) — forbidden actions, review inbox read-only behavior, secret handling, and production PR/promotion disabled by default.
+- [Rollback Guide](rollback-guide.md) — rollback evidence requirements, local rollback simulation, and stop conditions.
 - [Real Provider Integration Plan](real-provider-integration-plan.md) — plan-only authorization sequence, forbidden actions, no global Hermes config mutation, auditable evidence, and rollback/abort gates for future real provider execution.
 - [Contributing Guide](../CONTRIBUTING.md) — TDD, provider-free defaults, secret handling, and CI expectations.
 
