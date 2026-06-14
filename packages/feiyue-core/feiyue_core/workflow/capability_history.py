@@ -138,6 +138,21 @@ class CapabilityHistoryCollector:
                 )
             )
 
+        for path, payload in self._load_evidence_files("real-multi-worker-runs", "evidence.json"):
+            run_id = _string(payload.get("run_id")) or path.parent.name
+            promotion = promotions.get(run_id)
+            if promotion is not None:
+                consumed_promotion_run_ids.add(run_id)
+            records.append(
+                self._record_from_payload(
+                    payload,
+                    path=path,
+                    source_kind="real_multi_worker_live_dry_run",
+                    generated_at=generated_at,
+                    promotion=promotion,
+                )
+            )
+
         for run_id, promotion in sorted(promotions.items()):
             if run_id in consumed_promotion_run_ids:
                 continue

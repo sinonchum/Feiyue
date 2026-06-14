@@ -180,13 +180,13 @@ class ReviewInbox:
         return items
 
     def _multi_worker_workflow_plan_ids(self) -> set[str]:
-        root = self.hermes_dir / "multi-worker-workflows"
         plan_ids: set[str] = set()
-        for evidence_path in _sorted_glob(root, "*/evidence.json"):
-            payload = _read_json_object(evidence_path)
-            plan_id = _text(payload.get("plan_id"))
-            if plan_id:
-                plan_ids.add(plan_id)
+        for evidence_root in (self.hermes_dir / "multi-worker-workflows", self.hermes_dir / "real-multi-worker-runs"):
+            for evidence_path in _sorted_glob(evidence_root, "*/evidence.json"):
+                payload = _read_json_object(evidence_path)
+                plan_id = _text(payload.get("plan_id"))
+                if plan_id:
+                    plan_ids.add(plan_id)
         return plan_ids
 
     def _asset_proposals(self) -> list[ReviewInboxItem]:

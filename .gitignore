@@ -21,6 +21,7 @@ local-notes/
 .hermes/routing-proposals/
 .hermes/multi-worker-plans/
 .hermes/multi-worker-workflows/
+.hermes/real-multi-worker-runs/
 .hermes/live-smoke-plans/
 .hermes/live-smoke-sandboxes/
 .hermes/asset-reuse/
