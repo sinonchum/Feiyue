@@ -64,6 +64,8 @@ CLI_REFERENCE_COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("feiyue-runs materialize-wave9-local-pr-plan --plan-id <id> --materialization-id <id> --source-repo <path> --worktree-path <path>", "Materialize approved Wave9 local PR-plan files into a dedicated local worktree branch; no push, PR, merge, or deploy."),
         ("feiyue-runs approve-wave9-local-branch-commit --materialization-id <id> --approval-id <id> --approved-by <user>", "Create exact local-only approval to commit a materialized Wave9 local branch."),
         ("feiyue-runs commit-wave9-local-branch --materialization-id <id> --commit-id <id> --commit-message <msg>", "Create a local commit from approved Wave9 branch materialization; no push, PR, merge, or deploy."),
+        ("feiyue-runs approve-wave9-draft-pr --commit-id <id> --approval-id <id> --approved-by <user> --target-branch main", "Create exact approval to push a Wave9 committed local branch and open a GitHub Draft PR; no merge, auto-merge, deploy, or production mutation."),
+        ("feiyue-runs create-wave9-draft-pr --commit-id <id> --pr-id <id> --target-branch main --adapter fake|github", "Create exact-approved Wave9 Draft PR evidence; github mode pushes the branch and opens a Draft PR only."),
     ],
 }
 

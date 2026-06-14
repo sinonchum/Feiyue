@@ -47,6 +47,12 @@ class Wave9LocalBranchCommitStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class Wave9DraftPRStatus(StrEnum):
+    CREATED = "created"
+    FAILED = "failed"
+    BLOCKED = "blocked"
+
+
 class Wave9TaskAssignment(FeiyueModel):
     assignment_id: str
     profile_id: str
@@ -417,6 +423,171 @@ class Wave9LocalBranchCommit(FeiyueModel):
         if self.promotion_attempted or self.global_hermes_config_mutated or self.production_mutated:
             raise ValueError("Wave9 local branch commits cannot promote, mutate config, or mutate production")
         return self
+
+
+
+class Wave9DraftPRApproval(FeiyueModel):
+    approval_id: str
+    approved_by: str
+    approved_action: str
+    commit_id: str
+    local_commit_sha: str
+    local_branch_name: str
+    changed_files: list[str]
+    commit_hash: str
+    target_branch: str
+    draft_only: bool = True
+    provider_call_count: int = 0
+    branch_push_authorized: bool = True
+    external_pr_creation_authorized: bool = True
+    auto_merge_enabled: bool = False
+    merge_performed: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    approved_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
+    reason: str
+
+    @model_validator(mode="after")
+    def _safe_contract(self) -> "Wave9DraftPRApproval":
+        if self.approved_action != "create_wave9_draft_pr":
+            raise ValueError("approved_action must be create_wave9_draft_pr")
+        if self.draft_only is not True:
+            raise ValueError("Wave9 PR approval must be draft-only")
+        if self.provider_call_count != 0:
+            raise ValueError("Wave9 PR approval must be provider-free")
+        if not self.branch_push_authorized or not self.external_pr_creation_authorized:
+            raise ValueError("Wave9 Draft PR approval must explicitly authorize branch push and PR creation")
+        if self.auto_merge_enabled or self.merge_performed or self.deploy_performed or self.production_mutated:
+            raise ValueError("Wave9 Draft PR approval cannot authorize auto-merge, merge, deploy, or production mutation")
+        return self
+
+
+class Wave9DraftPR(FeiyueModel):
+    pr_id: str
+    commit_id: str
+    materialization_id: str
+    plan_id: str
+    execution_run_id: str
+    status: Wave9DraftPRStatus
+    approval_applies: bool = False
+    approval_id: str | None = None
+    local_branch_name: str
+    target_branch: str
+    changed_files: list[str] = Field(default_factory=list)
+    local_commit_sha: str | None = None
+    branch_pushed: bool = False
+    external_pr_created: bool = False
+    draft: bool = True
+    state: str | None = None
+    pr_number: int | None = None
+    pr_url: str | None = None
+    head_ref: str | None = None
+    base_ref: str | None = None
+    adapter: str = "fake"
+    provider_call_count: int = 0
+    reason_codes: list[str]
+    auto_merge_enabled: bool = False
+    merge_performed: bool = False
+    deploy_performed: bool = False
+    promotion_attempted: bool = False
+    global_hermes_config_mutated: bool = False
+    production_mutated: bool = False
+
+    @model_validator(mode="after")
+    def _draft_pr_contract(self) -> "Wave9DraftPR":
+        if self.provider_call_count != 0:
+            raise ValueError("Wave9 Draft PR evidence is provider-free")
+        if self.draft is not True:
+            raise ValueError("Wave9 external PR must be draft")
+        if self.auto_merge_enabled or self.merge_performed or self.deploy_performed:
+            raise ValueError("Wave9 Draft PR cannot enable auto-merge, merge, or deploy")
+        if self.promotion_attempted or self.global_hermes_config_mutated or self.production_mutated:
+            raise ValueError("Wave9 Draft PR cannot promote, mutate config, or mutate production")
+        return self
+
+
+class Wave9DraftPRAdapter:
+    name = "fake"
+
+    def create_draft_pr(self, *, source_branch: str, target_branch: str, title: str, body: str) -> dict[str, object]:
+        return {
+            "branch_pushed": False,
+            "external_pr_created": False,
+            "draft": True,
+            "state": "FAKE",
+            "auto_merge": False,
+            "pr_number": None,
+            "pr_url": f"fake://wave9-draft-pr/{source_branch}",
+            "head_ref": source_branch,
+            "base_ref": target_branch,
+        }
+
+
+class Wave9GitHubDraftPRAdapter(Wave9DraftPRAdapter):
+    name = "github"
+
+    def __init__(self, *, project_root: str | Path, worktree_path: str | Path, subprocess_runner=subprocess.run) -> None:
+        self.project_root = Path(project_root)
+        self.worktree_path = Path(worktree_path)
+        self._subprocess_runner = subprocess_runner
+
+    def create_draft_pr(self, *, source_branch: str, target_branch: str, title: str, body: str) -> dict[str, object]:
+        push = self._subprocess_runner(["git", "push", "-u", "origin", source_branch], cwd=self.worktree_path, text=True, capture_output=True, check=False)
+        if push.returncode != 0:
+            raise RuntimeError(push.stderr.strip() or push.stdout.strip() or "git push failed")
+        create = self._subprocess_runner(
+            ["gh", "pr", "create", "--draft", "--base", target_branch, "--head", source_branch, "--title", title, "--body", body],
+            cwd=self.project_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if create.returncode != 0:
+            # If a PR already exists, gh usually says so; resolve it by listing/viewing the head branch.
+            list_pr = self._subprocess_runner(
+                ["gh", "pr", "list", "--head", source_branch, "--state", "open", "--json", "number,url,isDraft,state,headRefName,baseRefName,autoMergeRequest", "--limit", "1"],
+                cwd=self.project_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if list_pr.returncode != 0:
+                raise RuntimeError(create.stderr.strip() or create.stdout.strip() or "gh pr create failed")
+            existing = json.loads(list_pr.stdout or "[]")
+            if not existing:
+                raise RuntimeError(create.stderr.strip() or create.stdout.strip() or "gh pr create failed")
+            payload = existing[0]
+        else:
+            pr_url = _extract_wave9_pr_url(create.stdout)
+            if not pr_url:
+                raise RuntimeError("gh pr create did not return a PR URL")
+            view = self._subprocess_runner(
+                ["gh", "pr", "view", pr_url, "--json", "number,url,isDraft,state,headRefName,baseRefName,autoMergeRequest"],
+                cwd=self.project_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if view.returncode != 0:
+                raise RuntimeError(view.stderr.strip() or view.stdout.strip() or "gh pr view failed")
+            payload = json.loads(view.stdout or "{}")
+        if payload.get("isDraft") is not True:
+            raise RuntimeError("Wave9 GitHub PR is not draft")
+        if payload.get("headRefName") != source_branch or payload.get("baseRefName") != target_branch:
+            raise RuntimeError("Wave9 GitHub PR branch mismatch")
+        if payload.get("autoMergeRequest") is not None:
+            raise RuntimeError("Wave9 GitHub PR unexpectedly has auto-merge enabled")
+        return {
+            "branch_pushed": True,
+            "external_pr_created": True,
+            "draft": True,
+            "state": payload.get("state"),
+            "auto_merge": False,
+            "pr_number": payload.get("number") if isinstance(payload.get("number"), int) else None,
+            "pr_url": payload.get("url") if isinstance(payload.get("url"), str) else None,
+            "head_ref": payload.get("headRefName"),
+            "base_ref": payload.get("baseRefName"),
+        }
 
 
 class Wave9TaskPackExecutor:
@@ -1194,6 +1365,226 @@ def _write_wave9_commit_evidence(project_root: str | Path, evidence: Wave9LocalB
     path.write_text(json.dumps(evidence.model_dump(mode="json"), indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
 
+
+
+
+def wave9_local_branch_commit_hash(commit: Wave9LocalBranchCommit) -> str:
+    canonical = json.dumps(commit.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def wave9_draft_pr_approval_path(project_root: str | Path, commit_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "wave9-draft-prs" / commit_id / "approval.json"
+
+
+def wave9_draft_pr_evidence_path(project_root: str | Path, pr_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "wave9-draft-prs" / pr_id / "evidence.json"
+
+
+def approve_wave9_draft_pr(
+    *,
+    project_root: str | Path,
+    commit: Wave9LocalBranchCommit,
+    approval_id: str,
+    approved_by: str,
+    target_branch: str,
+    reason: str,
+) -> Wave9DraftPRApproval:
+    approval = Wave9DraftPRApproval(
+        approval_id=approval_id,
+        approved_by=approved_by,
+        approved_action="create_wave9_draft_pr",
+        commit_id=commit.commit_id,
+        local_commit_sha=commit.local_commit_sha or "",
+        local_branch_name=commit.local_branch_name,
+        changed_files=commit.changed_files,
+        commit_hash=wave9_local_branch_commit_hash(commit),
+        target_branch=target_branch,
+        draft_only=True,
+        provider_call_count=0,
+        branch_push_authorized=True,
+        external_pr_creation_authorized=True,
+        auto_merge_enabled=False,
+        merge_performed=False,
+        deploy_performed=False,
+        production_mutated=False,
+        reason=reason,
+    )
+    path = wave9_draft_pr_approval_path(project_root, commit.commit_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(approval.model_dump(mode="json"), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return approval
+
+
+def read_wave9_draft_pr_approval(project_root: str | Path, commit_id: str) -> Wave9DraftPRApproval:
+    return Wave9DraftPRApproval.model_validate_json(wave9_draft_pr_approval_path(project_root, commit_id).read_text(encoding="utf-8"))
+
+
+def read_wave9_draft_pr_evidence(project_root: str | Path, pr_id: str) -> Wave9DraftPR:
+    return Wave9DraftPR.model_validate_json(wave9_draft_pr_evidence_path(project_root, pr_id).read_text(encoding="utf-8"))
+
+
+def create_wave9_draft_pr(
+    *,
+    project_root: str | Path,
+    commit: Wave9LocalBranchCommit,
+    approval: Wave9DraftPRApproval | None,
+    pr_id: str,
+    target_branch: str,
+    adapter: Wave9DraftPRAdapter | None = None,
+) -> Wave9DraftPR:
+    reasons = _wave9_draft_pr_block_reasons(commit=commit, approval=approval, target_branch=target_branch)
+    if reasons:
+        evidence = _wave9_draft_pr_evidence(
+            pr_id=pr_id,
+            commit=commit,
+            target_branch=target_branch,
+            status=Wave9DraftPRStatus.BLOCKED,
+            approval_applies=False,
+            approval_id=approval.approval_id if approval else None,
+            adapter_name=(adapter or Wave9DraftPRAdapter()).name,
+            created={},
+            reason_codes=reasons,
+        )
+        _write_wave9_draft_pr_evidence(project_root, evidence)
+        return evidence
+    adapter = adapter or Wave9DraftPRAdapter()
+    title = f"Wave9 real multi-worker result: {commit.commit_id}"
+    body = "\n".join([
+        "# Wave9 real multi-worker Draft PR",
+        "",
+        f"commit_id: {commit.commit_id}",
+        f"materialization_id: {commit.materialization_id}",
+        f"execution_run_id: {commit.execution_run_id}",
+        f"local_commit_sha: {commit.local_commit_sha}",
+        f"changed_files: {', '.join(commit.changed_files)}",
+        "",
+        "Safety flags:",
+        "- draft: true",
+        "- auto_merge_enabled: false",
+        "- merge_performed: false",
+        "- deploy_performed: false",
+        "- production_mutated: false",
+    ])
+    try:
+        created = adapter.create_draft_pr(source_branch=commit.local_branch_name, target_branch=target_branch, title=title, body=body)
+        reasons = ["wave9_draft_pr_approval_applies", "github_draft_pr_created"] if created.get("external_pr_created") else ["wave9_draft_pr_approval_applies", "fake_adapter_no_external_pr_created"]
+        evidence = _wave9_draft_pr_evidence(
+            pr_id=pr_id,
+            commit=commit,
+            target_branch=target_branch,
+            status=Wave9DraftPRStatus.CREATED,
+            approval_applies=True,
+            approval_id=approval.approval_id if approval else None,
+            adapter_name=adapter.name,
+            created=created,
+            reason_codes=reasons,
+        )
+    except Exception as exc:
+        evidence = _wave9_draft_pr_evidence(
+            pr_id=pr_id,
+            commit=commit,
+            target_branch=target_branch,
+            status=Wave9DraftPRStatus.FAILED,
+            approval_applies=True,
+            approval_id=approval.approval_id if approval else None,
+            adapter_name=adapter.name,
+            created={},
+            reason_codes=["wave9_draft_pr_approval_applies", f"draft_pr_adapter_failed:{exc}"],
+        )
+    _write_wave9_draft_pr_evidence(project_root, evidence)
+    return evidence
+
+
+def _wave9_draft_pr_block_reasons(*, commit: Wave9LocalBranchCommit, approval: Wave9DraftPRApproval | None, target_branch: str) -> list[str]:
+    reasons: list[str] = []
+    if commit.status is not Wave9LocalBranchCommitStatus.COMMITTED or not commit.local_commit_created or not commit.local_commit_sha:
+        reasons.append("wave9_local_branch_commit_not_committed")
+    if commit.branch_pushed or commit.external_pr_created or commit.merge_performed or commit.deploy_performed or commit.production_mutated:
+        reasons.append("wave9_local_branch_commit_not_pre_external_pr")
+    if not commit.worktree_path or not Path(commit.worktree_path).exists():
+        reasons.append("missing_wave9_commit_worktree")
+    if approval is None:
+        reasons.append("missing_wave9_draft_pr_approval")
+    else:
+        if approval.commit_id != commit.commit_id:
+            reasons.append("commit_id_mismatch")
+        if approval.local_commit_sha != commit.local_commit_sha:
+            reasons.append("local_commit_sha_mismatch")
+        if approval.local_branch_name != commit.local_branch_name:
+            reasons.append("local_branch_name_mismatch")
+        if approval.changed_files != commit.changed_files:
+            reasons.append("changed_files_mismatch")
+        if approval.commit_hash != wave9_local_branch_commit_hash(commit):
+            reasons.append("commit_hash_mismatch")
+        if approval.target_branch != target_branch:
+            reasons.append("target_branch_mismatch")
+        if approval.approved_action != "create_wave9_draft_pr":
+            reasons.append("approved_action_mismatch")
+        if not approval.draft_only or approval.provider_call_count != 0 or not approval.branch_push_authorized or not approval.external_pr_creation_authorized:
+            reasons.append("approval_not_draft_pr_only")
+        if approval.auto_merge_enabled or approval.merge_performed or approval.deploy_performed or approval.production_mutated:
+            reasons.append("approval_attempts_unsafe_pr_side_effect")
+    return reasons
+
+
+def _wave9_draft_pr_evidence(
+    *,
+    pr_id: str,
+    commit: Wave9LocalBranchCommit,
+    target_branch: str,
+    status: Wave9DraftPRStatus,
+    approval_applies: bool,
+    approval_id: str | None,
+    adapter_name: str,
+    created: dict[str, object],
+    reason_codes: list[str],
+) -> Wave9DraftPR:
+    return Wave9DraftPR(
+        pr_id=pr_id,
+        commit_id=commit.commit_id,
+        materialization_id=commit.materialization_id,
+        plan_id=commit.plan_id,
+        execution_run_id=commit.execution_run_id,
+        status=status,
+        approval_applies=approval_applies,
+        approval_id=approval_id,
+        local_branch_name=commit.local_branch_name,
+        target_branch=target_branch,
+        changed_files=commit.changed_files if approval_applies else [],
+        local_commit_sha=commit.local_commit_sha,
+        branch_pushed=bool(created.get("branch_pushed", False)),
+        external_pr_created=bool(created.get("external_pr_created", False)),
+        draft=bool(created.get("draft", True)),
+        state=created.get("state") if isinstance(created.get("state"), str) else None,
+        pr_number=created.get("pr_number") if isinstance(created.get("pr_number"), int) else None,
+        pr_url=created.get("pr_url") if isinstance(created.get("pr_url"), str) else None,
+        head_ref=created.get("head_ref") if isinstance(created.get("head_ref"), str) else None,
+        base_ref=created.get("base_ref") if isinstance(created.get("base_ref"), str) else None,
+        adapter=adapter_name,
+        provider_call_count=0,
+        reason_codes=reason_codes,
+        auto_merge_enabled=bool(created.get("auto_merge", False)),
+        merge_performed=False,
+        deploy_performed=False,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+    )
+
+
+def _write_wave9_draft_pr_evidence(project_root: str | Path, evidence: Wave9DraftPR) -> Path:
+    path = wave9_draft_pr_evidence_path(project_root, evidence.pr_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(evidence.model_dump(mode="json"), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def _extract_wave9_pr_url(stdout: str) -> str | None:
+    for token in stdout.replace("\n", " ").split():
+        if token.startswith("https://github.com/") and "/pull/" in token:
+            return token.strip()
+    return None
 
 def _wave9_assignment_prompt(*, project_name: str, task_pack: Wave9TaskPack, assignment: Wave9TaskAssignment) -> str:
     return "\n".join(

@@ -118,11 +118,17 @@ from feiyue_core.workflow.wave9_task_pack import (
     Wave9TaskPackExecutor,
     approve_wave9_task_pack_execution,
     approve_wave9_local_pr_plan_materialization,
+    Wave9DraftPRAdapter,
+    Wave9GitHubDraftPRAdapter,
+    approve_wave9_draft_pr,
     approve_wave9_local_branch_commit,
+    create_wave9_draft_pr,
     create_wave9_local_pr_plan,
     commit_wave9_local_branch,
     materialize_wave9_local_pr_plan,
+    read_wave9_draft_pr_approval,
     read_wave9_execution_evidence,
+    read_wave9_local_branch_commit,
     read_wave9_local_branch_commit_approval,
     read_wave9_local_branch_materialization,
     read_wave9_local_branch_materialization_approval,
@@ -506,6 +512,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     commit_wave9_parser.add_argument("--materialization-id", required=True)
     commit_wave9_parser.add_argument("--commit-id", required=True)
     commit_wave9_parser.add_argument("--commit-message", required=True)
+
+    approve_wave9_draft_pr_parser = subparsers.add_parser(
+        "approve-wave9-draft-pr",
+        help="Create exact approval to push a Wave9 committed local branch and open a GitHub Draft PR",
+    )
+    approve_wave9_draft_pr_parser.add_argument("--commit-id", required=True)
+    approve_wave9_draft_pr_parser.add_argument("--approval-id", required=True)
+    approve_wave9_draft_pr_parser.add_argument("--approved-by", required=True)
+    approve_wave9_draft_pr_parser.add_argument("--target-branch", required=True)
+    approve_wave9_draft_pr_parser.add_argument("--reason", required=True)
+
+    create_wave9_draft_pr_parser = subparsers.add_parser(
+        "create-wave9-draft-pr",
+        help="Create exact-approved Wave9 Draft PR evidence; fake mode emits local evidence, github mode pushes branch and opens Draft PR",
+    )
+    create_wave9_draft_pr_parser.add_argument("--commit-id", required=True)
+    create_wave9_draft_pr_parser.add_argument("--pr-id", required=True)
+    create_wave9_draft_pr_parser.add_argument("--target-branch", required=True)
+    create_wave9_draft_pr_parser.add_argument("--adapter", choices=["fake", "github"], default="fake")
 
     real_multi_worker_parser = subparsers.add_parser(
         "real-multi-worker-live-dry-run",
@@ -1343,6 +1368,36 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(result.model_dump_json(indent=2))
             return 0 if result.status != "blocked" else 2
+        if args.command == "approve-wave9-draft-pr":
+            commit = read_wave9_local_branch_commit(root, args.commit_id)
+            approval = approve_wave9_draft_pr(
+                project_root=root,
+                commit=commit,
+                approval_id=args.approval_id,
+                approved_by=args.approved_by,
+                target_branch=args.target_branch,
+                reason=args.reason,
+            )
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "create-wave9-draft-pr":
+            commit = read_wave9_local_branch_commit(root, args.commit_id)
+            approval = read_wave9_draft_pr_approval(root, args.commit_id)
+            adapter = (
+                Wave9GitHubDraftPRAdapter(project_root=root, worktree_path=Path(commit.worktree_path or root))
+                if args.adapter == "github"
+                else Wave9DraftPRAdapter()
+            )
+            evidence = create_wave9_draft_pr(
+                project_root=root,
+                commit=commit,
+                approval=approval,
+                pr_id=args.pr_id,
+                target_branch=args.target_branch,
+                adapter=adapter,
+            )
+            print(evidence.model_dump_json(indent=2))
+            return 0 if evidence.status != "blocked" else 2
         if args.command == "real-multi-worker-live-dry-run":
             plan = _read_multi_worker_plan(root, args.plan_id)
             worker_profile = plan.route.worker_profile_ids[0]

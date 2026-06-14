@@ -18,6 +18,7 @@ from feiyue_core.workflow.wave9_task_pack import (
     Wave9LocalPRPlanStatus,
     Wave9LocalBranchMaterializationStatus,
     Wave9LocalBranchCommitStatus,
+    Wave9DraftPRStatus,
     Wave9TaskAssignment,
     Wave9TaskPack,
     Wave9TaskPackAuthorization,
@@ -27,11 +28,14 @@ from feiyue_core.workflow.wave9_task_pack import (
     approve_wave9_local_branch_commit,
     materialize_wave9_local_pr_plan,
     commit_wave9_local_branch,
+    approve_wave9_draft_pr,
+    create_wave9_draft_pr,
     approve_wave9_task_pack_execution,
     read_wave9_execution_evidence,
     read_wave9_local_pr_plan,
     read_wave9_local_branch_materialization,
     read_wave9_local_branch_commit,
+    read_wave9_draft_pr_evidence,
     read_wave9_task_pack_authorization,
     task_pack_hash,
     validate_wave9_task_pack_authorization,
@@ -1020,3 +1024,162 @@ def test_wave9_7_cli_commits_local_branch_without_push_or_pr(tmp_path: Path) -> 
     assert payload["production_mutated"] is False
     assert payload["provider_call_count"] == 0
     assert (tmp_path / ".hermes" / "wave9-local-branch-commits" / "wave9-7-cli-local-commit" / "evidence.json").exists()
+
+
+class _FakeWave9DraftPRAdapter:
+    name = "fake-github"
+
+    def create_draft_pr(self, *, source_branch: str, target_branch: str, title: str, body: str) -> dict[str, object]:
+        return {
+            "branch_pushed": True,
+            "external_pr_created": True,
+            "draft": True,
+            "state": "OPEN",
+            "auto_merge": False,
+            "pr_number": 98,
+            "pr_url": "https://github.com/sinonchum/Feiyue/pull/98",
+            "head_ref": source_branch,
+            "base_ref": target_branch,
+        }
+
+
+def _committed_wave9_branch(tmp_path: Path):
+    _source, _plan, materialization = _materialized_branch_for_wave9_7(tmp_path)
+    approval = approve_wave9_local_branch_commit(
+        project_root=tmp_path,
+        materialization=materialization,
+        approval_id="wave9-7-approval",
+        approved_by="test-suite",
+        reason="Approve local-only commit.",
+    )
+    return commit_wave9_local_branch(
+        project_root=tmp_path,
+        materialization=materialization,
+        approval=approval,
+        commit_id="wave9-7-commit",
+        commit_message="wave9: add marker smoke files",
+    )
+
+
+def test_wave9_8_draft_pr_blocks_without_exact_approval(tmp_path: Path) -> None:
+    commit = _committed_wave9_branch(tmp_path)
+
+    evidence = create_wave9_draft_pr(
+        project_root=tmp_path,
+        commit=commit,
+        approval=None,
+        pr_id="wave9-8-draft-pr",
+        target_branch="main",
+        adapter=_FakeWave9DraftPRAdapter(),
+    )
+
+    assert evidence.status == Wave9DraftPRStatus.BLOCKED
+    assert evidence.approval_applies is False
+    assert evidence.branch_pushed is False
+    assert evidence.external_pr_created is False
+    assert evidence.merge_performed is False
+    assert evidence.deploy_performed is False
+    assert evidence.production_mutated is False
+    assert "missing_wave9_draft_pr_approval" in evidence.reason_codes
+
+
+def test_wave9_8_draft_pr_created_only_with_exact_approval(tmp_path: Path) -> None:
+    commit = _committed_wave9_branch(tmp_path)
+    approval = approve_wave9_draft_pr(
+        project_root=tmp_path,
+        commit=commit,
+        approval_id="wave9-8-approval",
+        approved_by="test-suite",
+        target_branch="main",
+        reason="Approve Draft PR creation only; no merge, deploy, or production mutation.",
+    )
+
+    evidence = create_wave9_draft_pr(
+        project_root=tmp_path,
+        commit=commit,
+        approval=approval,
+        pr_id="wave9-8-draft-pr",
+        target_branch="main",
+        adapter=_FakeWave9DraftPRAdapter(),
+    )
+    loaded = read_wave9_draft_pr_evidence(tmp_path, "wave9-8-draft-pr")
+
+    assert loaded == evidence
+    assert evidence.status == Wave9DraftPRStatus.CREATED
+    assert evidence.approval_applies is True
+    assert evidence.approval_id == "wave9-8-approval"
+    assert evidence.commit_id == commit.commit_id
+    assert evidence.local_commit_sha == commit.local_commit_sha
+    assert evidence.local_branch_name == commit.local_branch_name
+    assert evidence.target_branch == "main"
+    assert evidence.branch_pushed is True
+    assert evidence.external_pr_created is True
+    assert evidence.draft is True
+    assert evidence.state == "OPEN"
+    assert evidence.auto_merge_enabled is False
+    assert evidence.merge_performed is False
+    assert evidence.deploy_performed is False
+    assert evidence.production_mutated is False
+    assert evidence.provider_call_count == 0
+    assert evidence.reason_codes == ["wave9_draft_pr_approval_applies", "github_draft_pr_created"]
+
+
+def test_wave9_8_cli_creates_fake_draft_pr_evidence(tmp_path: Path) -> None:
+    commit = _committed_wave9_branch(tmp_path)
+    approve = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "approve-wave9-draft-pr",
+            "--commit-id",
+            commit.commit_id,
+            "--approval-id",
+            "wave9-8-cli-approval",
+            "--approved-by",
+            "test-suite",
+            "--target-branch",
+            "main",
+            "--reason",
+            "Approve fake Draft PR evidence only.",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+    approval_payload = json.loads(approve.stdout)
+    assert approval_payload["approved_action"] == "create_wave9_draft_pr"
+
+    created = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "create-wave9-draft-pr",
+            "--commit-id",
+            commit.commit_id,
+            "--pr-id",
+            "wave9-8-cli-draft-pr",
+            "--target-branch",
+            "main",
+            "--adapter",
+            "fake",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+    payload = json.loads(created.stdout)
+    assert payload["status"] == "created"
+    assert payload["draft"] is True
+    assert payload["external_pr_created"] is False
+    assert payload["branch_pushed"] is False
+    assert payload["merge_performed"] is False
+    assert payload["deploy_performed"] is False
+    assert payload["production_mutated"] is False

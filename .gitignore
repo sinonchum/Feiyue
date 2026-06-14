@@ -67,3 +67,5 @@ local-notes/
 
 # Feiyue local Wave9 branch commit evidence
 .hermes/wave9-local-branch-commits/
+# Feiyue Wave9 Draft PR evidence
+.hermes/wave9-draft-prs/
