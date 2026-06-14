@@ -31,6 +31,7 @@ from feiyue_core.workflow.routing_proposal import (
     write_routing_proposal_approval,
 )
 from feiyue_core.workflow.real_profile_workflow_runner import RealProfileWorkflowRunReport
+from feiyue_core.workflow.live_smoke_plan import build_live_smoke_plan, write_live_smoke_plan
 from feiyue_core.workflow.multi_worker_orchestration import MultiWorkerOrchestrationPlan, MultiWorkerOrchestrationPlanner, MultiWorkerPlanError
 from feiyue_core.workflow.multi_worker_workflow_dry_run import (
     MultiWorkerProfileRunnerSelectionError,
@@ -98,6 +99,21 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     apply_routing_parser = subparsers.add_parser("apply-approved-routing", help="Apply a routing proposal using persisted exact approval evidence")
     apply_routing_parser.add_argument("--proposal-id", required=True)
+
+    live_smoke_parser = subparsers.add_parser("live-smoke-plan", help="Prepare a fail-closed plan-only live A/B smoke checklist")
+    live_smoke_parser.add_argument("--plan-id", required=True)
+    live_smoke_parser.add_argument("--run-id", required=True)
+    live_smoke_parser.add_argument("--task-id", required=True)
+    live_smoke_parser.add_argument("--worker-profile", required=True)
+    live_smoke_parser.add_argument("--teacher-profile")
+    live_smoke_parser.add_argument("--teacher-escalation-enabled", action="store_true")
+    live_smoke_parser.add_argument("--expected-verifier-command", required=True)
+    live_smoke_parser.add_argument("--max-profile-calls", type=int, default=1)
+    live_smoke_parser.add_argument("--timeout-seconds", type=int, default=120)
+    live_smoke_parser.add_argument("--budget-ceiling", default="0.01 USD")
+    live_smoke_parser.add_argument("--approval-path")
+    live_smoke_parser.add_argument("--teacher-approval-path")
+    live_smoke_parser.add_argument("--write-plan", action="store_true", help="Persist plan.json and plan.md under .hermes/live-smoke-plans")
 
     multi_worker_parser = subparsers.add_parser("multi-worker-plan", help="Create a provider-free multi-worker orchestration plan from approved routing")
     multi_worker_parser.add_argument("--plan-id", required=True)
@@ -250,6 +266,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             approval = read_routing_proposal_approval(root, args.proposal_id)
             result = RoutingApplyGate(root).apply_proposal(proposal=proposal, approval=approval)
             print(result.model_dump_json(indent=2))
+            return 0
+        if args.command == "live-smoke-plan":
+            kwargs = {
+                "project_root": root,
+                "plan_id": args.plan_id,
+                "run_id": args.run_id,
+                "task_id": args.task_id,
+                "worker_profile_id": args.worker_profile,
+                "teacher_profile_id": args.teacher_profile,
+                "teacher_escalation_enabled": args.teacher_escalation_enabled,
+                "expected_verifier_command": args.expected_verifier_command,
+                "max_profile_calls": args.max_profile_calls,
+                "timeout_seconds": args.timeout_seconds,
+                "budget_ceiling": args.budget_ceiling,
+                "approval_path": args.approval_path,
+                "teacher_approval_path": args.teacher_approval_path,
+            }
+            plan = write_live_smoke_plan(**kwargs) if args.write_plan else build_live_smoke_plan(**kwargs)
+            print(plan.model_dump_json(indent=2))
             return 0
         if args.command == "multi-worker-plan":
             planner = MultiWorkerOrchestrationPlanner(root)
