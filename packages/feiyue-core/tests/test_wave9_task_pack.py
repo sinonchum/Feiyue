@@ -19,6 +19,8 @@ from feiyue_core.workflow.wave9_task_pack import (
     Wave9LocalBranchMaterializationStatus,
     Wave9LocalBranchCommitStatus,
     Wave9DraftPRStatus,
+    Wave9PRSemanticReviewStatus,
+    Wave9CapabilityIngestionStatus,
     Wave9TaskAssignment,
     Wave9TaskPack,
     Wave9TaskPackAuthorization,
@@ -30,12 +32,16 @@ from feiyue_core.workflow.wave9_task_pack import (
     commit_wave9_local_branch,
     approve_wave9_draft_pr,
     create_wave9_draft_pr,
+    run_wave9_pr_semantic_review,
+    ingest_wave9_capability_evaluation,
     approve_wave9_task_pack_execution,
     read_wave9_execution_evidence,
     read_wave9_local_pr_plan,
     read_wave9_local_branch_materialization,
     read_wave9_local_branch_commit,
     read_wave9_draft_pr_evidence,
+    read_wave9_pr_semantic_review,
+    read_wave9_capability_ingestion,
     read_wave9_task_pack_authorization,
     task_pack_hash,
     validate_wave9_task_pack_authorization,
@@ -1183,3 +1189,103 @@ def test_wave9_8_cli_creates_fake_draft_pr_evidence(tmp_path: Path) -> None:
     assert payload["merge_performed"] is False
     assert payload["deploy_performed"] is False
     assert payload["production_mutated"] is False
+
+
+
+def _wave9_draft_pr_for_review(tmp_path: Path):
+    commit = _committed_wave9_branch(tmp_path)
+    approval = approve_wave9_draft_pr(
+        project_root=tmp_path,
+        commit=commit,
+        approval_id="wave9-8-review-approval",
+        approved_by="test-suite",
+        target_branch="main",
+        reason="Approve Draft PR creation for review tests.",
+    )
+    draft = create_wave9_draft_pr(
+        project_root=tmp_path,
+        commit=commit,
+        approval=approval,
+        pr_id="wave9-8-review-draft-pr",
+        target_branch="main",
+        adapter=_FakeWave9DraftPRAdapter(),
+    )
+    return commit, draft
+
+
+def test_wave9_9_pr_semantic_review_is_provider_free_and_read_only(tmp_path: Path) -> None:
+    _commit, draft = _wave9_draft_pr_for_review(tmp_path)
+
+    review = run_wave9_pr_semantic_review(
+        project_root=tmp_path,
+        draft_pr=draft,
+        review_id="wave9-9-review",
+        diff_text="diff --git a/packages/feiyue-core/feiyue_core/workflow/wave9_marker.py b/packages/feiyue-core/feiyue_core/workflow/wave9_marker.py\n+def wave9_marker(): return 'wave9'\n",
+        required_terms=["wave9_marker", "return"],
+        forbidden_terms=["deploy", "production_mutated = True"],
+    )
+    loaded = read_wave9_pr_semantic_review(tmp_path, "wave9-9-review")
+
+    assert loaded == review
+    assert review.status == Wave9PRSemanticReviewStatus.PASSED
+    assert review.provider_call_count == 0
+    assert review.mutates_state is False
+    assert review.external_pr_mutated is False
+    assert review.merge_performed is False
+    assert review.deploy_performed is False
+    assert review.production_mutated is False
+    assert review.reason_codes == ["wave9_pr_diff_review_passed", "provider_free_review_only"]
+
+
+def test_wave9_9_pr_semantic_review_blocks_for_forbidden_terms(tmp_path: Path) -> None:
+    _commit, draft = _wave9_draft_pr_for_review(tmp_path)
+
+    review = run_wave9_pr_semantic_review(
+        project_root=tmp_path,
+        draft_pr=draft,
+        review_id="wave9-9-review-blocked",
+        diff_text="+ deploy_performed = True\n",
+        required_terms=["wave9_marker"],
+        forbidden_terms=["deploy_performed = True"],
+    )
+
+    assert review.status == Wave9PRSemanticReviewStatus.BLOCKED
+    assert "missing_required_term:wave9_marker" in review.reason_codes
+    assert "forbidden_term_present:deploy_performed = True" in review.reason_codes
+    assert review.merge_performed is False
+    assert review.production_mutated is False
+
+
+def test_wave9_10_capability_ingestion_binds_execution_pr_and_review(tmp_path: Path) -> None:
+    commit, draft = _wave9_draft_pr_for_review(tmp_path)
+    review = run_wave9_pr_semantic_review(
+        project_root=tmp_path,
+        draft_pr=draft,
+        review_id="wave9-9-review",
+        diff_text="+ def wave9_marker(): return 'wave9'\n",
+        required_terms=["wave9_marker"],
+        forbidden_terms=["production_mutated = True"],
+    )
+
+    ingestion = ingest_wave9_capability_evaluation(
+        project_root=tmp_path,
+        ingestion_id="wave9-10-ingestion",
+        commit=commit,
+        draft_pr=draft,
+        semantic_review=review,
+    )
+    loaded = read_wave9_capability_ingestion(tmp_path, "wave9-10-ingestion")
+
+    assert loaded == ingestion
+    assert ingestion.status == Wave9CapabilityIngestionStatus.INGESTED
+    assert ingestion.execution_run_id == "wave9-6-source-run"
+    assert ingestion.commit_id == commit.commit_id
+    assert ingestion.pr_id == draft.pr_id
+    assert ingestion.semantic_review_id == review.review_id
+    assert ingestion.provider_call_count == 0
+    assert ingestion.routing_table_mutated is False
+    assert ingestion.merge_performed is False
+    assert ingestion.deploy_performed is False
+    assert ingestion.production_mutated is False
+    assert "wave9_capability_record_ingested" in ingestion.reason_codes
+    assert "wave9_evaluation_record_ingested" in ingestion.reason_codes

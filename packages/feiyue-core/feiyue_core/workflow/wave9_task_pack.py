@@ -53,6 +53,16 @@ class Wave9DraftPRStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class Wave9PRSemanticReviewStatus(StrEnum):
+    PASSED = "passed"
+    BLOCKED = "blocked"
+
+
+class Wave9CapabilityIngestionStatus(StrEnum):
+    INGESTED = "ingested"
+    BLOCKED = "blocked"
+
+
 class Wave9TaskAssignment(FeiyueModel):
     assignment_id: str
     profile_id: str
@@ -588,6 +598,41 @@ class Wave9GitHubDraftPRAdapter(Wave9DraftPRAdapter):
             "head_ref": payload.get("headRefName"),
             "base_ref": payload.get("baseRefName"),
         }
+
+
+
+class Wave9PRSemanticReview(FeiyueModel):
+    review_id: str
+    pr_id: str
+    status: Wave9PRSemanticReviewStatus
+    required_terms: list[str] = Field(default_factory=list)
+    forbidden_terms: list[str] = Field(default_factory=list)
+    missing_required_terms: list[str] = Field(default_factory=list)
+    present_forbidden_terms: list[str] = Field(default_factory=list)
+    provider_call_count: int = 0
+    mutates_state: bool = False
+    external_pr_mutated: bool = False
+    merge_performed: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    reason_codes: list[str]
+
+
+class Wave9CapabilityIngestion(FeiyueModel):
+    ingestion_id: str
+    status: Wave9CapabilityIngestionStatus
+    execution_run_id: str
+    commit_id: str
+    pr_id: str
+    semantic_review_id: str
+    capability_record_written: bool = False
+    evaluation_record_written: bool = False
+    provider_call_count: int = 0
+    routing_table_mutated: bool = False
+    merge_performed: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    reason_codes: list[str]
 
 
 class Wave9TaskPackExecutor:
@@ -1585,6 +1630,102 @@ def _extract_wave9_pr_url(stdout: str) -> str | None:
         if token.startswith("https://github.com/") and "/pull/" in token:
             return token.strip()
     return None
+
+
+
+def wave9_pr_semantic_review_path(project_root: str | Path, review_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "wave9-pr-reviews" / review_id / "evidence.json"
+
+
+def wave9_capability_ingestion_path(project_root: str | Path, ingestion_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "wave9-capability-ingestions" / ingestion_id / "evidence.json"
+
+
+def run_wave9_pr_semantic_review(
+    *,
+    project_root: str | Path,
+    draft_pr: Wave9DraftPR,
+    review_id: str,
+    diff_text: str,
+    required_terms: list[str],
+    forbidden_terms: list[str],
+) -> Wave9PRSemanticReview:
+    missing = [term for term in required_terms if term not in diff_text]
+    present = [term for term in forbidden_terms if term in diff_text]
+    status = Wave9PRSemanticReviewStatus.PASSED if not missing and not present else Wave9PRSemanticReviewStatus.BLOCKED
+    reasons = ["wave9_pr_diff_review_passed", "provider_free_review_only"] if status is Wave9PRSemanticReviewStatus.PASSED else [
+        *[f"missing_required_term:{term}" for term in missing],
+        *[f"forbidden_term_present:{term}" for term in present],
+        "provider_free_review_only",
+    ]
+    review = Wave9PRSemanticReview(
+        review_id=review_id,
+        pr_id=draft_pr.pr_id,
+        status=status,
+        required_terms=required_terms,
+        forbidden_terms=forbidden_terms,
+        missing_required_terms=missing,
+        present_forbidden_terms=present,
+        provider_call_count=0,
+        mutates_state=False,
+        external_pr_mutated=False,
+        merge_performed=False,
+        deploy_performed=False,
+        production_mutated=False,
+        reason_codes=reasons,
+    )
+    path = wave9_pr_semantic_review_path(project_root, review_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(review.model_dump(mode="json"), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return review
+
+
+def read_wave9_pr_semantic_review(project_root: str | Path, review_id: str) -> Wave9PRSemanticReview:
+    return Wave9PRSemanticReview.model_validate_json(wave9_pr_semantic_review_path(project_root, review_id).read_text(encoding="utf-8"))
+
+
+def ingest_wave9_capability_evaluation(
+    *,
+    project_root: str | Path,
+    ingestion_id: str,
+    commit: Wave9LocalBranchCommit,
+    draft_pr: Wave9DraftPR,
+    semantic_review: Wave9PRSemanticReview,
+) -> Wave9CapabilityIngestion:
+    reasons: list[str] = []
+    if commit.status is not Wave9LocalBranchCommitStatus.COMMITTED:
+        reasons.append("wave9_commit_not_committed")
+    if draft_pr.status is not Wave9DraftPRStatus.CREATED or not draft_pr.draft:
+        reasons.append("wave9_draft_pr_not_created")
+    if semantic_review.status is not Wave9PRSemanticReviewStatus.PASSED:
+        reasons.append("wave9_semantic_review_not_passed")
+    status = Wave9CapabilityIngestionStatus.INGESTED if not reasons else Wave9CapabilityIngestionStatus.BLOCKED
+    if not reasons:
+        reasons = ["wave9_capability_record_ingested", "wave9_evaluation_record_ingested", "routing_table_not_mutated"]
+    ingestion = Wave9CapabilityIngestion(
+        ingestion_id=ingestion_id,
+        status=status,
+        execution_run_id=commit.execution_run_id,
+        commit_id=commit.commit_id,
+        pr_id=draft_pr.pr_id,
+        semantic_review_id=semantic_review.review_id,
+        capability_record_written=status is Wave9CapabilityIngestionStatus.INGESTED,
+        evaluation_record_written=status is Wave9CapabilityIngestionStatus.INGESTED,
+        provider_call_count=0,
+        routing_table_mutated=False,
+        merge_performed=False,
+        deploy_performed=False,
+        production_mutated=False,
+        reason_codes=reasons,
+    )
+    path = wave9_capability_ingestion_path(project_root, ingestion_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(ingestion.model_dump(mode="json"), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return ingestion
+
+
+def read_wave9_capability_ingestion(project_root: str | Path, ingestion_id: str) -> Wave9CapabilityIngestion:
+    return Wave9CapabilityIngestion.model_validate_json(wave9_capability_ingestion_path(project_root, ingestion_id).read_text(encoding="utf-8"))
 
 def _wave9_assignment_prompt(*, project_name: str, task_pack: Wave9TaskPack, assignment: Wave9TaskAssignment) -> str:
     return "\n".join(

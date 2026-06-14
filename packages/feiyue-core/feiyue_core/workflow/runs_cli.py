@@ -127,6 +127,7 @@ from feiyue_core.workflow.wave9_task_pack import (
     commit_wave9_local_branch,
     materialize_wave9_local_pr_plan,
     read_wave9_draft_pr_approval,
+    read_wave9_draft_pr_evidence,
     read_wave9_execution_evidence,
     read_wave9_local_branch_commit,
     read_wave9_local_branch_commit_approval,
@@ -135,6 +136,9 @@ from feiyue_core.workflow.wave9_task_pack import (
     read_wave9_local_pr_plan,
     read_wave9_task_pack,
     read_wave9_task_pack_authorization,
+    run_wave9_pr_semantic_review,
+    ingest_wave9_capability_evaluation,
+    read_wave9_pr_semantic_review,
     task_pack_hash,
     write_wave9_task_pack,
 )
@@ -531,6 +535,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     create_wave9_draft_pr_parser.add_argument("--pr-id", required=True)
     create_wave9_draft_pr_parser.add_argument("--target-branch", required=True)
     create_wave9_draft_pr_parser.add_argument("--adapter", choices=["fake", "github"], default="fake")
+
+    wave9_review_parser = subparsers.add_parser(
+        "wave9-pr-semantic-review",
+        help="Run provider-free semantic/safety review over a Wave9 Draft PR diff artifact",
+    )
+    wave9_review_parser.add_argument("--pr-id", required=True)
+    wave9_review_parser.add_argument("--review-id", required=True)
+    wave9_review_parser.add_argument("--diff-path", required=True)
+    wave9_review_parser.add_argument("--required-term", action="append", default=[], dest="required_terms")
+    wave9_review_parser.add_argument("--forbidden-term", action="append", default=[], dest="forbidden_terms")
+
+    wave9_ingest_parser = subparsers.add_parser(
+        "wave9-capability-ingest",
+        help="Ingest Wave9 commit, Draft PR, and semantic review evidence into local capability/evaluation evidence",
+    )
+    wave9_ingest_parser.add_argument("--ingestion-id", required=True)
+    wave9_ingest_parser.add_argument("--commit-id", required=True)
+    wave9_ingest_parser.add_argument("--pr-id", required=True)
+    wave9_ingest_parser.add_argument("--review-id", required=True)
 
     real_multi_worker_parser = subparsers.add_parser(
         "real-multi-worker-live-dry-run",
@@ -1398,6 +1421,32 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(evidence.model_dump_json(indent=2))
             return 0 if evidence.status != "blocked" else 2
+        if args.command == "wave9-pr-semantic-review":
+            draft_pr = read_wave9_draft_pr_evidence(root, args.pr_id)
+            diff_text = Path(args.diff_path).read_text(encoding="utf-8")
+            review = run_wave9_pr_semantic_review(
+                project_root=root,
+                draft_pr=draft_pr,
+                review_id=args.review_id,
+                diff_text=diff_text,
+                required_terms=args.required_terms,
+                forbidden_terms=args.forbidden_terms,
+            )
+            print(review.model_dump_json(indent=2))
+            return 0 if review.status != "blocked" else 2
+        if args.command == "wave9-capability-ingest":
+            commit = read_wave9_local_branch_commit(root, args.commit_id)
+            draft_pr = read_wave9_draft_pr_evidence(root, args.pr_id)
+            review = read_wave9_pr_semantic_review(root, args.review_id)
+            ingestion = ingest_wave9_capability_evaluation(
+                project_root=root,
+                ingestion_id=args.ingestion_id,
+                commit=commit,
+                draft_pr=draft_pr,
+                semantic_review=review,
+            )
+            print(ingestion.model_dump_json(indent=2))
+            return 0 if ingestion.status != "blocked" else 2
         if args.command == "real-multi-worker-live-dry-run":
             plan = _read_multi_worker_plan(root, args.plan_id)
             worker_profile = plan.route.worker_profile_ids[0]
