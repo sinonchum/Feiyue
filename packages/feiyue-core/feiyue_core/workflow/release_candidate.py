@@ -208,6 +208,46 @@ class MergeExecutionAdapterResult(FeiyueModel):
     pr_url: str | None = None
 
 
+class RealMergeExecutionApproval(FeiyueModel):
+    """Exact approval for 8F-2 real GitHub PR merge only."""
+
+    approval_id: str
+    approved_by: str
+    audit_id: str
+    approved_action: str
+    pre_merge_audit_hash: str
+    pr_number: int
+    head_sha: str
+    target_branch: str
+    merge_method: str
+    approved_at: str
+    reason: str
+
+
+class RealMergeExecutionEvidence(FeiyueModel):
+    audit_id: str
+    status: str
+    approval_id: str | None = None
+    approved_action: str | None = None
+    approval_applies: bool = False
+    pre_merge_audit_hash: str | None = None
+    pr_number: int | None = None
+    pr_url: str | None = None
+    target_branch: str | None = None
+    head_sha: str | None = None
+    merge_method: str | None = None
+    adapter: str = "fake"
+    simulated_merge_performed: bool = False
+    merge_performed: bool = False
+    external_side_effect_performed: bool = False
+    merge_commit_sha: str | None = None
+    auto_merge_enabled: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    reason_codes: list[str] = Field(default_factory=list)
+    written_at: str | None = None
+
+
 class MergeExecutionEvidence(FeiyueModel):
     readiness_id: str
     status: ReleaseCandidateStatus
@@ -392,6 +432,24 @@ def compute_refreshed_merge_readiness_hash(evidence: RefreshedMergeReadinessEvid
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+def compute_pre_merge_final_audit_hash(audit: PreMergeFinalAudit) -> str:
+    payload = audit.model_dump(mode="json")
+    payload["written_at"] = None
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def read_pre_merge_final_audit(project_root: str | Path, audit_id: str) -> PreMergeFinalAudit:
+    path = pre_merge_audit_dir(project_root, audit_id) / "audit.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Pre-merge final audit not found for audit_id: {audit_id}")
+    return PreMergeFinalAudit.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def real_merge_execution_dir(project_root: str | Path, audit_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "real-merge-executions" / audit_id
+
+
 def create_pre_merge_final_audit(
     *,
     project_root: str | Path,
@@ -448,6 +506,129 @@ def create_pre_merge_final_audit(
     )
     _write_json(pre_merge_audit_dir(project_root, audit_id) / "audit.json", audit.model_dump(mode="json"))
     return audit
+
+
+def approve_real_merge_execution(
+    *,
+    project_root: str | Path,
+    audit_id: str,
+    approved_by: str,
+    approval_id: str,
+    reason: str,
+    merge_method: str = "squash",
+) -> RealMergeExecutionApproval:
+    audit = read_pre_merge_final_audit(project_root, audit_id)
+    approval = RealMergeExecutionApproval(
+        approval_id=approval_id,
+        approved_by=approved_by,
+        audit_id=audit_id,
+        approved_action="execute_real_github_merge",
+        pre_merge_audit_hash=compute_pre_merge_final_audit_hash(audit),
+        pr_number=audit.pr_number,
+        head_sha=audit.head_sha or "",
+        target_branch=audit.target_branch,
+        merge_method=merge_method,
+        approved_at=datetime.now(UTC).isoformat(),
+        reason=reason,
+    )
+    _write_json(real_merge_execution_dir(project_root, audit_id) / "approval.json", approval.model_dump(mode="json") | {"written_at": datetime.now(UTC).isoformat()})
+    return approval
+
+
+def read_real_merge_execution_approval(project_root: str | Path, audit_id: str) -> RealMergeExecutionApproval:
+    path = real_merge_execution_dir(project_root, audit_id) / "approval.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Real merge execution approval not found for audit_id: {audit_id}")
+    payload = _read_json(path)
+    payload.pop("written_at", None)
+    return RealMergeExecutionApproval.model_validate(payload)
+
+
+def execute_approved_real_merge(
+    *,
+    project_root: str | Path,
+    audit_id: str,
+    approval: RealMergeExecutionApproval | None = None,
+    adapter_result: MergeExecutionAdapterResult | None = None,
+) -> RealMergeExecutionEvidence:
+    reasons: list[str] = []
+    audit: PreMergeFinalAudit | None = None
+    try:
+        audit = read_pre_merge_final_audit(project_root, audit_id)
+    except FileNotFoundError:
+        reasons.append("missing_pre_merge_final_audit")
+    if approval is None:
+        try:
+            approval = read_real_merge_execution_approval(project_root, audit_id)
+        except FileNotFoundError:
+            reasons.append("missing_real_merge_execution_approval")
+    audit_hash = compute_pre_merge_final_audit_hash(audit) if audit is not None else None
+    if audit is not None:
+        if audit.status != "approval_requested":
+            reasons.append("pre_merge_final_audit_not_approval_requested")
+        if not audit.merge_approval_request_ready:
+            reasons.append("pre_merge_audit_not_ready_for_approval")
+        if audit.merge_performed:
+            reasons.append("audit_indicates_merge_performed")
+        if audit.auto_merge_enabled:
+            reasons.append("audit_indicates_auto_merge_enabled")
+        if audit.deploy_performed:
+            reasons.append("audit_indicates_deploy_performed")
+        if audit.production_mutated:
+            reasons.append("audit_indicates_production_mutation")
+    if approval is not None and audit is not None:
+        if approval.audit_id != audit_id:
+            reasons.append("approval_audit_id_mismatch")
+        if approval.approved_action != "execute_real_github_merge":
+            reasons.append("approval_action_mismatch")
+        if approval.pre_merge_audit_hash != audit_hash:
+            reasons.append("approval_pre_merge_audit_hash_mismatch")
+        if approval.pr_number != audit.pr_number:
+            reasons.append("approval_pr_number_mismatch")
+        if approval.head_sha != (audit.head_sha or ""):
+            reasons.append("approval_head_sha_mismatch")
+        if approval.target_branch != audit.target_branch:
+            reasons.append("approval_target_branch_mismatch")
+    if adapter_result is None:
+        adapter_result = MergeExecutionAdapterResult(
+            adapter="fake",
+            status=ReleaseCandidateStatus.READY,
+            reason_codes=["fake_adapter_simulated_real_merge_only"],
+            merge_performed=False,
+            external_side_effect_performed=False,
+            pr_url=audit.pr_url if audit is not None else None,
+        )
+    if adapter_result.status != ReleaseCandidateStatus.READY:
+        reasons.extend(adapter_result.reason_codes)
+    status = "blocked" if reasons else "merged" if adapter_result.merge_performed and adapter_result.external_side_effect_performed else "ready"
+    adapter = adapter_result.adapter
+    evidence = RealMergeExecutionEvidence(
+        audit_id=audit_id,
+        status=status,
+        approval_id=approval.approval_id if approval is not None else None,
+        approved_action=approval.approved_action if approval is not None else None,
+        approval_applies=not reasons,
+        pre_merge_audit_hash=audit_hash,
+        pr_number=audit.pr_number if audit is not None else None,
+        pr_url=adapter_result.pr_url or (audit.pr_url if audit is not None else None),
+        target_branch=audit.target_branch if audit is not None else None,
+        head_sha=audit.head_sha if audit is not None else None,
+        merge_method=approval.merge_method if approval is not None else None,
+        adapter=adapter,
+        simulated_merge_performed=not reasons and adapter == "fake",
+        merge_performed=not reasons and adapter_result.merge_performed,
+        external_side_effect_performed=not reasons and adapter_result.external_side_effect_performed,
+        merge_commit_sha=adapter_result.merge_commit_sha if not reasons else None,
+        auto_merge_enabled=False,
+        deploy_performed=False,
+        production_mutated=False,
+        reason_codes=reasons if reasons else ["real_merge_execution_approval_applies", *(adapter_result.reason_codes or [])],
+        written_at=datetime.now(UTC).isoformat(),
+    )
+    out_dir = real_merge_execution_dir(project_root, audit_id)
+    _write_json(out_dir / "execution.json", evidence.model_dump(mode="json"))
+    _write_json(out_dir / f"execution-{adapter}.json", evidence.model_dump(mode="json"))
+    return evidence
 
 
 def refresh_merge_readiness_after_ready_for_review(
@@ -845,7 +1026,7 @@ def execute_approved_merge(
 
 
 class GitHubMergeExecutionAdapter:
-    """Fail-closed adapter shim for 8B; this class does not call GitHub merge APIs."""
+    """Fail-closed adapter shim for 8B; execute() is used only by exact-approved 8F-2."""
 
     def inspect(self, *, plan: MergeRollbackDeployReadinessPlan) -> MergeExecutionAdapterResult:
         reasons: list[str] = []
@@ -870,6 +1051,27 @@ class GitHubMergeExecutionAdapter:
             merge_performed=False,
             external_side_effect_performed=False,
             pr_url=plan.pr_url,
+        )
+
+    def execute(self, *, project_root: str | Path, pr_number: int, merge_method: str, pr_url: str | None = None) -> MergeExecutionAdapterResult:
+        args = ["gh", "pr", "merge", str(pr_number), f"--{merge_method}"]
+        completed = subprocess.run(args, cwd=str(project_root), text=True, capture_output=True, check=False, timeout=180)
+        if completed.returncode != 0:
+            return MergeExecutionAdapterResult(
+                adapter="github",
+                status=ReleaseCandidateStatus.BLOCKED,
+                reason_codes=["github_pr_merge_command_failed"],
+                merge_performed=False,
+                external_side_effect_performed=False,
+                pr_url=pr_url,
+            )
+        return MergeExecutionAdapterResult(
+            adapter="github",
+            status=ReleaseCandidateStatus.READY,
+            reason_codes=["github_pr_merged"],
+            merge_performed=True,
+            external_side_effect_performed=True,
+            pr_url=pr_url,
         )
 
 

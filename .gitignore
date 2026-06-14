@@ -46,3 +46,6 @@ local-notes/
 
 # Feiyue local pre-merge audit evidence
 .hermes/pre-merge-audits/
+
+# Feiyue local real merge execution evidence
+.hermes/real-merge-executions/

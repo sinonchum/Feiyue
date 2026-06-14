@@ -37,6 +37,7 @@ from feiyue_core.workflow.release_candidate import (
     GitHubMergeExecutionAdapter,
     GitHubPRReadyForReviewAdapter,
     approve_merge_execution,
+    approve_real_merge_execution,
     approve_merge_rollback_deploy_readiness,
     approve_pr_ready_for_review_external_mutation,
     approve_pr_ready_for_review_transition,
@@ -45,12 +46,14 @@ from feiyue_core.workflow.release_candidate import (
     create_pre_merge_final_audit,
     create_release_candidate_plan,
     execute_approved_merge,
+    execute_approved_real_merge,
     read_merge_execution_approval,
     read_merge_execution_evidence,
     read_merge_rollback_deploy_readiness_approval,
     read_merge_rollback_deploy_readiness_plan,
     read_pr_ready_for_review_approval,
     read_pr_ready_for_review_external_mutation_approval,
+    read_real_merge_execution_approval,
     read_production_promotion_approval,
     RefreshedMergeReadinessEvidence,
     refresh_merge_readiness_after_ready_for_review,
@@ -228,6 +231,17 @@ def main(argv: Sequence[str] | None = None) -> int:
     pre_merge_audit_parser.add_argument("--head-sha")
     pre_merge_audit_parser.add_argument("--changed-file", action="append", default=[])
     pre_merge_audit_parser.add_argument("--check", action="append", default=[], help="Check tuple as name:bucket:state for fake adapter")
+
+    approve_real_merge_parser = subparsers.add_parser("approve-real-merge", help="Create exact approval for real GitHub merge only")
+    approve_real_merge_parser.add_argument("audit_id")
+    approve_real_merge_parser.add_argument("--approved-by", required=True)
+    approve_real_merge_parser.add_argument("--approval-id", required=True)
+    approve_real_merge_parser.add_argument("--reason", required=True)
+    approve_real_merge_parser.add_argument("--merge-method", choices=["squash", "merge", "rebase"], default="squash")
+
+    execute_real_merge_parser = subparsers.add_parser("execute-approved-real-merge", help="Execute exact-approved real merge or fake simulation; no auto-merge/deploy")
+    execute_real_merge_parser.add_argument("audit_id")
+    execute_real_merge_parser.add_argument("--adapter", choices=["fake", "github"], default="fake")
 
     approve_parser = subparsers.add_parser("approve-promotion", help="Create exact approval evidence for a verified workflow dry run")
     approve_parser.add_argument("run_id")
@@ -763,6 +777,30 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(audit.model_dump_json(indent=2))
             return 0
+        if args.command == "approve-real-merge":
+            approval = approve_real_merge_execution(
+                project_root=root,
+                audit_id=args.audit_id,
+                approved_by=args.approved_by,
+                approval_id=args.approval_id,
+                reason=args.reason,
+                merge_method=args.merge_method,
+            )
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "execute-approved-real-merge":
+            approval = read_real_merge_execution_approval(root, args.audit_id)
+            adapter_result = None
+            if args.adapter == "github":
+                adapter_result = GitHubMergeExecutionAdapter().execute(
+                    project_root=root,
+                    pr_number=approval.pr_number,
+                    merge_method=approval.merge_method,
+                    pr_url=None,
+                )
+            evidence = execute_approved_real_merge(project_root=root, audit_id=args.audit_id, approval=approval, adapter_result=adapter_result)
+            print(evidence.model_dump_json(indent=2))
+            return 0 if evidence.status != "blocked" else 2
         if args.command == "approve-promotion":
             dry_run = _load_workflow_smoke_report(root, args.run_id)
             if dry_run.workflow_report is None:

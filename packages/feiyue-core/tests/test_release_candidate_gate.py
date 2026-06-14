@@ -11,6 +11,8 @@ from feiyue_core.workflow.release_candidate import (
     MergeExecutionApproval,
     MergeExecutionAdapterResult,
     PreMergeFinalAudit,
+    RealMergeExecutionApproval,
+    RealMergeExecutionEvidence,
     MergeRollbackDeployReadinessApproval,
     PRReadyForReviewAdapterResult,
     PRReadyForReviewApproval,
@@ -26,6 +28,8 @@ from feiyue_core.workflow.release_candidate import (
     create_merge_rollback_deploy_readiness_plan,
     create_release_candidate_plan,
     create_pre_merge_final_audit,
+    approve_real_merge_execution,
+    execute_approved_real_merge,
     execute_approved_merge,
     refresh_merge_readiness_after_ready_for_review,
     transition_pr_ready_for_review,
@@ -1109,3 +1113,148 @@ def test_8f1_cli_fake_creates_pre_merge_audit_request(tmp_path: Path) -> None:
     assert payload["auto_merge_enabled"] is False
     assert payload["deploy_performed"] is False
     assert payload["production_mutated"] is False
+
+
+
+def _ready_8f1_audit(repo: Path) -> PreMergeFinalAudit:
+    checks = [{"name": "test", "bucket": "pass", "state": "SUCCESS"}]
+    readiness = refresh_merge_readiness_after_ready_for_review(
+        project_root=repo,
+        refresh_id="wave8-8e",
+        pr_number=3,
+        pr_url="https://github.com/sinonchum/Feiyue/pull/3",
+        source_branch="feiyue/7b-real-feature-pr",
+        target_branch="main",
+        head_sha="abc123",
+        is_draft=False,
+        pr_state="OPEN",
+        merge_state_status="CLEAN",
+        auto_merge_request=None,
+        checks=checks,
+    )
+    return create_pre_merge_final_audit(
+        project_root=repo,
+        audit_id="wave8-8f1",
+        refreshed_readiness=readiness,
+        current_head_sha="abc123",
+        changed_files=["README.md"],
+        checks=checks,
+    )
+
+
+def test_8f2_real_merge_execution_blocks_without_exact_approval(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _ready_8f1_audit(repo)
+
+    evidence = execute_approved_real_merge(project_root=repo, audit_id="wave8-8f1", approval=None)
+
+    assert evidence.status == "blocked"
+    assert "missing_real_merge_execution_approval" in evidence.reason_codes
+    assert evidence.merge_performed is False
+    assert evidence.auto_merge_enabled is False
+    assert evidence.deploy_performed is False
+    assert evidence.production_mutated is False
+
+
+def test_8f2_exact_approval_allows_real_merge_adapter_evidence(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    audit = _ready_8f1_audit(repo)
+
+    approval = approve_real_merge_execution(
+        project_root=repo,
+        audit_id="wave8-8f1",
+        approved_by="Simon",
+        approval_id="wave8-8f2-pr3-real-merge-approval",
+        reason="Approve real GitHub squash merge only; no auto-merge and no deploy.",
+        merge_method="squash",
+    )
+    evidence = execute_approved_real_merge(
+        project_root=repo,
+        audit_id="wave8-8f1",
+        approval=approval,
+        adapter_result=MergeExecutionAdapterResult(
+            adapter="github",
+            status=ReleaseCandidateStatus.READY,
+            reason_codes=["github_pr_merged"],
+            merge_performed=True,
+            external_side_effect_performed=True,
+            merge_commit_sha="merge-sha",
+            pr_url=audit.pr_url,
+        ),
+    )
+
+    assert isinstance(approval, RealMergeExecutionApproval)
+    assert isinstance(evidence, RealMergeExecutionEvidence)
+    assert evidence.status == "merged"
+    assert evidence.approval_applies is True
+    assert evidence.approved_action == "execute_real_github_merge"
+    assert evidence.merge_method == "squash"
+    assert evidence.pr_number == 3
+    assert evidence.head_sha == "abc123"
+    assert evidence.merge_performed is True
+    assert evidence.external_side_effect_performed is True
+    assert evidence.auto_merge_enabled is False
+    assert evidence.deploy_performed is False
+    assert evidence.production_mutated is False
+    assert evidence.reason_codes == ["real_merge_execution_approval_applies", "github_pr_merged"]
+    persisted = json.loads((repo / ".hermes" / "real-merge-executions" / "wave8-8f1" / "execution-github.json").read_text(encoding="utf-8"))
+    assert persisted["status"] == "merged"
+
+
+def test_8f2_cli_approves_and_fake_executes_real_merge_gate(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    _ready_8f1_audit(repo)
+
+    approve = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(repo),
+            "approve-real-merge",
+            "wave8-8f1",
+            "--approved-by",
+            "Simon",
+            "--approval-id",
+            "wave8-8f2-pr3-real-merge-approval",
+            "--reason",
+            "Approve fake execution of real merge gate only.",
+            "--merge-method",
+            "squash",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+    approval_payload = json.loads(approve.stdout)
+    assert approval_payload["approved_action"] == "execute_real_github_merge"
+
+    execute = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(repo),
+            "execute-approved-real-merge",
+            "wave8-8f1",
+            "--adapter",
+            "fake",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+    evidence_payload = json.loads(execute.stdout)
+    assert evidence_payload["status"] == "ready"
+    assert evidence_payload["merge_performed"] is False
+    assert evidence_payload["simulated_merge_performed"] is True
+    assert evidence_payload["auto_merge_enabled"] is False
+    assert evidence_payload["deploy_performed"] is False
+    assert evidence_payload["production_mutated"] is False
