@@ -20,6 +20,30 @@ class ReleaseCandidateStatus(StrEnum):
     BLOCKED = "blocked"
 
 
+class RefreshedMergeReadinessEvidence(FeiyueModel):
+    """Evidence-only refreshed merge readiness after PR ready-for-review transition."""
+
+    refresh_id: str
+    status: str
+    pr_number: int
+    pr_url: str
+    source_branch: str
+    target_branch: str
+    head_sha: str | None = None
+    is_draft: bool
+    pr_state: str
+    merge_state_status: str | None = None
+    auto_merge_request: object | None = None
+    checks: list[dict[str, object]] = Field(default_factory=list)
+    checks_passed: bool = False
+    reason_codes: list[str] = Field(default_factory=list)
+    merge_performed: bool = False
+    auto_merge_enabled: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    written_at: str | None = None
+
+
 class ReleaseCandidatePlan(FeiyueModel):
     """Fail-closed, local-only release-candidate evidence bundle."""
 
@@ -324,6 +348,63 @@ def merge_execution_dir(project_root: str | Path, readiness_id: str) -> Path:
 
 def pr_ready_for_review_dir(project_root: str | Path, readiness_id: str) -> Path:
     return Path(project_root) / ".hermes" / "pr-ready-for-review" / readiness_id
+
+
+def merge_readiness_dir(project_root: str | Path, refresh_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "merge-readiness" / refresh_id
+
+
+def refresh_merge_readiness_after_ready_for_review(
+    *,
+    project_root: str | Path,
+    refresh_id: str,
+    pr_number: int,
+    pr_url: str,
+    source_branch: str,
+    target_branch: str,
+    head_sha: str | None,
+    is_draft: bool,
+    pr_state: str,
+    merge_state_status: str | None,
+    auto_merge_request: object | None,
+    checks: list[dict[str, object]],
+) -> RefreshedMergeReadinessEvidence:
+    reasons: list[str] = []
+    checks_passed = bool(checks) and all(_check_passed(check) for check in checks)
+    if is_draft:
+        reasons.append("pr_is_draft")
+    if pr_state.upper() != "OPEN":
+        reasons.append("pr_not_open")
+    if merge_state_status and merge_state_status.upper() not in {"CLEAN", "HAS_HOOKS", "UNKNOWN"}:
+        reasons.append("pr_not_mergeable")
+    if auto_merge_request is not None:
+        reasons.append("auto_merge_already_enabled")
+    if not checks_passed:
+        reasons.append("pr_checks_not_passed")
+    status = "blocked" if reasons else "ready_for_human_merge_review"
+    evidence = RefreshedMergeReadinessEvidence(
+        refresh_id=refresh_id,
+        status=status,
+        pr_number=pr_number,
+        pr_url=pr_url,
+        source_branch=source_branch,
+        target_branch=target_branch,
+        head_sha=head_sha,
+        is_draft=is_draft,
+        pr_state=pr_state,
+        merge_state_status=merge_state_status,
+        auto_merge_request=auto_merge_request,
+        checks=checks,
+        checks_passed=checks_passed,
+        reason_codes=reasons if reasons else ["pr_non_draft_checks_passed_merge_readiness_refreshed", "evidence_only_no_merge_deploy_mutation"],
+        merge_performed=False,
+        auto_merge_enabled=False,
+        deploy_performed=False,
+        production_mutated=False,
+        written_at=datetime.now(UTC).isoformat(),
+    )
+    _write_json(merge_readiness_dir(project_root, refresh_id) / "evidence.json", evidence.model_dump(mode="json"))
+    return evidence
 
 
 def create_merge_rollback_deploy_readiness_plan(
@@ -1233,6 +1314,14 @@ def _ci_success(payload: dict[str, object]) -> bool:
     for key in ("status", "conclusion", "result"):
         value = payload.get(key)
         if isinstance(value, str) and value.lower() in {"success", "succeeded", "passed", "pass"}:
+            return True
+    return payload.get("success") is True or payload.get("passed") is True
+
+
+def _check_passed(payload: dict[str, object]) -> bool:
+    for key in ("bucket", "state", "conclusion", "status"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.lower() in {"pass", "passed", "success", "succeeded"}:
             return True
     return payload.get("success") is True or payload.get("passed") is True
 

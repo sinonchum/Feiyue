@@ -51,6 +51,7 @@ from feiyue_core.workflow.release_candidate import (
     read_pr_ready_for_review_approval,
     read_pr_ready_for_review_external_mutation_approval,
     read_production_promotion_approval,
+    refresh_merge_readiness_after_ready_for_review,
     transition_pr_ready_for_review,
     verify_merge_rollback_deploy_readiness,
     verify_production_promotion_readiness,
@@ -204,6 +205,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     ready_review_external_parser.add_argument("--approved-by", required=True)
     ready_review_external_parser.add_argument("--approval-id", required=True)
     ready_review_external_parser.add_argument("--reason", required=True)
+
+    refresh_merge_readiness_parser = subparsers.add_parser("refresh-merge-readiness", help="Refresh PR merge-readiness evidence after ready-for-review; evidence only")
+    refresh_merge_readiness_parser.add_argument("refresh_id")
+    refresh_merge_readiness_parser.add_argument("--adapter", choices=["fake", "github"], default="fake")
+    refresh_merge_readiness_parser.add_argument("--pr-number", type=int)
+    refresh_merge_readiness_parser.add_argument("--pr-url")
+    refresh_merge_readiness_parser.add_argument("--source-branch")
+    refresh_merge_readiness_parser.add_argument("--target-branch")
+    refresh_merge_readiness_parser.add_argument("--head-sha")
+    refresh_merge_readiness_parser.add_argument("--pr-state", default="OPEN")
+    refresh_merge_readiness_parser.add_argument("--merge-state-status", default="UNKNOWN")
+    refresh_merge_readiness_parser.add_argument("--is-draft", action="store_true")
+    refresh_merge_readiness_parser.add_argument("--check", action="append", default=[], help="Check tuple as name:bucket:state for fake adapter")
 
     approve_parser = subparsers.add_parser("approve-promotion", help="Create exact approval evidence for a verified workflow dry run")
     approve_parser.add_argument("run_id")
@@ -675,6 +689,45 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(approval.model_dump_json(indent=2))
             return 0
+        if args.command == "refresh-merge-readiness":
+            if args.adapter == "github":
+                if args.pr_number is None:
+                    print("--pr-number is required for github refresh", file=sys.stderr)
+                    return 2
+                view = json.loads(_gh("pr", "view", str(args.pr_number), "--json", "number,isDraft,state,mergeStateStatus,autoMergeRequest,headRefName,baseRefName,url,headRefOid", cwd=root))
+                checks = json.loads(_gh("pr", "checks", str(args.pr_number), "--json", "name,state,bucket,workflow", cwd=root))
+                evidence = refresh_merge_readiness_after_ready_for_review(
+                    project_root=root,
+                    refresh_id=args.refresh_id,
+                    pr_number=int(view["number"]),
+                    pr_url=str(view["url"]),
+                    source_branch=str(view["headRefName"]),
+                    target_branch=str(view["baseRefName"]),
+                    head_sha=view.get("headRefOid"),
+                    is_draft=bool(view["isDraft"]),
+                    pr_state=str(view["state"]),
+                    merge_state_status=view.get("mergeStateStatus"),
+                    auto_merge_request=view.get("autoMergeRequest"),
+                    checks=checks,
+                )
+            else:
+                checks = [_parse_check_tuple(item) for item in args.check]
+                evidence = refresh_merge_readiness_after_ready_for_review(
+                    project_root=root,
+                    refresh_id=args.refresh_id,
+                    pr_number=args.pr_number or 0,
+                    pr_url=args.pr_url or "",
+                    source_branch=args.source_branch or "",
+                    target_branch=args.target_branch or "",
+                    head_sha=args.head_sha,
+                    is_draft=args.is_draft,
+                    pr_state=args.pr_state,
+                    merge_state_status=args.merge_state_status,
+                    auto_merge_request=None,
+                    checks=checks,
+                )
+            print(evidence.model_dump_json(indent=2))
+            return 0
         if args.command == "approve-promotion":
             dry_run = _load_workflow_smoke_report(root, args.run_id)
             if dry_run.workflow_report is None:
@@ -1021,6 +1074,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return 2
     return 2
+
+
+def _parse_check_tuple(value: str) -> dict[str, object]:
+    parts = value.split(":", 2)
+    if len(parts) != 3 or not all(part.strip() for part in parts):
+        raise ValueError("--check must use name:bucket:state format")
+    name, bucket, state = parts
+    return {"name": name, "bucket": bucket, "state": state}
+
+
+def _gh(*args: str, cwd: Path) -> str:
+    completed = subprocess.run(["gh", *args], cwd=str(cwd), text=True, capture_output=True, check=False, timeout=180)
+    if completed.returncode != 0:
+        raise RuntimeError(completed.stderr.strip() or completed.stdout.strip() or "gh command failed")
+    return completed.stdout
 
 
 def _load_workflow_smoke_report(root: Path, run_id: str) -> RealProfileWorkflowRunReport:

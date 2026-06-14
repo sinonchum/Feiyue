@@ -61,3 +61,4 @@ Generated from the productized `feiyue-runs` command registry.
 - `feiyue-runs transition-pr-ready-for-review <readiness_id> --adapter fake|github` — Transition an approved PR ready-for-review through a fail-closed adapter; fake adapter simulates only.
 - `feiyue-runs approve-pr-ready-for-review-external-mutation <readiness_id> --approved-by <user> --approval-id <id> --reason <text>` — Create exact approval for the real GitHub Draft-to-ready PR mutation only.
 - `feiyue-runs transition-pr-ready-for-review <readiness_id> --adapter github --perform-external-mutation` — Perform the exact-approved GitHub Draft-to-ready PR mutation only; no merge/deploy.
+- `feiyue-runs refresh-merge-readiness <refresh_id> --adapter fake|github --pr-number <n>` — Refresh PR merge-readiness evidence after ready-for-review; evidence only.

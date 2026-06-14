@@ -14,6 +14,7 @@ from feiyue_core.workflow.release_candidate import (
     PRReadyForReviewAdapterResult,
     PRReadyForReviewApproval,
     PRReadyForReviewExternalMutationApproval,
+    RefreshedMergeReadinessEvidence,
     ProductionPromotionApproval,
     ReleaseCandidateStatus,
     approve_merge_execution,
@@ -24,6 +25,7 @@ from feiyue_core.workflow.release_candidate import (
     create_merge_rollback_deploy_readiness_plan,
     create_release_candidate_plan,
     execute_approved_merge,
+    refresh_merge_readiness_after_ready_for_review,
     transition_pr_ready_for_review,
     verify_merge_rollback_deploy_readiness,
     verify_production_promotion_readiness,
@@ -858,3 +860,113 @@ def test_8d_cli_approves_external_pr_ready_for_review_mutation(tmp_path: Path) -
     payload = json.loads(approval.stdout)
     assert payload["approved_action"] == "perform_github_pr_ready_for_review"
     assert payload["ready_for_review_transition_hash"]
+
+
+
+def test_8e_merge_readiness_refresh_blocks_draft_or_failed_checks(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+
+    evidence = refresh_merge_readiness_after_ready_for_review(
+        project_root=repo,
+        refresh_id="wave8-8e",
+        pr_number=3,
+        pr_url="https://github.com/sinonchum/Feiyue/pull/3",
+        source_branch="feiyue/7b-real-feature-pr",
+        target_branch="main",
+        head_sha="abc123",
+        is_draft=True,
+        pr_state="OPEN",
+        merge_state_status="CLEAN",
+        auto_merge_request=None,
+        checks=[{"name": "test", "bucket": "pass", "state": "SUCCESS"}],
+    )
+
+    assert evidence.status == "blocked"
+    assert "pr_is_draft" in evidence.reason_codes
+    assert evidence.merge_performed is False
+    assert evidence.auto_merge_enabled is False
+    assert evidence.deploy_performed is False
+    assert evidence.production_mutated is False
+
+
+def test_8e_merge_readiness_refresh_ready_after_pr_is_non_draft_and_checks_pass(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+
+    evidence = refresh_merge_readiness_after_ready_for_review(
+        project_root=repo,
+        refresh_id="wave8-8e",
+        pr_number=3,
+        pr_url="https://github.com/sinonchum/Feiyue/pull/3",
+        source_branch="feiyue/7b-real-feature-pr",
+        target_branch="main",
+        head_sha="abc123",
+        is_draft=False,
+        pr_state="OPEN",
+        merge_state_status="CLEAN",
+        auto_merge_request=None,
+        checks=[{"name": "test", "bucket": "pass", "state": "SUCCESS"}, {"name": "GitGuardian Security Checks", "bucket": "pass", "state": "SUCCESS"}],
+    )
+
+    assert isinstance(evidence, RefreshedMergeReadinessEvidence)
+    assert evidence.status == "ready_for_human_merge_review"
+    assert evidence.checks_passed is True
+    assert evidence.is_draft is False
+    assert evidence.reason_codes == ["pr_non_draft_checks_passed_merge_readiness_refreshed", "evidence_only_no_merge_deploy_mutation"]
+    assert evidence.merge_performed is False
+    assert evidence.auto_merge_enabled is False
+    assert evidence.deploy_performed is False
+    assert evidence.production_mutated is False
+    persisted = json.loads((repo / ".hermes" / "merge-readiness" / "wave8-8e" / "evidence.json").read_text(encoding="utf-8"))
+    assert persisted["status"] == "ready_for_human_merge_review"
+    assert persisted["is_draft"] is False
+
+
+def test_8e_cli_fake_refreshes_merge_readiness(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(repo),
+            "refresh-merge-readiness",
+            "wave8-8e-cli",
+            "--adapter",
+            "fake",
+            "--pr-number",
+            "3",
+            "--pr-url",
+            "https://github.com/sinonchum/Feiyue/pull/3",
+            "--source-branch",
+            "feiyue/7b-real-feature-pr",
+            "--target-branch",
+            "main",
+            "--head-sha",
+            "abc123",
+            "--pr-state",
+            "OPEN",
+            "--merge-state-status",
+            "CLEAN",
+            "--check",
+            "test:pass:SUCCESS",
+            "--check",
+            "GitGuardian Security Checks:pass:SUCCESS",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "ready_for_human_merge_review"
+    assert payload["checks_passed"] is True
+    assert payload["is_draft"] is False
+    assert payload["merge_performed"] is False
+    assert payload["deploy_performed"] is False
+    assert payload["production_mutated"] is False
