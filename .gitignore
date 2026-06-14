@@ -21,4 +21,7 @@ local-notes/
 .hermes/routing-proposals/
 .hermes/multi-worker-plans/
 .hermes/multi-worker-workflows/
+.hermes/live-smoke-plans/
+.hermes/live-smoke-sandboxes/
+.hermes/model-routing.yaml
 .hermes/run_*.py
