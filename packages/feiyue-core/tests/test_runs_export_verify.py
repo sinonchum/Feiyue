@@ -42,7 +42,7 @@ def test_verify_static_runs_report_accepts_matching_manifest(tmp_path) -> None:
     result = verify_static_runs_report(exported.manifest_path)
 
     assert result.valid is True
-    assert result.checked_files == 4
+    assert result.checked_files == 5
     assert result.issues == []
 
 
@@ -54,7 +54,7 @@ def test_verify_static_runs_report_rejects_modified_detail_html(tmp_path) -> Non
     result = verify_static_runs_report(exported.manifest_path)
 
     assert result.valid is False
-    assert result.checked_files == 4
+    assert result.checked_files == 5
     assert result.issues == [
         "sha256 mismatch: runs/verify-demo.html",
     ]

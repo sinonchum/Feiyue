@@ -44,7 +44,13 @@ def test_pack_static_runs_report_writes_portable_zip_without_source_evidence(tmp
     result = pack_static_runs_report(exported.index_path.parent, tmp_path / "feiyue-runs-report.zip")
 
     assert result.bundle_path.exists()
-    assert result.entries == ["index.html", "manifest.json", "assets/index.html", "runs/bundle-demo.html"]
+    assert result.entries == [
+        "index.html",
+        "manifest.json",
+        "assets/index.html",
+        "review-inbox/index.html",
+        "runs/bundle-demo.html",
+    ]
     with zipfile.ZipFile(result.bundle_path) as archive:
         assert archive.namelist() == result.entries
         assert ".hermes/runs/bundle-demo/run-evidence.json" not in archive.namelist()
@@ -63,5 +69,5 @@ def test_packed_static_runs_report_can_be_extracted_and_verified(tmp_path) -> No
     result = verify_static_runs_report(extract_dir / "manifest.json")
 
     assert result.valid is True
-    assert result.checked_files == 4
+    assert result.checked_files == 5
     assert result.issues == []

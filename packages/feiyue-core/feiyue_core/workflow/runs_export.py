@@ -10,7 +10,12 @@ from pathlib import Path
 from typing import Sequence
 
 from feiyue_core.workflow.execution import RunCatalog
-from feiyue_core.workflow.runs_api import render_assets_dashboard, render_run_detail, render_runs_dashboard
+from feiyue_core.workflow.runs_api import (
+    render_assets_dashboard,
+    render_review_inbox_dashboard,
+    render_run_detail,
+    render_runs_dashboard,
+)
 
 
 @dataclass(frozen=True)
@@ -19,6 +24,7 @@ class StaticRunsReportExport:
     detail_paths: dict[str, Path]
     manifest_path: Path
     assets_index_path: Path | None = None
+    review_inbox_index_path: Path | None = None
 
 
 def _sha256(path: Path) -> str:
@@ -49,6 +55,9 @@ def export_static_runs_report(project_root: str | Path, output_dir: str | Path) 
     for task_id, filename in filename_by_task.items():
         index_html = index_html.replace(f'href="/dashboard/runs/{task_id}"', f'href="runs/{filename}"')
         index_html = index_html.replace(f'href="/runs/{task_id}/handoff"', f'href="runs/{filename}"')
+    index_html = index_html.replace('href="/dashboard/review-inbox"', 'href="review-inbox/index.html"')
+    index_html = index_html.replace('href="/dashboard/assets"', 'href="assets/index.html"')
+    index_html = index_html.replace('href="/runs"', 'href="#runs-json-unavailable-offline"')
     index_html = index_html.replace("Read-only evidence surface", "Offline read-only evidence surface")
 
     index_path = out / "index.html"
@@ -62,6 +71,16 @@ def export_static_runs_report(project_root: str | Path, output_dir: str | Path) 
     assets_html = assets_html.replace("Read-only asset surface", "Offline read-only asset surface")
     assets_index_path = assets_dir / "index.html"
     assets_index_path.write_text(assets_html, encoding="utf-8")
+
+    review_inbox_dir = out / "review-inbox"
+    review_inbox_dir.mkdir(parents=True, exist_ok=True)
+    review_inbox_html = render_review_inbox_dashboard(root)
+    review_inbox_html = review_inbox_html.replace('href="/dashboard"', 'href="../index.html"')
+    review_inbox_html = review_inbox_html.replace('href="/dashboard/assets"', 'href="../assets/index.html"')
+    review_inbox_html = review_inbox_html.replace('href="/review-inbox"', 'href="#review-json-unavailable-offline"')
+    review_inbox_html = review_inbox_html.replace("Read-only review surface", "Offline read-only review surface")
+    review_inbox_index_path = review_inbox_dir / "index.html"
+    review_inbox_index_path.write_text(review_inbox_html, encoding="utf-8")
 
     detail_paths: dict[str, Path] = {}
     for task_id, filename in filename_by_task.items():
@@ -89,6 +108,10 @@ def export_static_runs_report(project_root: str | Path, output_dir: str | Path) 
                 "path": _relative_posix(assets_index_path, out),
                 "sha256": _sha256(assets_index_path),
             },
+            {
+                "path": _relative_posix(review_inbox_index_path, out),
+                "sha256": _sha256(review_inbox_index_path),
+            },
         ],
         "runs": [],
     }
@@ -110,6 +133,7 @@ def export_static_runs_report(project_root: str | Path, output_dir: str | Path) 
         detail_paths=detail_paths,
         manifest_path=manifest_path,
         assets_index_path=assets_index_path,
+        review_inbox_index_path=review_inbox_index_path,
     )
 
 
