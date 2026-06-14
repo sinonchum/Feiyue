@@ -13,6 +13,7 @@ from feiyue_core.curation.live_asset_loop import (
     approve_and_promote_curator_asset,
     live_asset_proposal_from_multi_worker_run,
 )
+from feiyue_core.workflow.asset_reuse_smoke import AssetReuseSmokeHarness, DEFAULT_COMPARABLE_TASK_ID
 from feiyue_core.workflow.capability_feedback import CapabilityFeedbackAggregator
 from feiyue_core.workflow.capability_history import CapabilityHistoryCollector
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
@@ -98,6 +99,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     longitudinal_parser.add_argument("--min-samples", type=int, default=3, help="Minimum samples required in each before/after window")
     longitudinal_parser.add_argument("--window-size", type=int, default=3, help="Number of earliest/latest samples to use for before/after windows")
     longitudinal_parser.add_argument("--write-report", action="store_true", help="Persist latest.json and latest.md under .hermes/longitudinal-gain")
+
+    asset_reuse_parser = subparsers.add_parser("asset-reuse-smoke", help="Run provider-free lesson asset reuse smoke evidence")
+    asset_reuse_parser.add_argument("--run-id", required=True)
+    asset_reuse_parser.add_argument("--lesson-path", required=True)
+    asset_reuse_parser.add_argument("--comparable-task-id", default=DEFAULT_COMPARABLE_TASK_ID)
+    asset_reuse_parser.add_argument("--write-report", action="store_true", help="Persist evidence.json and report.md under .hermes/asset-reuse/<run_id>")
 
     proposal_parser = subparsers.add_parser("routing-proposal", help="Generate a human-reviewed routing update proposal from capability feedback")
     proposal_parser.add_argument("--proposal-id", required=True)
@@ -292,6 +299,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 window_size=args.window_size,
             )
             report = evaluator.write_report(root) if args.write_report else evaluator.build_report()
+            print(report.model_dump_json(indent=2))
+            return 0
+        if args.command == "asset-reuse-smoke":
+            report = AssetReuseSmokeHarness(root).run(
+                run_id=args.run_id,
+                lesson_path=args.lesson_path,
+                comparable_task_id=args.comparable_task_id,
+                write_report=args.write_report,
+            )
             print(report.model_dump_json(indent=2))
             return 0
         if args.command == "routing-proposal":
