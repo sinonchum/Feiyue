@@ -115,6 +115,8 @@ from feiyue_core.workflow.true_multi_student_workflow import (
 from feiyue_core.workflow.wave9_task_pack import (
     Wave9TaskAssignment,
     Wave9TaskPack,
+    approve_wave9_task_pack_execution,
+    read_wave9_task_pack,
     task_pack_hash,
     write_wave9_task_pack,
 )
@@ -426,6 +428,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     wave9_task_pack_parser.add_argument("--merge-strategy", choices=["reject_on_conflict", "ordered_overlay", "reviewer_selected_patch"], default="reject_on_conflict")
     wave9_task_pack_parser.add_argument("--verifier-command", action="append", required=True, dest="verifier_commands")
     wave9_task_pack_parser.add_argument("--review-criterion", action="append", required=True, dest="review_criteria")
+
+    approve_wave9_parser = subparsers.add_parser(
+        "approve-wave9-real-multi-worker-run",
+        help="Create exact authorization for a Wave9 real multi-worker dry-run task pack",
+    )
+    approve_wave9_parser.add_argument("--task-pack-id", required=True)
+    approve_wave9_parser.add_argument("--approved-by", required=True)
+    approve_wave9_parser.add_argument("--approval-id", required=True)
+    approve_wave9_parser.add_argument("--reason", required=True)
+    approve_wave9_parser.add_argument("--max-total-profile-calls", type=int, required=True)
 
     real_multi_worker_parser = subparsers.add_parser(
         "real-multi-worker-live-dry-run",
@@ -1174,6 +1186,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             write_wave9_task_pack(pack, root)
             persisted = pack.model_copy(update={"task_pack_hash": task_pack_hash(pack)})
             print(persisted.model_dump_json(indent=2))
+            return 0
+        if args.command == "approve-wave9-real-multi-worker-run":
+            pack = read_wave9_task_pack(root, args.task_pack_id)
+            authorization = approve_wave9_task_pack_execution(
+                project_root=root,
+                task_pack=pack,
+                approval_id=args.approval_id,
+                approved_by=args.approved_by,
+                reason=args.reason,
+                max_total_profile_calls=args.max_total_profile_calls,
+            )
+            print(authorization.model_dump_json(indent=2))
             return 0
         if args.command == "real-multi-worker-live-dry-run":
             plan = _read_multi_worker_plan(root, args.plan_id)
