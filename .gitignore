@@ -18,6 +18,8 @@ local-notes/
 .hermes/workflow-smokes/
 .hermes/workflow-promotions/
 .hermes/capability-feedback/
+.hermes/capability-history/
+.hermes/longitudinal-gain/
 .hermes/routing-proposals/
 .hermes/multi-worker-plans/
 .hermes/multi-worker-workflows/

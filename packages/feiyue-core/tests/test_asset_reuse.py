@@ -63,6 +63,22 @@ def test_asset_reuse_harness_loads_project_local_lesson_and_prevents_known_error
     assert routing_path.read_text(encoding="utf-8") == "routes:\n  worker:\n    primary: student-a\n"
 
 
+def test_asset_reuse_harness_recognizes_live_b_subtraction_lesson(tmp_path) -> None:
+    lesson = tmp_path / ".hermes" / "lessons" / "live-b-subtraction.md"
+    lesson.parent.mkdir(parents=True, exist_ok=True)
+    lesson.write_text(
+        "# Live B teacher retry lesson\n\nTeacher guidance: Replace the subtraction implementation `return a - b` with `return a + b` after verifier failure.\n",
+        encoding="utf-8",
+    )
+
+    report = AssetReuseSmokeHarness(tmp_path).run(run_id="reuse-live-b", lesson_path=lesson)
+
+    assert report.lesson_loaded is True
+    assert report.error_prevented is True
+    assert report.teacher_call_required is False
+    assert report.retry_count == 0
+
+
 def test_asset_reuse_harness_fails_closed_for_non_project_local_lesson(tmp_path) -> None:
     outside = tmp_path.parent / "outside-lesson.md"
     outside.write_text("Prevention rule: avoid expected 42 but got 41\n", encoding="utf-8")

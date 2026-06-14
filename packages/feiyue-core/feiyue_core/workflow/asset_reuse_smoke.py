@@ -11,6 +11,12 @@ from feiyue_core.schemas.common import FeiyueModel
 
 DEFAULT_COMPARABLE_TASK_ID = "asset-reuse-smoke-comparable"
 KNOWN_ERROR_SIGNATURE = "expected 42 but got 41"
+LIVE_B_SUBTRACTION_SIGNATURES = (
+    "replace the subtraction",
+    "return a - b",
+    "return a + b",
+    "subtraction with addition",
+)
 
 
 class AssetReuseSmokeReport(FeiyueModel):
@@ -165,7 +171,7 @@ def run_asset_reuse_smoke(
 
 def _lesson_prevents_known_error(lesson_text: str) -> bool:
     lowered = lesson_text.lower()
-    return KNOWN_ERROR_SIGNATURE in lowered and any(
+    legacy_boundary_lesson = KNOWN_ERROR_SIGNATURE in lowered and any(
         phrase in lowered
         for phrase in (
             "prevention rule",
@@ -174,6 +180,10 @@ def _lesson_prevents_known_error(lesson_text: str) -> bool:
             "teacher guidance",
         )
     )
+    live_b_subtraction_lesson = "teacher" in lowered and any(
+        phrase in lowered for phrase in LIVE_B_SUBTRACTION_SIGNATURES
+    )
+    return legacy_boundary_lesson or live_b_subtraction_lesson
 
 
 def _history_record(

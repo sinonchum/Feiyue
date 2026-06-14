@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`572 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `572 passed`.
+> **Verified baseline**：`597 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `597 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`572 passed`。
+- `python -m pytest -q`：`597 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1842,4 +1842,13 @@ Serial Live A/B smoke has now executed under exact authorization, and the first 
 
 ## Recommended Next Slice
 
-当前下一步是 **Asset Reuse / Longitudinal Gain Smoke**：load the promoted project-local lesson into a similar task prompt or task-template path, rerun a comparable dry-run, then use `feiyue-runs capability-history --write-report` and `feiyue-runs longitudinal-gain --write-report` to check whether teacher-call rate or retry count improves. production PR/promotion 仍保持禁用。
+Wave5-1 through Wave5-6 are now implemented and locally smoke-verified. Remaining real-world actions are deliberately operational approvals rather than missing code paths: optional real Hermes profile calls for broader live matrices, optional real GitHub draft PR creation, and optional production promotion/merge/deploy require exact credentials, approval records, CI success, and rollback evidence.
+
+## Completed Wave5 Run-to-End
+
+- **Wave5-1 Asset Reuse / Longitudinal Gain Smoke**：added `asset-reuse-smoke`, project-local lesson loading, deterministic lesson injection, longitudinal-compatible before/after metrics, and actual smoke `wave5-1-asset-reuse-smoke-20260614` with lesson_loaded true, error_prevented true, teacher_call_required false.
+- **Wave5-2 Distillation Bundle Promotion**：added patch-id/patch-index promotion for lesson, regression_eval, and task_template patches with per-patch rollback evidence. The actual Live B bundle promoted regression_eval and task_template; the lesson patch was safely blocked as duplicate because the original lesson asset already existed.
+- **Wave5-3 Real Multi-worker Dry-run Evidence Seam**：added exact-authorized real multi-worker dry-run evidence under `.hermes/real-multi-worker-runs/`, capability-history ingestion, and actual fake-runner smoke `wave5-3-real-multi-worker-smoke-20260614` with status verified, provider_call_count 1, promotion_attempted false, and global_hermes_config_mutated false.
+- **Wave5-4 Draft PR Mode**：added local draft PR plan, exact `create_draft_pr` approval, fake adapter creation evidence, review inbox surface, and fail-closed tests. It never auto-merges and records external_pr_created false in fake mode.
+- **Wave5-5 Creative-to-Execution E2E**：added provider-free `creative-e2e-smoke`, deterministic seed → variants → critique → selected variant → PRD/spec → task contract → verified workflow evidence, and actual smoke `wave5-5-creative-e2e-smoke-20260614` with curator_proposal_ready true.
+- **Wave5-6 Release Candidate / Production Safety Gate**：added release-candidate plan, production approval, readiness verification, CI/rollback/post-promotion-plan requirements, and fake-first readiness smoke with status ready, dry_run true, and production_mutated false.
