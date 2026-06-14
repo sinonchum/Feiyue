@@ -162,6 +162,9 @@ class CapabilityHistoryCollector:
         for path, payload in self._load_evidence_files("real-creative-e2e", "summary.json"):
             records.append(self._record_from_real_creative_e2e(payload, path=path, generated_at=generated_at))
 
+        for path, payload in self._load_evidence_files("longitudinal-mini-programs", "evidence.json"):
+            records.extend(self._records_from_longitudinal_mini_program(payload, path=path, generated_at=generated_at))
+
         for run_id, promotion in sorted(promotions.items()):
             if run_id in consumed_promotion_run_ids:
                 continue
@@ -313,6 +316,46 @@ class CapabilityHistoryCollector:
             observed_at=_first_string(payload.get("ended_at"), generated_at) or generated_at,
             routing_table_mutated=False,
         )
+
+    def _records_from_longitudinal_mini_program(
+        self,
+        payload: dict[str, Any],
+        *,
+        path: Path,
+        generated_at: str,
+    ) -> list[CapabilityHistoryRecord]:
+        records: list[CapabilityHistoryRecord] = []
+        run_id = _first_string(payload.get("run_id"), path.parent.name) or path.parent.name
+        profile_id = _first_string(payload.get("profile_id")) or "provider-free-mini-worker"
+        capability = _first_string(payload.get("capability")) or "longitudinal_asset_reuse"
+        batch_items = payload.get("batches")
+        if not isinstance(batch_items, list):
+            return records
+        for index, item in enumerate(batch_items):
+            batch = _dict(item)
+            batch_id = _first_string(batch.get("batch_id"), f"batch-{index + 1}") or f"batch-{index + 1}"
+            pass_rate = _coerce_float(batch.get("pass_rate")) or 0.0
+            teacher_call_rate = _coerce_float(batch.get("teacher_call_rate")) or 0.0
+            records.append(
+                CapabilityHistoryRecord(
+                    profile_id=profile_id,
+                    capability=capability,
+                    task_id=f"{run_id}:{batch_id}",
+                    run_id=f"{run_id}:{batch_id}",
+                    source_kind="longitudinal_mini_program",
+                    status="verified" if pass_rate >= 1.0 else "needs_teacher",
+                    verified=pass_rate >= 1.0,
+                    teacher_used=teacher_call_rate > 0,
+                    provider_call_count=_coerce_int(payload.get("provider_call_count")),
+                    promotion_attempted=_bool(payload.get("promotion_attempted")),
+                    promoted=False,
+                    source_evidence_path=self._relative_source(path),
+                    written_at=_first_string(payload.get("written_at")),
+                    observed_at=_first_string(payload.get("written_at"), generated_at) or generated_at,
+                    routing_table_mutated=False,
+                )
+            )
+        return records
 
     def _record_from_payload(
         self,

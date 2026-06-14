@@ -18,6 +18,7 @@ CLI_REFERENCE_COMMANDS: dict[str, list[tuple[str, str]]] = {
     "Capability and learning loop": [
         ("feiyue-runs capability-history [--write-report]", "Collect workflow evidence into longitudinal capability history."),
         ("feiyue-runs longitudinal-gain [--min-samples N] [--window-size N] [--write-report]", "Evaluate before/after gains from capability history."),
+        ("feiyue-runs longitudinal-mini-program --run-id <id> [--write-report]", "Run a provider-free 3-batch mini-program that measures lesson/template/routing improvement."),
         ("feiyue-runs asset-reuse-smoke --run-id <id> --lesson-path <path> [--write-report]", "Run provider-free promoted lesson reuse evidence."),
         ("feiyue-runs curator-live-proposal --run-id <id> --proposal-id <id> [--write-proposal]", "Build a review-required asset proposal from verified live evidence."),
         ("feiyue-runs promote-curator-asset --proposal-id <id> --reviewer <name> --reason <text> --rollback-ref <ref> --patch-id <id>", "Promote one approved project-local asset patch with rollback evidence."),

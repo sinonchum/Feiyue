@@ -20,6 +20,7 @@ from feiyue_core.workflow.capability_history import CapabilityHistoryCollector
 from feiyue_core.workflow.cli_reference import write_cli_reference
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
 from feiyue_core.workflow.longitudinal_gain import LongitudinalGainEvaluator
+from feiyue_core.workflow.longitudinal_mini_program import LongitudinalMiniProgramRunner
 from feiyue_core.workflow.profile_worker_bridge import _parse_candidate_writes
 from feiyue_core.workflow.review_inbox import ReviewInbox
 from feiyue_core.workflow.semantic_reviewer import ProviderFreeSemanticReviewer, SemanticReviewRequest
@@ -152,6 +153,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     longitudinal_parser.add_argument("--min-samples", type=int, default=3, help="Minimum samples required in each before/after window")
     longitudinal_parser.add_argument("--window-size", type=int, default=3, help="Number of earliest/latest samples to use for before/after windows")
     longitudinal_parser.add_argument("--write-report", action="store_true", help="Persist latest.json and latest.md under .hermes/longitudinal-gain")
+
+    longitudinal_mini_parser = subparsers.add_parser("longitudinal-mini-program", help="Run a provider-free 3-batch longitudinal mini-program")
+    longitudinal_mini_parser.add_argument("--run-id", required=True)
+    longitudinal_mini_parser.add_argument("--write-report", action="store_true", help="Persist evidence.json and report.md under .hermes/longitudinal-mini-programs/<run_id>")
 
     asset_reuse_parser = subparsers.add_parser("asset-reuse-smoke", help="Run provider-free lesson asset reuse smoke evidence")
     asset_reuse_parser.add_argument("--run-id", required=True)
@@ -369,6 +374,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"Controlled teacher escalation summary not found for run_id: {args.run_id}", file=sys.stderr)
                 return 2
             print(json.dumps(json.loads(evidence_path.read_text(encoding="utf-8")), indent=2, sort_keys=True))
+            return 0
+        if args.command == "longitudinal-mini-program":
+            report = LongitudinalMiniProgramRunner(root).run(run_id=args.run_id, write_report=args.write_report)
+            print(report.model_dump_json(indent=2))
             return 0
         if args.command == "list":
             catalog = RunCatalog(root)

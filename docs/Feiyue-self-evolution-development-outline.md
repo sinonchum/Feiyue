@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-14
-> **Verified baseline**：`605 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `605 passed`.
+> **Verified baseline**：`608 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `608 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1330,19 +1330,21 @@ M5 Project Knowledge
 | M3 Resilient Runtime | Done Foundation | journal、recovery manifest、operation recorder、side-effect inspector、reconciler、resume flow、recovery prompt、安全 gate 与 interruption simulation 已完成；后续只作为支撑模块按需增强。 |
 | M4 Candidate / Feedback / Teacher Loop | Done Foundation | fake provider、role-aware student/teacher、candidate service、feedback/revision、iteration trace/replay、fallback resume prompt demo 已完成。 |
 | M5 Workflow Asset Layer | Done Foundation | project knowledge、task contract、bug dossier、lesson packet、regression eval、routing table 与 integration smoke 已完成；批量 lesson persistence / routing learning 后续增强。 |
-| M6 Curator / Distillation | Done Foundation+ | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate、curation smoke、asset proposal persistence、append-only review decisions 与 provider-free promotion gate 已完成；dedup / 正式 `.hermes` asset write 仍未完成。 |
-| M7 Weak Model Capability Expansion | Done Foundation | CapabilityLadder、WorkerPerformanceRecord、ModelCapabilityProfile、promotion/demotion recommendation rules 与 capability smoke 已完成；真实 worker 数据与 routing adapter 后续增强。 |
-| M8 Creative Role Development | Done Foundation | CreativeBrief、CreativeVariant、CreativeCritique、UserSelectionFeedback 与 creative smoke 已完成；opportunity discovery、accepted-proposal metrics、真实 creative provider 后续增强。 |
-| M9 Strategy/Evaluation Harness | Done Foundation+++ | StrategyEvaluationRecord、StrategyScorecard、BenchmarkSuite、StrategyComparisonReport、evaluation smoke、benchmark case schema、provider-free trace fixtures、fixture strategy comparison contracts、gated live benchmark plan/replay contracts、authorized live benchmark runner、rubric quality scoring、negation-aware forbidden-claim handling 与 Wave4 real Hermes profile benchmark evidence 已完成；longitudinal gain / semantic judge 仍未完成。 |
-| M10 Real Provider / Multi-Profile Worker Integration | Partial Real Benchmark Lane | FakeProfileRunner、ProviderDiagnostic、ProviderFailureKind、redaction、profile diagnostic smoke、real-provider plan-only authorization checklist、typed authorization/evidence records、gated Hermes profile subprocess runner 与 real profile benchmark execution 已完成。Wave4-1F: 45/45 real Hermes profile calls passed across weak/mid/strong profiles, `gemini-3.1-pro` is the canonical Gemini strong model. M10 real profile benchmark lane usable; M10 real multi-worker execution lane not yet implemented. |
-| M11 Real Workflow Execution / Promotion | Provider-free Foundation++ | CandidateFileWrite、ToyWorkflowExecutor、verifier-gated readiness、BugDossier on failure、bounded multi-round fake teacher retry、verified branch promotion、production promotion safety/rollback boundary、run report persistence、source clean guarantee 已完成；真实 worker/provider patch 未完成。 |
+| M6 Curator / Distillation | Done Foundation++ | CuratorInput、TeacherGuidanceSummary、DistillationProposal、ReviewGate、asset proposal persistence、append-only review decisions、provider-free promotion gate、per-patch lesson/regression_eval/task_template promotion 与 duplicate lesson blocking 已完成；更完整的 asset lifecycle/versioning/UI 后续增强。 |
+| M7 Weak Model Capability Expansion | Done Foundation+ | CapabilityLadder、WorkerPerformanceRecord、ModelCapabilityProfile、promotion/demotion recommendation rules、capability smoke、Phase C live evidence ingestion 与 capability-history records 已完成；长期纵向收益仍需 mini-program 量化。 |
+| M8 Creative Role Development | Partial Real Creative Lane | CreativeBrief、CreativeVariant、CreativeCritique、UserSelectionFeedback、provider-free creative E2E、creative metrics skeleton 与 C5 real strong-profile creative dry-run `real_creative_e2e` evidence 已完成；真实 human acceptance/taste feedback 与 opportunity discovery 仍需长期数据。 |
+| M9 Strategy/Evaluation Harness | Done Foundation++++ | StrategyEvaluationRecord、StrategyScorecard、BenchmarkSuite、StrategyComparisonReport、evaluation smoke、benchmark cases、trace fixtures、authorized live benchmark runner、rubric scoring、forbidden-claim checks、Phase C live evidence ingestion、capability-history、longitudinal-gain 与 C2 controlled variants 已完成；下一 frontier 是 longitudinal mini-program，而不是再盲目扩 profile 轮次。 |
+| M10 Real Provider / Multi-Profile Worker Integration | Partial Real Workflow Lane | FakeProfileRunner、ProviderDiagnostic、redaction、typed authorization/evidence、Hermes profile subprocess runner、Wave4-1F 45/45 profile benchmark、real weak workflow worker、real teacher retry、real multi-worker dry-run seam 与 C5 real strong creative dry-run 已完成；真实多 worker project slice 仍未完成。 |
+| M11 Real Workflow Execution / Promotion | Partial Real Workflow + Gated Promotion | CandidateFileWrite、ToyWorkflowExecutor、real-profile workflow runner、teacher retry、approval-gated promotion、branch-only real promotion smoke、draft PR fake adapter、release-candidate readiness 与 production safety/rollback gates 已完成；真实 GitHub PR creation、merge/deploy、production promotion/rollback 仍需显式授权。 |
 | M12 Safety / Budget / Policy Governor | Done Foundation | PolicyGovernor、budget/risk/privacy gates、PolicyGovernorConfigLoader、HumanApprovalRecord、approval persistence、run-evidence、safe_to_retry/next_safe_action、handoff summary 与 action evidence 已完成。 |
 | M13 Productization / Dashboard / API | Done Foundation+ | `feiyue-runs` CLI、RunCatalog、read-only API/dashboard、drill-down、read-only asset catalog/API/dashboard page、static HTML export、manifest SHA256、verifier、portable bundle、export-all pipeline 已完成；full review UI 尚未完整产品化。 |
 | M14 Release Hardening / CI / Documentation | Partial Foundation+ | GitHub Actions CI、CI contract tests、compileall、pytest、static export-all smoke、provider-free example smoke、provider-free benchmark smoke、release checklist、contributing guide、architecture doc、docs index、static SVG architecture diagram、secret scan、Node24 actions runtime opt-in 已完成；full docs site 仍未完成。 |
 
-## 19.1 当前最准确阶段判断
+## 19.1 Blueprint Status Sync v2：当前最准确阶段判断
 
-当前 Feiyue 已经完成一个 **provider-free、可验证、可恢复、可审计、可离线交接** 的 foundation：
+旧状态矩阵已压缩：当前 Feiyue 约 **75–80%** 完成 Master Blueprint 的工程目标。它已经完成 provider-free safety foundation、真实 Hermes profile evidence、Phase C live evidence ingestion、real_creative_e2e creative dry-run、asset/review/promotion gates、capability-history、longitudinal-gain reporting 与首个 longitudinal mini-program；但仍不是完全自治的真实生产开发组织。
+
+当前已证明的闭环是：
 
 ```text
 Blueprint / Doctrine
@@ -1351,21 +1353,21 @@ Blueprint / Doctrine
 → anti-amnesia runtime
 → fake student/teacher candidate loop
 → workflow assets
-→ curator/capability/creative/evaluation foundations + asset proposal, benchmark-prep, live-benchmark plan, provider-evidence, and promotion-safety contracts
-→ policy governor + approval/action evidence
-→ run evidence and asset catalog CLI/API/dashboard/static export/bundle
+→ real profile benchmark + real weak workflow + real teacher retry + real creative dry-run
+→ Phase C live evidence ingestion into capability-history
+→ policy governor + exact approval/action evidence
+→ run evidence, asset catalog, CLI/API/dashboard/static export/bundle
 → GitHub Actions CI gate
 ```
 
 尚未进入或尚未完成的主线是：
 
-1. 真实 Hermes profile workflow worker execution（benchmark prompt 已打通，但 workflow patch worker 未打通）。
-2. 真实弱模型 vs 强模型 longitudinal gain 指标（单轮/多轮 benchmark 已打通，但长期资产提升未量化）。
-3. 真实多 worker execution 与 teacher escalation 的实际 workflow 调用。
-4. Curator proposal 到正式 `.hermes` asset 的 dedup / promotion 写入闭环。
-5. 真实项目自动 promotion / rollback 的外部生产执行。
-6. M13 全面 productization：lesson/eval/routing/capability/creative proposal review UI。
-7. M14 release hardening：full docs site。
+1. **longitudinal mini-program 已启动，下一步需要真实化**：首个 provider-free run `longitudinal-mini-program-20260614` 已证明 3-batch measurement path，teacher_call_rate_delta -1.0、retry_count_delta -2、repeat_error_count_delta -2；下一步应换成真实重复任务 batch，而不是再盲目扩 profile 到 5 轮。
+2. **real multi-worker project slice**：真实多 profile 在一个小型真实项目任务中分工执行、teacher 只在失败时介入、verifier 决定成败。
+3. **真实 GitHub PR / merge / deploy / rollback**：现有 fake draft PR、release-candidate readiness 与 production gates 已完成，但外部副作用仍需显式 credentials、approval、CI 与 rollback evidence。
+4. **operator review UI v1**：CLI 很完整，Web UI 仍主要是 read-only/disabled skeleton；需要 proposal diff、approval/reject、asset/routing/capability review surfaces。
+5. **creative role 长期人审指标**：C5 real strong-profile creative dry-run 已完成，但 accepted proposal rate、taste violation rate、cross-project opportunity discovery 需要持续积累。
+6. **full docs site / release packaging**：CI 与 docs index 已有，完整 docs site、versioned releases 与 onboarding 仍可增强。
 
 ---
 
@@ -1560,7 +1562,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`605 passed`。
+- `python -m pytest -q`：`608 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1860,8 +1862,14 @@ Wave5-1 through Wave5-6 are now implemented and locally smoke-verified. Remainin
 - **B3 Semantic reviewer skeleton**：added provider-free `semantic-review` evidence over required/forbidden term rubrics. It writes `.hermes/semantic-reviews/<review_id>/evidence.json`, records `provider_call_count: 0`, and stays dry-run-only.
 - **B4 Creative metrics skeleton**：added append-only `.hermes/creative-metrics/decisions.jsonl` plus `creative-metrics-record` for human accepted/rejected/deferred proposal decisions, acceptance rate, and taste-violation rate. It records `provider_call_count: 0` and `mutates_state: false`.
 
+### Completed Longitudinal Mini-Program
+
+- **Blueprint Status Sync v2**：compressed the current matrix against Master Blueprint into a 75–80% engineering-completion assessment, clarifying that Phase C live evidence ingestion, `real_creative_e2e`, capability-history, longitudinal-gain, approval gates, and release-readiness seams are complete while real multi-worker project execution and production side effects remain gated.
+- **Longitudinal Mini-Program 20260614**：added `LongitudinalMiniProgramRunner` and `feiyue-runs longitudinal-mini-program --run-id longitudinal-mini-program-20260614 --write-report`. The provider-free 3-batch run persisted `.hermes/longitudinal-mini-programs/longitudinal-mini-program-20260614/evidence.json`, recorded baseline → lesson_injected → routing_adjusted phases, and ingested 3 `longitudinal_mini_program` records into capability-history.
+- Observed measurement deltas: pass_rate_delta `+1.0`, teacher_call_rate_delta `-1.0`, retry_count_delta `-2`, repeat_error_count_delta `-2`, with `provider_call_count: 0`, `dry_run_only: true`, `promotion_attempted: false`, `production_mutated: false`, and `global_hermes_config_mutated: false`.
+
 ### Phase B local verification
 
-- `python -m pytest -q`：`605 passed`。
+- `python -m pytest -q`：`608 passed`。
 - New targeted contracts cover review UI disabled actions, CLI reference generation, provider-free semantic review evidence, and creative acceptance/taste metrics.
 - Phase C remains explicit-authorization-gated for external PR/merge/deploy/production promotion and larger real-provider matrices.
