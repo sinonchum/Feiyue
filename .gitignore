@@ -52,3 +52,6 @@ local-notes/
 
 # Feiyue local post-merge handoff evidence
 .hermes/post-merge-handoffs/
+
+# Feiyue local Wave9 task-pack evidence
+.hermes/wave9-task-packs/

@@ -1,0 +1,161 @@
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+from pydantic import ValidationError
+
+from feiyue_core.workflow.wave9_task_pack import (
+    Wave9TaskAssignment,
+    Wave9TaskPack,
+    task_pack_hash,
+    write_wave9_task_pack,
+    read_wave9_task_pack,
+)
+
+
+def _cli_env() -> dict[str, str]:
+    env = os.environ.copy()
+    source_path = str(Path(__file__).resolve().parents[1])
+    env["PYTHONPATH"] = f"{source_path}{os.pathsep}{env.get('PYTHONPATH', '')}" if env.get("PYTHONPATH") else source_path
+    return env
+
+
+def _assignments() -> list[Wave9TaskAssignment]:
+    return [
+        Wave9TaskAssignment(
+            assignment_id="impl",
+            profile_id="feiyue-mid-deepseek-pro",
+            role="implementation",
+            objective="Implement the tiny feature in the allowed source file only.",
+            allowed_files=["packages/feiyue-core/feiyue_core/workflow/wave9_marker.py"],
+            verifier_commands=["python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q"],
+            max_profile_calls=1,
+        ),
+        Wave9TaskAssignment(
+            assignment_id="tests",
+            profile_id="feiyue-strong-gpt55",
+            role="tests",
+            objective="Add the matching focused regression test only.",
+            allowed_files=["packages/feiyue-core/tests/test_wave9_marker.py"],
+            verifier_commands=["python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q"],
+            max_profile_calls=1,
+        ),
+    ]
+
+
+def test_wave9_task_pack_requires_non_empty_assignment_scope() -> None:
+    with pytest.raises(ValidationError, match="allowed_files"):
+        Wave9TaskAssignment(
+            assignment_id="impl",
+            profile_id="feiyue-mid-deepseek-pro",
+            role="implementation",
+            objective="Implement feature.",
+            allowed_files=[],
+            verifier_commands=["python -m pytest -q"],
+            max_profile_calls=1,
+        )
+
+
+def test_wave9_task_pack_overlapping_scopes_require_reject_on_conflict() -> None:
+    assignments = _assignments()
+    assignments[1] = assignments[1].model_copy(
+        update={"allowed_files": ["packages/feiyue-core/feiyue_core/workflow/wave9_marker.py"]}
+    )
+
+    with pytest.raises(ValidationError, match="overlapping assignment scopes require reject_on_conflict"):
+        Wave9TaskPack(
+            task_pack_id="wave9-2-task-pack",
+            task_id="wave9.real-multi-worker.marker",
+            title="Wave9 real multi-worker marker task",
+            summary="Tiny scoped task pack for a future real multi-worker dry-run.",
+            assignments=assignments,
+            merge_strategy="ordered_overlay",
+            verifier_commands=["python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q"],
+            review_criteria=["combined verifier passes", "source checkout remains clean"],
+            dry_run_only=True,
+            promotion_attempted=False,
+            global_hermes_config_mutated=False,
+            production_mutated=False,
+            reason_codes=["wave9_task_pack_pre_execution_only"],
+        )
+
+
+def test_wave9_task_pack_persists_hashable_provider_free_evidence(tmp_path: Path) -> None:
+    pack = Wave9TaskPack(
+        task_pack_id="wave9-2-task-pack",
+        task_id="wave9.real-multi-worker.marker",
+        title="Wave9 real multi-worker marker task",
+        summary="Tiny scoped task pack for a future real multi-worker dry-run.",
+        assignments=_assignments(),
+        merge_strategy="reject_on_conflict",
+        verifier_commands=["python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q"],
+        review_criteria=["combined verifier passes", "source checkout remains clean"],
+        dry_run_only=True,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        reason_codes=["wave9_task_pack_pre_execution_only", "provider_calls_not_started"],
+    )
+
+    path = write_wave9_task_pack(pack, tmp_path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    loaded = read_wave9_task_pack(tmp_path, "wave9-2-task-pack")
+
+    assert path == tmp_path / ".hermes" / "wave9-task-packs" / "wave9-2-task-pack" / "task-pack.json"
+    assert loaded.model_copy(update={"task_pack_hash": None}) == pack
+    assert loaded.task_pack_hash == task_pack_hash(pack)
+    assert payload["dry_run_only"] is True
+    assert payload["promotion_attempted"] is False
+    assert payload["global_hermes_config_mutated"] is False
+    assert payload["production_mutated"] is False
+    assert payload["provider_call_count"] == 0
+    assert task_pack_hash(pack) == payload["task_pack_hash"]
+
+
+def test_wave9_task_pack_cli_writes_provider_free_evidence(tmp_path: Path) -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "wave9-task-pack",
+            "wave9-2-cli-task-pack",
+            "--task-id",
+            "wave9.real-multi-worker.marker",
+            "--title",
+            "Wave9 real multi-worker marker task",
+            "--summary",
+            "Tiny scoped task pack for a future real multi-worker dry-run.",
+            "--assignment",
+            "impl|feiyue-mid-deepseek-pro|implementation|Implement marker|packages/feiyue-core/feiyue_core/workflow/wave9_marker.py|python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q",
+            "--assignment",
+            "tests|feiyue-strong-gpt55|tests|Test marker|packages/feiyue-core/tests/test_wave9_marker.py|python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q",
+            "--verifier-command",
+            "python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q",
+            "--review-criterion",
+            "combined verifier passes",
+            "--review-criterion",
+            "source checkout remains clean",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["task_pack_id"] == "wave9-2-cli-task-pack"
+    assert payload["task_pack_hash"]
+    assert payload["provider_call_count"] == 0
+    assert payload["dry_run_only"] is True
+    assert payload["promotion_attempted"] is False
+    assert payload["global_hermes_config_mutated"] is False
+    assert payload["production_mutated"] is False
+    assert (tmp_path / ".hermes" / "wave9-task-packs" / "wave9-2-cli-task-pack" / "task-pack.json").exists()

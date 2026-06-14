@@ -105,12 +105,18 @@ from feiyue_core.workflow.true_multi_student_workflow import (
     MultiStudentDryRunApproval,
     MultiStudentDryRunExecutor,
     MultiStudentPlan,
-    assignment_hash,
+    assignment_hash as multi_student_assignment_hash,
     read_multi_student_approval,
     read_multi_student_evidence,
     read_multi_student_plan,
     write_multi_student_approval,
     write_multi_student_plan,
+)
+from feiyue_core.workflow.wave9_task_pack import (
+    Wave9TaskAssignment,
+    Wave9TaskPack,
+    task_pack_hash,
+    write_wave9_task_pack,
 )
 
 
@@ -407,6 +413,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Print true multi-student workflow evidence JSON",
     )
     multi_student_inspect_parser.add_argument("run_id")
+
+    wave9_task_pack_parser = subparsers.add_parser(
+        "wave9-task-pack",
+        help="Create provider-free Wave9 real multi-worker task-pack evidence",
+    )
+    wave9_task_pack_parser.add_argument("task_pack_id")
+    wave9_task_pack_parser.add_argument("--task-id", required=True)
+    wave9_task_pack_parser.add_argument("--title", required=True)
+    wave9_task_pack_parser.add_argument("--summary", required=True)
+    wave9_task_pack_parser.add_argument("--assignment", action="append", required=True, help="assignment_id|profile_id|role|objective|allowed_file[,allowed_file]|verifier_command")
+    wave9_task_pack_parser.add_argument("--merge-strategy", choices=["reject_on_conflict", "ordered_overlay", "reviewer_selected_patch"], default="reject_on_conflict")
+    wave9_task_pack_parser.add_argument("--verifier-command", action="append", required=True, dest="verifier_commands")
+    wave9_task_pack_parser.add_argument("--review-criterion", action="append", required=True, dest="review_criteria")
 
     real_multi_worker_parser = subparsers.add_parser(
         "real-multi-worker-live-dry-run",
@@ -1078,7 +1097,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 plan_id=plan.plan_id,
                 task_id=plan.task_id,
                 approved_action="execute_true_multi_student_dry_run",
-                worker_assignment_hash=assignment_hash(plan.worker_assignments),
+                worker_assignment_hash=multi_student_assignment_hash(plan.worker_assignments),
                 worker_profile_ids=[assignment.profile_id for assignment in plan.worker_assignments],
                 merge_strategy=plan.merge_strategy,
                 verifier_strategy=plan.verifier_strategy,
@@ -1116,6 +1135,45 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "true-multi-student-workflow":
             report = read_multi_student_evidence(root, args.run_id)
             print(report.model_dump_json(indent=2))
+            return 0
+        if args.command == "wave9-task-pack":
+            assignments: list[Wave9TaskAssignment] = []
+            for raw_assignment in args.assignment:
+                parts = raw_assignment.split("|", 5)
+                if len(parts) != 6:
+                    print("assignment must be assignment_id|profile_id|role|objective|allowed_file[,allowed_file]|verifier_command", file=sys.stderr)
+                    return 2
+                assignment_id, profile_id, role, objective, allowed_files_raw, verifier_command = parts
+                assignments.append(
+                    Wave9TaskAssignment(
+                        assignment_id=assignment_id,
+                        profile_id=profile_id,
+                        role=role,
+                        objective=objective,
+                        allowed_files=[item.strip() for item in allowed_files_raw.split(",") if item.strip()],
+                        verifier_commands=[verifier_command],
+                        max_profile_calls=1,
+                    )
+                )
+            pack = Wave9TaskPack(
+                task_pack_id=args.task_pack_id,
+                task_id=args.task_id,
+                title=args.title,
+                summary=args.summary,
+                assignments=assignments,
+                merge_strategy=args.merge_strategy,
+                verifier_commands=args.verifier_commands,
+                review_criteria=args.review_criteria,
+                dry_run_only=True,
+                promotion_attempted=False,
+                global_hermes_config_mutated=False,
+                production_mutated=False,
+                provider_call_count=0,
+                reason_codes=["wave9_task_pack_pre_execution_only", "provider_calls_not_started"],
+            )
+            write_wave9_task_pack(pack, root)
+            persisted = pack.model_copy(update={"task_pack_hash": task_pack_hash(pack)})
+            print(persisted.model_dump_json(indent=2))
             return 0
         if args.command == "real-multi-worker-live-dry-run":
             plan = _read_multi_worker_plan(root, args.plan_id)

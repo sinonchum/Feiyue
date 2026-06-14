@@ -56,6 +56,7 @@ CLI_REFERENCE_COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("feiyue-runs approve-real-merge <audit_id> --approved-by <user> --approval-id <id> --reason <text> --merge-method squash", "Create exact approval for real GitHub merge only."),
         ("feiyue-runs execute-approved-real-merge <audit_id> --adapter fake|github", "Execute exact-approved real merge or fake simulation; no auto-merge/deploy."),
         ("feiyue-runs post-merge-handoff <handoff_id> --pr-number <n> --pr-state MERGED --main-head-sha <sha> --local-test-baseline <baseline>", "Create post-merge verification and no-deploy release handoff evidence."),
+        ("feiyue-runs wave9-task-pack <task_pack_id> --task-id <id> --assignment <assignment_spec>", "Create provider-free Wave9 real multi-worker task-pack evidence; no provider calls or mutation."),
     ],
 }
 

@@ -38,4 +38,4 @@ def test_runs_cli_writes_stable_cli_reference_without_secrets(tmp_path) -> None:
     assert "No command in this reference requires secrets to be written into docs." in text
     forbidden = ["ghp_", "github_pat_", "AKIA", "Authorization: Bearer", "PRIVATE KEY"]
     assert not any(marker in text for marker in forbidden)
-    assert "sk-" not in text.replace("task-id", "task_id")
+    assert "sk-" not in text.replace("task-id", "task_id").replace("task-pack", "task_pack")
