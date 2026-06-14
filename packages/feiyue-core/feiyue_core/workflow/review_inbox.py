@@ -175,19 +175,42 @@ class ReviewInbox:
             payload = _read_json_object(proposal_path)
             proposal_id = _text(payload.get("proposal_id")) or proposal_path.parent.name
             status = _text(payload.get("status"))
-            if status != "review_required":
-                continue
-            items.append(
-                _item(
-                    "asset_proposal",
-                    proposal_id,
-                    "review_required",
-                    proposal_path,
-                    "review_asset_proposal",
-                    self.project_root,
+            if status == "review_required":
+                items.append(
+                    _item(
+                        "asset_proposal",
+                        proposal_id,
+                        "review_required",
+                        proposal_path,
+                        "review_asset_proposal",
+                        self.project_root,
+                    )
                 )
-            )
+                continue
+            if status == "approved":
+                patches = payload.get("proposal", {}).get("patches", [])
+                if not isinstance(patches, list) or not patches:
+                    continue
+                promoted_count = self._promoted_asset_patch_count(proposal_path.parent)
+                items.append(
+                    _item(
+                        "asset_proposal",
+                        proposal_id,
+                        f"pending_promotion:{promoted_count}/{len(patches)}",
+                        proposal_path.parent / "decisions.jsonl",
+                        "promote_curator_asset_patch_by_patch_id_or_index",
+                        self.project_root,
+                    )
+                )
         return items
+
+    def _promoted_asset_patch_count(self, proposal_dir: Path) -> int:
+        count = 0
+        for evidence_path in _sorted_glob(proposal_dir / "promotions", "*.json"):
+            payload = _read_json_object(evidence_path)
+            if payload.get("promoted") is True:
+                count += 1
+        return count
 
 
 def _item(item_type: str, item_id: str, status: str, evidence_path: Path, recommended_action: str, project_root: Path) -> ReviewInboxItem:

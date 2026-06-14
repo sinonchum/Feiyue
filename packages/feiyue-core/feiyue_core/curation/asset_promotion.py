@@ -103,6 +103,8 @@ class PromotionEvidence(FeiyueModel):
     """Durable evidence for an attempted sandboxed asset promotion."""
 
     proposal_id: str
+    patch_id: str | None = None
+    patch_index: int | None = None
     target_path: str
     content_hash: str
     rollback_snapshot: dict[str, Any]
@@ -111,6 +113,13 @@ class PromotionEvidence(FeiyueModel):
     reviewer: str
     reason: str
     decided_at: str
+
+    @field_validator("proposal_id", "reviewer", "reason", "decided_at")
+    @classmethod
+    def required_text_fields_must_not_be_empty(cls, value: str) -> str:
+        if value == "":
+            raise ValueError("promotion evidence fields must not be empty")
+        return value
 
 
 _SECRET_KEYS = ("password", "secret", "token", "api_key", "apikey", "credential")
@@ -198,6 +207,7 @@ class AssetPromotionStore:
         reason: str,
         decided_at: str,
         rollback_ref: str | None = None,
+        patch_id: str | None = None,
         patch_index: int = 0,
     ) -> PromotionEvidence:
         """Promote one approved proposal patch into project-local ``.hermes`` assets.
@@ -208,7 +218,7 @@ class AssetPromotionStore:
         """
 
         record = self.load_proposal(proposal_id)
-        patch = self._proposal_patch(record, patch_index)
+        patch_index_resolved, patch = self._proposal_patch(record, patch_index=patch_index, patch_id=patch_id)
         content = str(patch.get("proposed_content", "")) if patch is not None else ""
         content_hash = self._content_hash(content)
         target_path = self._target_path_for_patch(record, patch) if patch is not None else ""
@@ -235,6 +245,8 @@ class AssetPromotionStore:
         promoted = not reason_codes
         evidence = PromotionEvidence(
             proposal_id=proposal_id,
+            patch_id=self._patch_id_for_evidence(patch_index_resolved, patch, patch_id),
+            patch_index=patch_index_resolved,
             target_path=target_path,
             content_hash=content_hash,
             rollback_snapshot=rollback_snapshot,
@@ -261,7 +273,8 @@ class AssetPromotionStore:
         target = self.root / target_path
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(content)
-        self._write_record(record.model_copy(update={"status": AssetProposalStatus.PROMOTED}))
+        next_status = AssetProposalStatus.PROMOTED if self._all_patches_promoted(record, patch_index_resolved) else AssetProposalStatus.APPROVED
+        self._write_record(record.model_copy(update={"status": next_status}))
         self._write_promotion_evidence(evidence)
         return evidence
 
@@ -280,12 +293,55 @@ class AssetPromotionStore:
             target.unlink()
         return {"rolled_back": True, "target_path": evidence_model.target_path}
 
-    def _proposal_patch(self, record: AssetProposalRecord, patch_index: int) -> dict[str, Any] | None:
+    def _proposal_patch(
+        self,
+        record: AssetProposalRecord,
+        *,
+        patch_index: int,
+        patch_id: str | None,
+    ) -> tuple[int | None, dict[str, Any] | None]:
         patches = record.proposal.get("patches", [])
-        if not isinstance(patches, list) or patch_index < 0 or patch_index >= len(patches):
-            return None
+        if not isinstance(patches, list):
+            return None, None
+        if patch_id is not None:
+            for index, patch in enumerate(patches):
+                if isinstance(patch, dict) and self._patch_selection_id(index, patch) == patch_id:
+                    return index, patch
+            return None, None
+        if patch_index < 0 or patch_index >= len(patches):
+            return None, None
         patch = patches[patch_index]
-        return patch if isinstance(patch, dict) else None
+        return (patch_index, patch) if isinstance(patch, dict) else (None, None)
+
+    def _patch_selection_id(self, patch_index: int, patch: dict[str, Any]) -> str:
+        raw_patch_id = patch.get("patch_id") or patch.get("id")
+        if isinstance(raw_patch_id, str) and raw_patch_id:
+            return raw_patch_id
+        asset_type = patch.get("asset_type")
+        if isinstance(asset_type, str) and asset_type:
+            return asset_type
+        return f"patch-{patch_index}"
+
+    def _patch_id_for_evidence(self, patch_index: int | None, patch: dict[str, Any] | None, requested_patch_id: str | None) -> str | None:
+        if patch is not None and patch_index is not None:
+            return self._patch_selection_id(patch_index, patch)
+        return requested_patch_id
+
+    def _all_patches_promoted(self, record: AssetProposalRecord, current_patch_index: int | None) -> bool:
+        patches = record.proposal.get("patches", [])
+        if not isinstance(patches, list) or current_patch_index is None:
+            return False
+        promoted_indexes = {current_patch_index}
+        promotions_dir = self._proposal_dir(record.proposal_id) / "promotions"
+        if promotions_dir.exists():
+            for path in promotions_dir.glob("*.json"):
+                try:
+                    payload = json.loads(path.read_text(encoding="utf-8"))
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if payload.get("promoted") is True and isinstance(payload.get("patch_index"), int):
+                    promoted_indexes.add(int(payload["patch_index"]))
+        return len(promoted_indexes) >= len(patches)
 
     def _target_path_for_patch(self, record: AssetProposalRecord, patch: dict[str, Any]) -> str:
         raw_target = patch.get("target_path")
@@ -342,9 +398,17 @@ class AssetPromotionStore:
         return False
 
     def _write_promotion_evidence(self, evidence: PromotionEvidence) -> None:
-        path = self._proposal_dir(evidence.proposal_id) / "promotion.json"
+        proposal_dir = self._proposal_dir(evidence.proposal_id)
+        path = proposal_dir / "promotions" / f"{self._promotion_evidence_name(evidence)}.json"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(evidence.model_dump_json(indent=2) + "\n")
+        payload = evidence.model_dump_json(indent=2) + "\n"
+        path.write_text(payload)
+        (proposal_dir / "promotion.json").write_text(payload)
+
+    def _promotion_evidence_name(self, evidence: PromotionEvidence) -> str:
+        name = evidence.patch_id or (f"patch-{evidence.patch_index}" if evidence.patch_index is not None else "unknown-patch")
+        safe = "".join(char if char.isalnum() or char in {"-", "_", "."} else "-" for char in name)
+        return safe.strip(".-") or "unknown-patch"
 
     def _content_hash(self, content: str) -> str:
         return "sha256:" + hashlib.sha256(content.encode("utf-8")).hexdigest()

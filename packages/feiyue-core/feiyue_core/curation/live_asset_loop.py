@@ -58,6 +58,7 @@ def approve_and_promote_curator_asset(
     reviewer: str,
     reason: str,
     rollback_ref: str,
+    patch_id: str | None = None,
     patch_index: int = 0,
 ) -> PromotionEvidence:
     """Approve and promote one proposal patch into project-local .hermes assets."""
@@ -71,6 +72,7 @@ def approve_and_promote_curator_asset(
         reason=reason,
         decided_at=decided_at,
         rollback_ref=rollback_ref,
+        patch_id=patch_id,
         patch_index=patch_index,
     )
 
@@ -154,6 +156,7 @@ def _build_proposal(*, evidence: dict[str, Any], run_id: str, proposal_id: str) 
         source_input_id=run_id,
         patches=[
             ProposalPatch(
+                patch_id="lesson",
                 asset_type="lesson",
                 target_path=f".hermes/lessons/{proposal_id}.md",
                 summary="Live B teacher retry lesson from verified real-profile evidence.",
@@ -161,6 +164,7 @@ def _build_proposal(*, evidence: dict[str, Any], run_id: str, proposal_id: str) 
                 source_ids=source_ids,
             ),
             ProposalPatch(
+                patch_id="regression_eval",
                 asset_type="regression_eval",
                 target_path=f".hermes/evals/{proposal_id}.md",
                 summary="Regression eval contract for teacher-guided retry evidence.",
@@ -168,6 +172,7 @@ def _build_proposal(*, evidence: dict[str, Any], run_id: str, proposal_id: str) 
                 source_ids=source_ids,
             ),
             ProposalPatch(
+                patch_id="task_template",
                 asset_type="task_template",
                 target_path=f".hermes/task-templates/{proposal_id}.md",
                 summary="Reusable task template for verifier-failure teacher retry loops.",

@@ -44,11 +44,19 @@ class ProposalStatus(StrEnum):
 class ProposalPatch(FeiyueModel):
     """A single proposed curation asset change."""
 
+    patch_id: str | None = None
     asset_type: AllowedAssetType
     target_path: str | None = None
     summary: str
     proposed_content: str
     source_ids: list[str] = Field(min_length=1)
+
+    @field_validator("patch_id")
+    @classmethod
+    def patch_id_must_not_be_empty(cls, value: str | None) -> str | None:
+        if value == "":
+            raise ValueError("patch_id must not be empty")
+        return value
 
     @field_validator("proposed_content")
     @classmethod
@@ -95,11 +103,13 @@ class DistillationProposal(FeiyueModel):
         for index, patch in enumerate(self.patches, start=1):
             source_ids = ", ".join(patch.source_ids)
             target_path = patch.target_path if patch.target_path is not None else "None"
+            patch_id = patch.patch_id if patch.patch_id is not None else f"index:{index - 1}"
             parts.append(
                 "\n".join(
                     [
                         f"### Patch {index}",
                         "",
+                        f"- Patch ID: {patch_id}",
                         f"- Asset Type: {patch.asset_type}",
                         f"- Target Path: {target_path}",
                         f"- Summary: {patch.summary}",
