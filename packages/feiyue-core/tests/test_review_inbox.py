@@ -51,6 +51,9 @@ def test_review_inbox_aggregates_pending_local_evidence_without_mutation(tmp_pat
     )
     _write_json(blocked_promotion, {"run_id": "dry-blocked", "status": "blocked", "reason_codes": ["missing_promotion_approval"]})
 
+    draft_plan = tmp_path / ".hermes" / "promotion-lifecycle" / "draft-1" / "pr-plan.json"
+    _write_json(draft_plan, {"run_id": "draft-1", "status": "planned", "external_pr_created": False, "draft": True})
+
     plan = tmp_path / ".hermes" / "multi-worker-plans" / "plan-1" / "plan.json"
     _write_json(plan, {"plan_id": "plan-1", "task_id": "task-plan", "route": {"status": "selected"}})
     plan_approved = tmp_path / ".hermes" / "multi-worker-plans" / "plan-2" / "plan.json"
@@ -75,6 +78,7 @@ def test_review_inbox_aggregates_pending_local_evidence_without_mutation(tmp_pat
     assert by_key[("routing_proposal", "route-1")].status == "pending_approval"
     assert by_key[("workflow_promotion", "dry-1")].recommended_action == "review_and_create_promotion_approval"
     assert by_key[("workflow_promotion", "dry-blocked")].status == "blocked_promotion"
+    assert by_key[("draft_pr_plan", "draft-1")].recommended_action == "review_and_create_draft_pr_approval"
     assert by_key[("multi_worker_plan", "plan-1")].status == "pending_approval"
     assert by_key[("multi_worker_plan", "plan-2")].status == "pending_run"
     assert by_key[("asset_proposal", "asset-1")].status == "review_required"

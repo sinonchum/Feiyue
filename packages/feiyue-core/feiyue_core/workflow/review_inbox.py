@@ -42,6 +42,7 @@ class ReviewInbox:
         items = [
             *self._routing_proposals(),
             *self._workflow_promotions(),
+            *self._draft_pr_plans(),
             *self._multi_worker_plans(),
             *self._asset_proposals(),
         ]
@@ -124,6 +125,26 @@ class ReviewInbox:
                         self.project_root,
                     )
                 )
+        return items
+
+    def _draft_pr_plans(self) -> list[ReviewInboxItem]:
+        root = self.hermes_dir / "promotion-lifecycle"
+        items: list[ReviewInboxItem] = []
+        for plan_path in _sorted_glob(root, "*/pr-plan.json"):
+            payload = _read_json_object(plan_path)
+            run_id = _text(payload.get("run_id")) or plan_path.parent.name
+            evidence_path = plan_path.parent / "draft-pr-evidence.json"
+            evidence_payload = _read_json_object(evidence_path)
+            if _text(evidence_payload.get("status")) == "created":
+                continue
+            approval_path = plan_path.parent / "draft-pr-approval.json"
+            if not approval_path.exists():
+                items.append(_item("draft_pr_plan", run_id, "pending_approval", plan_path, "review_and_create_draft_pr_approval", self.project_root))
+            elif not evidence_path.exists():
+                items.append(_item("draft_pr_plan", run_id, "pending_create", approval_path, "create_approved_draft_pr", self.project_root))
+            else:
+                status = _text(evidence_payload.get("status")) or "needs_review"
+                items.append(_item("draft_pr_plan", run_id, f"create_{status}", evidence_path, "review_draft_pr_evidence", self.project_root))
         return items
 
     def _multi_worker_plans(self) -> list[ReviewInboxItem]:

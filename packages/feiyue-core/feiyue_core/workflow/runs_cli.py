@@ -19,6 +19,12 @@ from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvi
 from feiyue_core.workflow.longitudinal_gain import LongitudinalGainEvaluator
 from feiyue_core.workflow.profile_worker_bridge import _parse_candidate_writes
 from feiyue_core.workflow.review_inbox import ReviewInbox
+from feiyue_core.workflow.promotion_lifecycle import (
+    approve_draft_pr,
+    create_approved_draft_pr,
+    create_promotion_pr_plan,
+    read_draft_pr_approval,
+)
 from feiyue_core.workflow.real_profile_promotion import (
     RealProfilePromotionApproval,
     RealProfilePromotionGate,
@@ -74,6 +80,20 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     workflow_promotion_parser = subparsers.add_parser("workflow-promotion", help="Print real profile workflow promotion evidence JSON")
     workflow_promotion_parser.add_argument("run_id")
+
+    draft_pr_plan_parser = subparsers.add_parser("draft-pr-plan", help="Create a local-only draft PR plan from verified promotion evidence")
+    draft_pr_plan_parser.add_argument("run_id")
+    draft_pr_plan_parser.add_argument("--allowed-target-branch", action="append", required=True, dest="allowed_target_branches")
+    draft_pr_plan_parser.add_argument("--source-branch")
+
+    approve_draft_pr_parser = subparsers.add_parser("approve-draft-pr", help="Create exact approval evidence for draft PR creation")
+    approve_draft_pr_parser.add_argument("run_id")
+    approve_draft_pr_parser.add_argument("--approved-by", required=True)
+    approve_draft_pr_parser.add_argument("--approval-id", required=True)
+    approve_draft_pr_parser.add_argument("--reason", required=True)
+
+    create_draft_pr_parser = subparsers.add_parser("create-approved-draft-pr", help="Create a draft PR through the fake adapter using persisted approval")
+    create_draft_pr_parser.add_argument("run_id")
 
     approve_parser = subparsers.add_parser("approve-promotion", help="Create exact approval evidence for a verified workflow dry run")
     approve_parser.add_argument("run_id")
@@ -237,6 +257,30 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(f"Workflow promotion evidence not found for run_id: {args.run_id}", file=sys.stderr)
                 return 2
             print(json.dumps(json.loads(evidence_path.read_text(encoding="utf-8")), indent=2, sort_keys=True))
+            return 0
+        if args.command == "draft-pr-plan":
+            plan = create_promotion_pr_plan(
+                project_root=root,
+                run_id=args.run_id,
+                allowed_target_branches=args.allowed_target_branches,
+                source_branch=args.source_branch,
+            )
+            print(plan.model_dump_json(indent=2))
+            return 0
+        if args.command == "approve-draft-pr":
+            approval = approve_draft_pr(
+                project_root=root,
+                run_id=args.run_id,
+                approved_by=args.approved_by,
+                approval_id=args.approval_id,
+                reason=args.reason,
+            )
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "create-approved-draft-pr":
+            approval = read_draft_pr_approval(root, args.run_id)
+            evidence = create_approved_draft_pr(project_root=root, run_id=args.run_id, approval=approval)
+            print(evidence.model_dump_json(indent=2))
             return 0
         if args.command == "approve-promotion":
             dry_run = _load_workflow_smoke_report(root, args.run_id)
