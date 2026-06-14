@@ -17,7 +17,7 @@ Out of scope without explicit authorization:
 - Real provider execution requires explicit authorization.
 - Hermes config mutation is out of scope.
 - Real Hermes profile scheduling is out of scope.
-- Real project promotion / rollback automation is out of scope.
+- Real project promotion / rollback automation is out of scope; release-candidate and production-promotion readiness gates are fake-first, local-only evidence checks with `production_mutated: false`.
 - Real weak-model vs strong-model benchmark calls are out of scope.
 
 ## Required Local Gates
@@ -88,6 +88,39 @@ Run from `packages/feiyue-core` unless noted otherwise.
    ```
 
    Expected result: no whitespace errors and a clean tree after commit.
+
+## Release Candidate / Production Promotion Safety Gate
+
+Before any production-promotion claim, create and verify a local release candidate bundle. This gate is fake-first and fail-closed: it writes evidence under `.hermes/release-candidates/<release_id>/`, performs no push/API/merge/deploy action, and every successful readiness record must keep `production_mutated: false`.
+
+Required evidence:
+
+- Verified draft PR evidence (`.hermes/promotion-lifecycle/<run_id>/draft-pr-evidence.json`) or promoted branch evidence (`.hermes/workflow-promotions/<run_id>/promotion-evidence.json`).
+- Successful CI evidence (`status`, `conclusion`, or `result` of `success`, or boolean success/pass).
+- Target branch in the explicit `--allowed-target-branch` allowlist.
+- Verified rollback simulation/evidence (`rollback-evidence.json` with `status: verified` and no external side effect).
+- Non-empty post-promotion verification plan.
+- Exact production-promotion approval hash generated from the persisted release-candidate plan.
+
+Provider-free CLI flow:
+
+```bash
+python -m feiyue_core.workflow.runs_cli --root "$PROJECT" release-candidate-plan wave5-6 \
+  --run-id "$RUN_ID" \
+  --allowed-target-branch production/main \
+  --ci-evidence-path .hermes/ci/success.json \
+  --rollback-evidence-path .hermes/promotion-lifecycle/$RUN_ID/rollback-evidence.json \
+  --post-promotion-verification-command "python -m pytest -q"
+
+python -m feiyue_core.workflow.runs_cli --root "$PROJECT" approve-production-promotion wave5-6 \
+  --approved-by "$REVIEWER" \
+  --approval-id "$APPROVAL_ID" \
+  --reason "Approve exact dry-run readiness only."
+
+python -m feiyue_core.workflow.runs_cli --root "$PROJECT" verify-production-promotion-readiness wave5-6
+```
+
+Expected readiness marker: `status: ready`, `dry_run: true`, and `production_mutated: false`. Missing CI evidence, missing rollback evidence, a non-allowlisted branch, or an approval hash mismatch must produce `status: blocked`.
 
 ## Required Remote Gate
 

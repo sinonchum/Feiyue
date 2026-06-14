@@ -26,6 +26,12 @@ from feiyue_core.workflow.promotion_lifecycle import (
     create_promotion_pr_plan,
     read_draft_pr_approval,
 )
+from feiyue_core.workflow.release_candidate import (
+    approve_production_promotion,
+    create_release_candidate_plan,
+    read_production_promotion_approval,
+    verify_production_promotion_readiness,
+)
 from feiyue_core.workflow.real_profile_promotion import (
     RealProfilePromotionApproval,
     RealProfilePromotionGate,
@@ -102,6 +108,23 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     create_draft_pr_parser = subparsers.add_parser("create-approved-draft-pr", help="Create a draft PR through the fake adapter using persisted approval")
     create_draft_pr_parser.add_argument("run_id")
+
+    rc_plan_parser = subparsers.add_parser("release-candidate-plan", help="Create a fail-closed local-only release candidate plan")
+    rc_plan_parser.add_argument("release_id")
+    rc_plan_parser.add_argument("--run-id", required=True)
+    rc_plan_parser.add_argument("--allowed-target-branch", action="append", required=True, dest="allowed_target_branches")
+    rc_plan_parser.add_argument("--ci-evidence-path", required=True)
+    rc_plan_parser.add_argument("--rollback-evidence-path")
+    rc_plan_parser.add_argument("--post-promotion-verification-command", action="append", required=True, dest="post_promotion_verification_plan")
+
+    approve_production_parser = subparsers.add_parser("approve-production-promotion", help="Create exact approval evidence for production promotion readiness")
+    approve_production_parser.add_argument("release_id")
+    approve_production_parser.add_argument("--approved-by", required=True)
+    approve_production_parser.add_argument("--approval-id", required=True)
+    approve_production_parser.add_argument("--reason", required=True)
+
+    verify_production_parser = subparsers.add_parser("verify-production-promotion-readiness", help="Verify production promotion readiness without mutating production")
+    verify_production_parser.add_argument("release_id")
 
     approve_parser = subparsers.add_parser("approve-promotion", help="Create exact approval evidence for a verified workflow dry run")
     approve_parser.add_argument("run_id")
@@ -323,6 +346,33 @@ def main(argv: Sequence[str] | None = None) -> int:
             approval = read_draft_pr_approval(root, args.run_id)
             evidence = create_approved_draft_pr(project_root=root, run_id=args.run_id, approval=approval)
             print(evidence.model_dump_json(indent=2))
+            return 0
+        if args.command == "release-candidate-plan":
+            plan = create_release_candidate_plan(
+                project_root=root,
+                release_id=args.release_id,
+                run_id=args.run_id,
+                allowed_target_branches=args.allowed_target_branches,
+                ci_evidence_path=args.ci_evidence_path,
+                rollback_evidence_path=args.rollback_evidence_path,
+                post_promotion_verification_plan=args.post_promotion_verification_plan,
+            )
+            print(plan.model_dump_json(indent=2))
+            return 0
+        if args.command == "approve-production-promotion":
+            approval = approve_production_promotion(
+                project_root=root,
+                release_id=args.release_id,
+                approved_by=args.approved_by,
+                approval_id=args.approval_id,
+                reason=args.reason,
+            )
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "verify-production-promotion-readiness":
+            approval = read_production_promotion_approval(root, args.release_id)
+            readiness = verify_production_promotion_readiness(project_root=root, release_id=args.release_id, approval=approval)
+            print(readiness.model_dump_json(indent=2))
             return 0
         if args.command == "approve-promotion":
             dry_run = _load_workflow_smoke_report(root, args.run_id)
