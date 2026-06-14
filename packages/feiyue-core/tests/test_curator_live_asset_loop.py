@@ -166,7 +166,8 @@ def test_live_asset_loop_approve_and_promote_writes_project_local_assets(tmp_pat
     assert "Live B teacher retry lesson" in content
     assert "Replace the subtraction" in content
     record = json.loads((tmp_path / ".hermes" / "asset-proposals" / "asset-live-b-demo" / "proposal.json").read_text())
-    assert record["status"] == "promoted"
+    assert record["status"] == "approved"
+    assert (tmp_path / ".hermes" / "asset-proposals" / "asset-live-b-demo" / "promotions" / "lesson.json").exists()
 
 
 def test_live_asset_loop_blocks_non_verified_or_promoting_evidence(tmp_path: Path) -> None:
