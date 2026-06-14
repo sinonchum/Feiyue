@@ -33,7 +33,7 @@ python3 -m feiyue_core.workflow.runs_export --root ../.. --out ../../.hermes/sta
 python3 -m feiyue_core.workflow.runs_export_verify ../../.hermes/static-runs-report/manifest.json
 python3 -m feiyue_core.workflow.runs_export_bundle --report ../../.hermes/static-runs-report --out ../../.hermes/static-runs-report.zip
 python3 -m feiyue_core.workflow.runs_export_all --root ../.. --out ../../.hermes/static-runs-report --bundle ../../.hermes/static-runs-report.zip
-# export writes index.html, manifest.json, and runs/<task_id>.html
+# export writes index.html, manifest.json, assets/index.html, review-inbox/index.html, and runs/<task_id>.html
 ```
 
 - Provider-free example smoke command:
@@ -63,7 +63,11 @@ Read-only API endpoints:
 ```text
 GET /
 GET /dashboard
+GET /dashboard/assets
+GET /dashboard/review-inbox
 GET /dashboard/runs/<task_id>
+GET /assets
+GET /review-inbox
 GET /runs
 GET /runs/<task_id>
 GET /runs/<task_id>/handoff

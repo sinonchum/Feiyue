@@ -10,6 +10,7 @@ from urllib.parse import unquote, urlparse
 
 from feiyue_core.workflow.asset_catalog import AssetCatalog
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
+from feiyue_core.workflow.review_inbox import ReviewInbox
 
 
 def _esc(value: object) -> str:
@@ -81,6 +82,7 @@ def render_runs_dashboard(project_root: str | Path) -> str:
     .eyebrow {{ text-transform: uppercase; letter-spacing: .14em; font-size: 11px; color: var(--accent); font-weight: 700; }}
     h1 {{ margin: 8px 0 8px; font-size: 34px; letter-spacing: -.03em; }}
     p {{ color: var(--muted); margin: 0; line-height: 1.6; }}
+    nav {{ display:flex; gap:16px; margin-top:18px; flex-wrap:wrap; }}
     .cards {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 24px 0; }}
     .card {{ background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 18px; }}
     .label {{ color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }}
@@ -106,6 +108,7 @@ def render_runs_dashboard(project_root: str | Path) -> str:
       <div class="eyebrow">Read-only evidence surface</div>
       <h1>Feiyue Run Dashboard</h1>
       <p>Human-readable inspection for persisted run evidence. This page does not execute work, retry tasks, call providers, or mutate Hermes configuration.</p>
+      <nav><a href="/dashboard/review-inbox">Review inbox</a><a href="/dashboard/assets">Asset catalog</a><a href="/runs">Run JSON</a></nav>
     </header>
     <div class="cards" aria-label="Run summary">
       <div class="card"><span class="label">Total Runs</span><span class="value">{summary.total_runs}</span></div>
@@ -218,6 +221,114 @@ def render_assets_dashboard(project_root: str | Path) -> str:
       <div class="card"><span class="label">Categories</span><span class="value">{len(summary.categories)}</span></div>
     </div>
     {''.join(sections)}
+  </main>
+</body>
+</html>"""
+
+
+def render_review_inbox_dashboard(project_root: str | Path) -> str:
+    """Render pending local review items as a read-only human-inspection page."""
+
+    summary = ReviewInbox(project_root).summary()
+    rows = []
+    for item in summary.items:
+        rows.append(
+            """
+            <tr>
+              <td>{item_type}</td>
+              <td>{item_id}</td>
+              <td>{status}</td>
+              <td>{recommended_action}</td>
+              <td>{evidence_path}</td>
+              <td>{mutates_state}</td>
+            </tr>
+            """.format(
+                item_type=_esc(item.item_type),
+                item_id=_esc(item.item_id),
+                status=_esc(item.status),
+                recommended_action=_esc(item.recommended_action),
+                evidence_path=_esc(item.evidence_path),
+                mutates_state="true" if item.mutates_state else "false",
+            )
+        )
+
+    body = "".join(rows) or '<tr><td colspan="6" class="empty">No review inbox items found.</td></tr>'
+    type_counts: dict[str, int] = {}
+    for item in summary.items:
+        type_counts[item.item_type] = type_counts.get(item.item_type, 0) + 1
+    type_items = "".join(
+        f"<li><span>{_esc(item_type)}</span><strong>{count}</strong></li>" for item_type, count in sorted(type_counts.items())
+    ) or "<li><span>none</span><strong>0</strong></li>"
+
+    return f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feiyue Review Inbox</title>
+  <style>
+    :root {{ --ink:#111827; --muted:#4b5563; --line:#d1d5db; --panel:#fff; --surface:#f8fafc; --accent:#0f766e; --risk:#991b1b; }}
+    * {{ box-sizing:border-box; }}
+    body {{ margin:0; background:var(--surface); color:var(--ink); font-family:ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }}
+    main {{ max-width:1180px; margin:0 auto; padding:40px 24px; }}
+    header {{ border-bottom:1px solid var(--line); padding-bottom:24px; margin-bottom:24px; }}
+    .eyebrow {{ text-transform:uppercase; letter-spacing:.14em; font-size:11px; color:var(--accent); font-weight:700; }}
+    h1 {{ margin:8px 0; font-size:34px; letter-spacing:-.03em; }}
+    p {{ color:var(--muted); margin:0; line-height:1.6; }}
+    nav {{ display:flex; gap:16px; margin-top:18px; flex-wrap:wrap; }}
+    a {{ color:var(--accent); text-decoration:none; font-weight:700; }}
+    a:hover {{ text-decoration:underline; }}
+    .cards {{ display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; margin:24px 0; }}
+    .card, section {{ background:var(--panel); border:1px solid var(--line); border-radius:4px; }}
+    .card {{ padding:18px; }}
+    .label {{ color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.12em; }}
+    .value {{ display:block; margin-top:10px; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size:30px; font-weight:700; }}
+    section {{ margin-top:16px; overflow:hidden; }}
+    h2 {{ font-size:15px; margin:0; padding:16px 18px; border-bottom:1px solid var(--line); }}
+    ul {{ margin:0; padding:0; list-style:none; }}
+    li {{ display:flex; justify-content:space-between; gap:20px; padding:12px 18px; border-top:1px solid #eef2f7; }}
+    li:first-child {{ border-top:0; }}
+    table {{ width:100%; border-collapse:collapse; }}
+    th, td {{ padding:12px 14px; border-top:1px solid #eef2f7; text-align:left; font-size:13px; vertical-align:top; overflow-wrap:anywhere; }}
+    th {{ color:var(--muted); text-transform:uppercase; letter-spacing:.10em; font-size:11px; font-weight:700; }}
+    .safe {{ color:var(--accent); }}
+    .empty {{ color:var(--muted); text-align:center; padding:24px; }}
+    @media (max-width:760px) {{ .cards {{ grid-template-columns:1fr; }} main {{ padding:24px 12px; }} }}
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div class="eyebrow">Read-only review surface</div>
+      <h1>Feiyue Review Inbox</h1>
+      <p>Pending project-local review evidence for human inspection only. This page lists item metadata and relative evidence paths; it does not create approvals, run promotions, apply changes, call providers, or mutate state.</p>
+      <nav><a href="/dashboard">Run dashboard</a><a href="/dashboard/assets">Asset catalog</a><a href="/review-inbox">Review JSON</a></nav>
+    </header>
+    <div class="cards" aria-label="Review inbox summary">
+      <div class="card"><span class="label">Total Items</span><span class="value">{len(summary.items)}</span></div>
+      <div class="card"><span class="label">Item Types</span><span class="value">{len(type_counts)}</span></div>
+      <div class="card"><span class="label">mutates_state</span><span class="value safe">{'true' if summary.mutates_state else 'false'}</span></div>
+    </div>
+    <section>
+      <h2>Item Type Distribution</h2>
+      <ul>{type_items}</ul>
+    </section>
+    <section>
+      <h2>Review Items</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>item_type</th>
+            <th>item_id</th>
+            <th>status</th>
+            <th>recommended_action</th>
+            <th>evidence_path</th>
+            <th>mutates_state</th>
+          </tr>
+        </thead>
+        <tbody>{body}</tbody>
+      </table>
+    </section>
   </main>
 </body>
 </html>"""
@@ -337,8 +448,14 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                 if path == "/dashboard/assets":
                     self._send_text(200, render_assets_dashboard(root), content_type="text/html; charset=utf-8")
                     return
+                if path == "/dashboard/review-inbox":
+                    self._send_text(200, render_review_inbox_dashboard(root), content_type="text/html; charset=utf-8")
+                    return
                 if path == "/assets":
                     self._send_json(200, AssetCatalog(root).summary().model_dump(mode="json"))
+                    return
+                if path == "/review-inbox":
+                    self._send_json(200, ReviewInbox(root).summary().model_dump(mode="json"))
                     return
                 if path.startswith("/dashboard/runs/"):
                     parts = [part for part in path.split("/") if part]

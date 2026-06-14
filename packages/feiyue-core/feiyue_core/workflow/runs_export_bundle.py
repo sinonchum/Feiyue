@@ -18,6 +18,9 @@ def _bundle_entries(report_dir: Path) -> list[Path]:
     assets_dir = report_dir / "assets"
     if assets_dir.exists():
         entries.extend(sorted(path for path in assets_dir.rglob("*") if path.is_file()))
+    review_inbox_dir = report_dir / "review-inbox"
+    if review_inbox_dir.exists():
+        entries.extend(sorted(path for path in review_inbox_dir.rglob("*") if path.is_file()))
     runs_dir = report_dir / "runs"
     if runs_dir.exists():
         entries.extend(sorted(runs_dir.glob("*.html")))
