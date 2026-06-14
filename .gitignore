@@ -24,4 +24,9 @@ local-notes/
 .hermes/live-smoke-plans/
 .hermes/live-smoke-sandboxes/
 .hermes/model-routing.yaml
+.hermes/asset-proposals/
+.hermes/lessons/
+.hermes/evals/
+.hermes/task-templates/
+.hermes/assets/
 .hermes/run_*.py

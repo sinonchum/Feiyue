@@ -8,6 +8,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Sequence
 
+from feiyue_core.curation.live_asset_loop import (
+    CuratorLiveAssetLoopError,
+    approve_and_promote_curator_asset,
+    live_asset_proposal_from_multi_worker_run,
+)
 from feiyue_core.workflow.capability_feedback import CapabilityFeedbackAggregator
 from feiyue_core.workflow.capability_history import CapabilityHistoryCollector
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
@@ -163,11 +168,43 @@ def main(argv: Sequence[str] | None = None) -> int:
     review_inbox_parser = subparsers.add_parser("review-inbox", help="List pending local approval/review items without mutating state")
     review_inbox_parser.add_argument("--format", choices=["json"], default="json")
 
+    curator_live_parser = subparsers.add_parser("curator-live-proposal", help="Build a review-required asset proposal from verified Live B evidence")
+    curator_live_parser.add_argument("--run-id", required=True)
+    curator_live_parser.add_argument("--proposal-id", required=True)
+    curator_live_parser.add_argument("--write-proposal", action="store_true")
+
+    promote_curator_parser = subparsers.add_parser("promote-curator-asset", help="Approve and promote one project-local curator asset proposal patch")
+    promote_curator_parser.add_argument("--proposal-id", required=True)
+    promote_curator_parser.add_argument("--reviewer", required=True)
+    promote_curator_parser.add_argument("--reason", required=True)
+    promote_curator_parser.add_argument("--rollback-ref", required=True)
+    promote_curator_parser.add_argument("--patch-index", type=int, default=0)
+
     args = parser.parse_args(list(argv) if argv is not None else None)
     root = Path(args.root)
     loader = RunEvidenceLoader(root)
 
     try:
+        if args.command == "curator-live-proposal":
+            proposal = live_asset_proposal_from_multi_worker_run(
+                project_root=root,
+                run_id=args.run_id,
+                proposal_id=args.proposal_id,
+                write_proposal=args.write_proposal,
+            )
+            print(proposal.model_dump_json(indent=2))
+            return 0
+        if args.command == "promote-curator-asset":
+            evidence = approve_and_promote_curator_asset(
+                project_root=root,
+                proposal_id=args.proposal_id,
+                reviewer=args.reviewer,
+                reason=args.reason,
+                rollback_ref=args.rollback_ref,
+                patch_index=args.patch_index,
+            )
+            print(evidence.model_dump_json(indent=2))
+            return 0
         if args.command == "review-inbox":
             summary = ReviewInbox(root).summary()
             print(summary.model_dump_json(indent=2))
@@ -386,7 +423,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(result.model_dump_json(indent=2))
             return 0
-    except (RunEvidenceNotFoundError, RoutingProposalError, MultiWorkerPlanError, FileNotFoundError) as exc:
+    except (RunEvidenceNotFoundError, RoutingProposalError, MultiWorkerPlanError, CuratorLiveAssetLoopError, FileNotFoundError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
     return 2

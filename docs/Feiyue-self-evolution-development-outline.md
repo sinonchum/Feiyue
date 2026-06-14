@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`568 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `568 passed`.
+> **Verified baseline**：`572 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `572 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`568 passed`。
+- `python -m pytest -q`：`572 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1831,8 +1831,15 @@ The repo now has the gated seams/foundations for all A-F lanes. Batch1 adds the 
 
 ### Remaining scope after Batch1
 
-Remaining live/production work is still deliberately authorization-gated: actual real Hermes profile multi-worker smoke execution, real teacher escalation calls, GitHub draft PR creation, production promotion/rollback, curator live asset loop on real evidence, and creative-to-execution E2E require exact approvals and configured credentials.
+Serial Live A/B smoke has now executed under exact authorization, and the first curator live asset loop has promoted a project-local lesson from the verified Live B teacher-retry evidence. Remaining live/production work is still deliberately authorization-gated: broader asset promotion for regression eval/task-template patches, GitHub draft PR creation, production promotion/rollback, longitudinal improvement measurement after asset reuse, and creative-to-execution E2E require exact approvals and configured credentials.
+
+## Completed Curator Live Asset Loop
+
+- Added `feiyue-runs curator-live-proposal --write-proposal` to convert verified multi-worker Live B evidence into a review-required `DistillationProposal` with lesson, regression_eval, and task_template patches.
+- Added `feiyue-runs promote-curator-asset` to approve and promote one project-local `.hermes` asset patch with rollback evidence, using existing `AssetPromotionStore` fail-closed gates.
+- Ran the live loop on `live-b-real-teacher-retry-smoke-20260614`, producing proposal `asset-live-b-real-teacher-retry-20260614` and promoting `.hermes/lessons/asset-live-b-real-teacher-retry-20260614.md`.
+- The loop requires verified dry-run evidence with teacher-guided retry, first verifier failure, final verifier pass, `dry_run_only: true`, `promotion_attempted: false`, `global_hermes_config_mutated: false`, and clean source evidence.
 
 ## Recommended Next Slice
 
-当前下一步是 **Serial Live A/B Smoke**：使用 `live-smoke-plan` 生成 readiness evidence，然后在 exact authorization 下执行 real Hermes profile multi-worker dry-run；如果 controlled failure 成立，再执行 real teacher escalation。production PR/promotion 仍保持禁用。
+当前下一步是 **Asset Reuse / Longitudinal Gain Smoke**：load the promoted project-local lesson into a similar task prompt or task-template path, rerun a comparable dry-run, then use `feiyue-runs capability-history --write-report` and `feiyue-runs longitudinal-gain --write-report` to check whether teacher-call rate or retry count improves. production PR/promotion 仍保持禁用。
