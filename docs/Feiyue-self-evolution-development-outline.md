@@ -1319,7 +1319,7 @@ M5 Project Knowledge
 # 19. 当前完成度矩阵
 
 > **Status sync date**：2026-06-13
-> **Verified baseline**：`549 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `549 passed`.
+> **Verified baseline**：`568 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `568 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`549 passed`。
+- `python -m pytest -q`：`568 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1801,8 +1801,38 @@ Wave4-5C was still fake-first/provider-free for execution. The parallel A-F comp
 
 ### Remaining scope after A-F
 
-The repo now has the gated seams/foundations for all A-F lanes. Remaining live/production work is still deliberately authorization-gated: actual real Hermes profile multi-worker smoke execution, real teacher escalation calls, GitHub PR creation, production promotion/rollback, and full write-capable review UI require exact approvals and configured credentials.
+The repo now has the gated seams/foundations for all A-F lanes. Batch1 adds the operator-facing preparation layer before any live side effects.
+
+## Completed Parallel Batch 1: Live Prep, Longitudinal Gain, Review UI, Operator Docs
+
+### Batch1 Live A/B prep completed
+
+- Added `feiyue-runs live-smoke-plan --write-plan` and `LiveSmokePlanBuilder` for exact-authorized live A/B smoke readiness checks without live calls.
+- Plans validate selected worker, optional teacher, required approval/evidence paths, dry_run_only: true, promotion disabled, budget/timeout, verifier command, and fail-closed reason codes.
+- Missing or mismatched approvals remain blocked with provider_call_count: 0, global_hermes_config_mutated: false, and production_side_effects_enabled: false.
+
+### Batch1 longitudinal gain completed
+
+- Added `feiyue-runs longitudinal-gain --write-report` and longitudinal gain evaluation over capability history.
+- Reports compute before/after pass-rate deltas, teacher-call-rate deltas, optional cost/latency deltas, confidence labels, and insufficient-data states.
+- Reports preserve `routing_table_mutated: false`; route learning remains human-reviewed.
+
+### Batch1 review UI completed
+
+- Added read-only `/review-inbox` JSON and `/dashboard/review-inbox` HTML surfaces.
+- Static export now includes `review-inbox/index.html` and bundle/manifest verification covers it.
+- The UI renders item_type, recommended_action, and mutates_state: false without approval POST forms or write controls.
+
+### Batch1 operator docs completed
+
+- Added `docs/operator-guide.md`, `docs/approval-runbooks.md`, `docs/live-smoke-playbook.md`, `docs/security-boundaries.md`, and `docs/rollback-guide.md`.
+- Docs index and README link the new runbooks.
+- Docs contract tests assert exact authorization, no global Hermes config mutation, dry_run_only: true, production PR/promotion disabled by default, rollback evidence, and review inbox read-only boundaries.
+
+### Remaining scope after Batch1
+
+Remaining live/production work is still deliberately authorization-gated: actual real Hermes profile multi-worker smoke execution, real teacher escalation calls, GitHub draft PR creation, production promotion/rollback, curator live asset loop on real evidence, and creative-to-execution E2E require exact approvals and configured credentials.
 
 ## Recommended Next Slice
 
-当前下一步是 **Live A/B Smoke：real Hermes profile multi-worker dry-run + real teacher escalation under exact authorization**。先用已完成的 gates 生成 approval/evidence，再执行一次受控真实 profile smoke；production PR/promotion 仍保持禁用。
+当前下一步是 **Serial Live A/B Smoke**：使用 `live-smoke-plan` 生成 readiness evidence，然后在 exact authorization 下执行 real Hermes profile multi-worker dry-run；如果 controlled failure 成立，再执行 real teacher escalation。production PR/promotion 仍保持禁用。
