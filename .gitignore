@@ -25,6 +25,7 @@ local-notes/
 .hermes/live-smoke-plans/
 .hermes/live-smoke-sandboxes/
 .hermes/asset-reuse/
+.hermes/creative-e2e/
 .hermes/model-routing.yaml
 .hermes/asset-proposals/
 .hermes/lessons/
