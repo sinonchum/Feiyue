@@ -11,6 +11,7 @@ from typing import Sequence
 from feiyue_core.workflow.capability_feedback import CapabilityFeedbackAggregator
 from feiyue_core.workflow.capability_history import CapabilityHistoryCollector
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
+from feiyue_core.workflow.longitudinal_gain import LongitudinalGainEvaluator
 from feiyue_core.workflow.profile_worker_bridge import _parse_candidate_writes
 from feiyue_core.workflow.review_inbox import ReviewInbox
 from feiyue_core.workflow.real_profile_promotion import (
@@ -86,6 +87,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     history_parser = subparsers.add_parser("capability-history", help="Collect workflow evidence into provider-free longitudinal capability history")
     history_parser.add_argument("--write-report", action="store_true", help="Persist history.jsonl, latest.json, and latest.md under .hermes/capability-history")
+
+    longitudinal_parser = subparsers.add_parser("longitudinal-gain", help="Evaluate provider-free before/after gains from capability history")
+    longitudinal_parser.add_argument("--history", help="Path to capability-history history.jsonl (defaults to .hermes/capability-history/history.jsonl)")
+    longitudinal_parser.add_argument("--min-samples", type=int, default=3, help="Minimum samples required in each before/after window")
+    longitudinal_parser.add_argument("--window-size", type=int, default=3, help="Number of earliest/latest samples to use for before/after windows")
+    longitudinal_parser.add_argument("--write-report", action="store_true", help="Persist latest.json and latest.md under .hermes/longitudinal-gain")
 
     proposal_parser = subparsers.add_parser("routing-proposal", help="Generate a human-reviewed routing update proposal from capability feedback")
     proposal_parser.add_argument("--proposal-id", required=True)
@@ -238,6 +245,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "capability-history":
             collector = CapabilityHistoryCollector(root)
             report = collector.write_report() if args.write_report else collector.build_report()
+            print(report.model_dump_json(indent=2))
+            return 0
+        if args.command == "longitudinal-gain":
+            history_path = Path(args.history) if args.history else root / ".hermes" / "capability-history" / "history.jsonl"
+            evaluator = LongitudinalGainEvaluator.from_history_path(
+                history_path,
+                min_samples=args.min_samples,
+                window_size=args.window_size,
+            )
+            report = evaluator.write_report(root) if args.write_report else evaluator.build_report()
             print(report.model_dump_json(indent=2))
             return 0
         if args.command == "routing-proposal":

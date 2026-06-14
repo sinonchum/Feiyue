@@ -22,6 +22,8 @@ class CapabilityHistoryRecord(FeiyueModel):
     verified: bool = False
     teacher_used: bool = False
     provider_call_count: int = Field(default=0, ge=0)
+    cost_usd: float | None = Field(default=None, ge=0)
+    latency_ms: float | None = Field(default=None, ge=0)
     promotion_attempted: bool = False
     promoted: bool = False
     source_evidence_path: str
@@ -218,6 +220,8 @@ class CapabilityHistoryCollector:
             verified=verified,
             teacher_used=teacher_used,
             provider_call_count=_coerce_int(payload.get("provider_call_count")),
+            cost_usd=_coerce_float(payload.get("cost_usd"), payload.get("total_cost_usd"), workflow_report.get("cost_usd"), workflow_report.get("total_cost_usd")),
+            latency_ms=_coerce_float(payload.get("latency_ms"), payload.get("duration_ms"), workflow_report.get("latency_ms"), workflow_report.get("duration_ms")),
             promotion_attempted=promotion_attempted,
             promoted=promoted,
             source_evidence_path=self._relative_source(path),
@@ -303,3 +307,19 @@ def _coerce_int(value: object) -> int:
     if isinstance(value, str) and value.isdecimal():
         return int(value)
     return 0
+
+
+def _coerce_float(*values: object) -> float | None:
+    for value in values:
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)) and value >= 0:
+            return float(value)
+        if isinstance(value, str):
+            try:
+                parsed = float(value)
+            except ValueError:
+                continue
+            if parsed >= 0:
+                return parsed
+    return None
