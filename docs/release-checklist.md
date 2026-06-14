@@ -36,7 +36,7 @@ Run from `packages/feiyue-core` unless noted otherwise.
    python -m pytest -q
    ```
 
-   Current baseline: 597 passed
+   Current baseline: 603 passed
 
 3. Static export-all smoke:
 

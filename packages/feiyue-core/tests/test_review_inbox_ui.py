@@ -90,8 +90,11 @@ def test_review_inbox_dashboard_renders_items_and_no_approval_controls(tmp_path)
     assert "<form" not in lower
     assert "method=\"post\"" not in lower
     assert "method='post'" not in lower
-    assert "<button" not in lower
-    assert "approve" not in lower
+    assert "<button" in lower
+    assert "disabled" in lower
+    assert "data-action=\"review_and_create_routing_proposal_approval\"" in html
+    assert "data-action=\"review_asset_proposal\"" in html
+    assert "Approval-gated write actions are intentionally disabled in this skeleton." in html
     assert "<pre>" not in html
     assert "JSON.stringify" not in html
 
@@ -115,7 +118,9 @@ def test_review_inbox_static_export_writes_offline_read_only_page(tmp_path) -> N
     assert 'href="#review-json-unavailable-offline"' in html
     assert any(file["path"] == "review-inbox/index.html" for file in manifest["files"])
     assert "<form" not in html.lower()
-    assert "<button" not in html.lower()
+    assert "<button" in html.lower()
+    assert "disabled" in html.lower()
+    assert "Approval-gated write actions are intentionally disabled" in html
 
 
 def test_render_review_inbox_dashboard_empty_state_is_read_only(tmp_path) -> None:

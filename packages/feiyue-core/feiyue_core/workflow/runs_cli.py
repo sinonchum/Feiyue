@@ -13,13 +13,16 @@ from feiyue_core.curation.live_asset_loop import (
     approve_and_promote_curator_asset,
     live_asset_proposal_from_multi_worker_run,
 )
+from feiyue_core.creative.metrics import CreativeProposalDecision, CreativeProposalMetricsCollector
 from feiyue_core.workflow.asset_reuse_smoke import AssetReuseSmokeHarness, DEFAULT_COMPARABLE_TASK_ID
 from feiyue_core.workflow.capability_feedback import CapabilityFeedbackAggregator
 from feiyue_core.workflow.capability_history import CapabilityHistoryCollector
+from feiyue_core.workflow.cli_reference import write_cli_reference
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
 from feiyue_core.workflow.longitudinal_gain import LongitudinalGainEvaluator
 from feiyue_core.workflow.profile_worker_bridge import _parse_candidate_writes
 from feiyue_core.workflow.review_inbox import ReviewInbox
+from feiyue_core.workflow.semantic_reviewer import ProviderFreeSemanticReviewer, SemanticReviewRequest
 from feiyue_core.workflow.promotion_lifecycle import (
     approve_draft_pr,
     create_approved_draft_pr,
@@ -248,6 +251,27 @@ def main(argv: Sequence[str] | None = None) -> int:
     review_inbox_parser = subparsers.add_parser("review-inbox", help="List pending local approval/review items without mutating state")
     review_inbox_parser.add_argument("--format", choices=["json"], default="json")
 
+    cli_reference_parser = subparsers.add_parser("cli-reference", help="Write a stable Markdown reference for feiyue-runs")
+    cli_reference_parser.add_argument("--output", required=True, help="Markdown output path")
+
+    semantic_review_parser = subparsers.add_parser("semantic-review", help="Run a provider-free semantic reviewer over an artifact")
+    semantic_review_parser.add_argument("--review-id", required=True)
+    semantic_review_parser.add_argument("--artifact-id", required=True)
+    semantic_review_parser.add_argument("--artifact-path", required=True)
+    semantic_review_parser.add_argument("--required-term", action="append", default=[], dest="required_terms")
+    semantic_review_parser.add_argument("--forbidden-term", action="append", default=[], dest="forbidden_terms")
+    semantic_review_parser.add_argument("--reviewer-profile", default="provider-free-semantic-reviewer")
+    semantic_review_parser.add_argument("--write-report", action="store_true")
+
+    creative_metrics_parser = subparsers.add_parser("creative-metrics-record", help="Record a provider-free human decision metric for a creative proposal")
+    creative_metrics_parser.add_argument("--proposal-id", required=True)
+    creative_metrics_parser.add_argument("--seed-id", required=True)
+    creative_metrics_parser.add_argument("--decision", choices=["accepted", "rejected", "deferred"], required=True)
+    creative_metrics_parser.add_argument("--taste-violation", action="append", default=[], dest="taste_violations")
+    creative_metrics_parser.add_argument("--selected-by", required=True)
+    creative_metrics_parser.add_argument("--note", default="", dest="notes")
+    creative_metrics_parser.add_argument("--write-summary", action="store_true")
+
     curator_live_parser = subparsers.add_parser("curator-live-proposal", help="Build a review-required asset proposal from verified Live B evidence")
     curator_live_parser.add_argument("--run-id", required=True)
     curator_live_parser.add_argument("--proposal-id", required=True)
@@ -292,6 +316,38 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
         if args.command == "review-inbox":
             summary = ReviewInbox(root).summary()
+            print(summary.model_dump_json(indent=2))
+            return 0
+        if args.command == "cli-reference":
+            path = write_cli_reference(args.output)
+            print(f"CLI reference written: {path}")
+            return 0
+        if args.command == "semantic-review":
+            artifact_path = Path(args.artifact_path)
+            request = SemanticReviewRequest(
+                review_id=args.review_id,
+                artifact_id=args.artifact_id,
+                artifact_text=artifact_path.read_text(encoding="utf-8"),
+                required_terms=args.required_terms,
+                forbidden_terms=args.forbidden_terms,
+                reviewer_profile=args.reviewer_profile,
+            )
+            evidence = ProviderFreeSemanticReviewer().review(request, project_root=root, write_report=args.write_report)
+            print(evidence.model_dump_json(indent=2))
+            return 0
+        if args.command == "creative-metrics-record":
+            collector = CreativeProposalMetricsCollector(root)
+            collector.record(
+                CreativeProposalDecision(
+                    proposal_id=args.proposal_id,
+                    seed_id=args.seed_id,
+                    decision=args.decision,
+                    taste_violations=args.taste_violations,
+                    selected_by=args.selected_by,
+                    notes=args.notes,
+                )
+            )
+            summary = collector.summary(write_summary=args.write_summary)
             print(summary.model_dump_json(indent=2))
             return 0
         if args.command == "list":

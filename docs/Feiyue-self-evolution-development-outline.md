@@ -1318,8 +1318,8 @@ M5 Project Knowledge
 
 # 19. 当前完成度矩阵
 
-> **Status sync date**：2026-06-13
-> **Verified baseline**：`597 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `597 passed`.
+> **Status sync date**：2026-06-14
+> **Verified baseline**：`603 passed`（local full gate for Wave 1/2/3 provider-free and authorization-gated lanes, M14 provider-free smokes, docs/release contract, Wave4 live-benchmark scoring contracts, Wave4-2 profile-worker bridge contracts, Wave4-2B real profile workflow smoke status contract, Wave4-2C real teacher retry smoke status contract, Wave4-2D productized runner contracts, Wave4-3A dry-run/no-promotion contract, Wave4-3B approval-gated promotion contracts, Wave4-3B-3 low-risk real-project branch-only promotion smoke, Wave4-3C productized approval CLI smoke, Wave4-4 audit-only capability feedback loop, Wave4-4B human-reviewed routing proposal, and Wave4-4C approval-gated routing apply；remote CI mirrors provider-free smokes）。Current verified baseline: `603 passed`.
 > **Scope note**：以下状态按 Master Blueprint 对照当前代码、测试、README、CI 与 provider-free 产物整理。`Foundation` 表示可测试的 provider-free/typed/smoke 基础已完成，但真实 provider、真实多 worker、长期资产写入或生产级 UI 仍未完成。
 
 | Milestone | 状态 | 说明 |
@@ -1560,7 +1560,7 @@ Wave 3 已完成真实 provider / Hermes profile / weak-vs-strong / teacher esca
 
 ### Wave4-1 local verification
 
-- `python -m pytest -q`：`597 passed`。
+- `python -m pytest -q`：`603 passed`。
 - `python -m compileall -q feiyue_core`：passed。
 - `git diff --check`：passed。
 - Latest remote CI for status-sync predecessor: success.
@@ -1852,3 +1852,16 @@ Wave5-1 through Wave5-6 are now implemented and locally smoke-verified. Remainin
 - **Wave5-4 Draft PR Mode**：added local draft PR plan, exact `create_draft_pr` approval, fake adapter creation evidence, review inbox surface, and fail-closed tests. It never auto-merges and records external_pr_created false in fake mode.
 - **Wave5-5 Creative-to-Execution E2E**：added provider-free `creative-e2e-smoke`, deterministic seed → variants → critique → selected variant → PRD/spec → task contract → verified workflow evidence, and actual smoke `wave5-5-creative-e2e-smoke-20260614` with curator_proposal_ready true.
 - **Wave5-6 Release Candidate / Production Safety Gate**：added release-candidate plan, production approval, readiness verification, CI/rollback/post-promotion-plan requirements, and fake-first readiness smoke with status ready, dry_run true, and production_mutated false.
+
+## Completed Phase B Productization Batch
+
+- **B1 Write-side review UI skeleton**：`/dashboard/review-inbox` and static `review-inbox/index.html` now show disabled approval-gated action buttons (`button disabled`, no forms, no POST routes). The skeleton exposes intended actions while preserving `mutates_state: false` and no provider/global-config mutation.
+- **B2 CLI reference generator**：added `feiyue-runs cli-reference --output <path>` and generated `docs/cli-reference.md` from the productized command registry, covering evidence inspection, learning loops, multi-worker dry-runs, and approval-gated operations.
+- **B3 Semantic reviewer skeleton**：added provider-free `semantic-review` evidence over required/forbidden term rubrics. It writes `.hermes/semantic-reviews/<review_id>/evidence.json`, records `provider_call_count: 0`, and stays dry-run-only.
+- **B4 Creative metrics skeleton**：added append-only `.hermes/creative-metrics/decisions.jsonl` plus `creative-metrics-record` for human accepted/rejected/deferred proposal decisions, acceptance rate, and taste-violation rate. It records `provider_call_count: 0` and `mutates_state: false`.
+
+### Phase B local verification
+
+- `python -m pytest -q`：`603 passed`。
+- New targeted contracts cover review UI disabled actions, CLI reference generation, provider-free semantic review evidence, and creative acceptance/taste metrics.
+- Phase C remains explicit-authorization-gated for external PR/merge/deploy/production promotion and larger real-provider matrices.

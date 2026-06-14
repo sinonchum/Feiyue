@@ -241,6 +241,7 @@ def render_review_inbox_dashboard(project_root: str | Path) -> str:
               <td>{recommended_action}</td>
               <td>{evidence_path}</td>
               <td>{mutates_state}</td>
+              <td><button type="button" disabled aria-disabled="true" data-action="{recommended_action}" data-item-id="{item_id}">Approval-gated</button></td>
             </tr>
             """.format(
                 item_type=_esc(item.item_type),
@@ -252,7 +253,7 @@ def render_review_inbox_dashboard(project_root: str | Path) -> str:
             )
         )
 
-    body = "".join(rows) or '<tr><td colspan="6" class="empty">No review inbox items found.</td></tr>'
+    body = "".join(rows) or '<tr><td colspan="7" class="empty">No review inbox items found.</td></tr>'
     type_counts: dict[str, int] = {}
     for item in summary.items:
         type_counts[item.item_type] = type_counts.get(item.item_type, 0) + 1
@@ -292,6 +293,7 @@ def render_review_inbox_dashboard(project_root: str | Path) -> str:
     th, td {{ padding:12px 14px; border-top:1px solid #eef2f7; text-align:left; font-size:13px; vertical-align:top; overflow-wrap:anywhere; }}
     th {{ color:var(--muted); text-transform:uppercase; letter-spacing:.10em; font-size:11px; font-weight:700; }}
     .safe {{ color:var(--accent); }}
+    button[disabled] {{ border:1px solid var(--line); border-radius:4px; background:#f3f4f6; color:var(--muted); padding:6px 10px; font:inherit; cursor:not-allowed; }}
     .empty {{ color:var(--muted); text-align:center; padding:24px; }}
     @media (max-width:760px) {{ .cards {{ grid-template-columns:1fr; }} main {{ padding:24px 12px; }} }}
   </style>
@@ -301,7 +303,7 @@ def render_review_inbox_dashboard(project_root: str | Path) -> str:
     <header>
       <div class="eyebrow">Read-only review surface</div>
       <h1>Feiyue Review Inbox</h1>
-      <p>Pending project-local review evidence for human inspection only. This page lists item metadata and relative evidence paths; it does not create approvals, run promotions, apply changes, call providers, or mutate state.</p>
+      <p>Pending project-local review evidence for human inspection only. Approval-gated write actions are intentionally disabled in this skeleton. This page lists item metadata and relative evidence paths; it does not create approvals, run promotions, apply changes, call providers, or mutate state.</p>
       <nav><a href="/dashboard">Run dashboard</a><a href="/dashboard/assets">Asset catalog</a><a href="/review-inbox">Review JSON</a></nav>
     </header>
     <div class="cards" aria-label="Review inbox summary">
@@ -324,6 +326,7 @@ def render_review_inbox_dashboard(project_root: str | Path) -> str:
             <th>recommended_action</th>
             <th>evidence_path</th>
             <th>mutates_state</th>
+            <th>disabled_action</th>
           </tr>
         </thead>
         <tbody>{body}</tbody>
