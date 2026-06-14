@@ -34,11 +34,16 @@ from feiyue_core.workflow.promotion_lifecycle import (
     read_draft_pr_approval,
 )
 from feiyue_core.workflow.release_candidate import (
+    GitHubMergeExecutionAdapter,
+    approve_merge_execution,
     approve_merge_rollback_deploy_readiness,
     approve_production_promotion,
     create_merge_rollback_deploy_readiness_plan,
     create_release_candidate_plan,
+    execute_approved_merge,
+    read_merge_execution_approval,
     read_merge_rollback_deploy_readiness_approval,
+    read_merge_rollback_deploy_readiness_plan,
     read_production_promotion_approval,
     verify_merge_rollback_deploy_readiness,
     verify_production_promotion_readiness,
@@ -165,6 +170,16 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     mrd_verify_parser = subparsers.add_parser("verify-merge-rollback-deploy-readiness", help="Verify approved merge/rollback/deploy readiness without merge/deploy side effects")
     mrd_verify_parser.add_argument("readiness_id")
+
+    merge_approve_parser = subparsers.add_parser("approve-merge-execution", help="Create exact approval for 8B approved merge execution")
+    merge_approve_parser.add_argument("readiness_id")
+    merge_approve_parser.add_argument("--approved-by", required=True)
+    merge_approve_parser.add_argument("--approval-id", required=True)
+    merge_approve_parser.add_argument("--reason", required=True)
+
+    merge_execute_parser = subparsers.add_parser("execute-approved-merge", help="Execute an approved merge through a fail-closed adapter; fake adapter simulates only")
+    merge_execute_parser.add_argument("readiness_id")
+    merge_execute_parser.add_argument("--adapter", choices=["fake", "github"], default="fake")
 
     approve_parser = subparsers.add_parser("approve-promotion", help="Create exact approval evidence for a verified workflow dry run")
     approve_parser.add_argument("run_id")
@@ -573,6 +588,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             approval = read_merge_rollback_deploy_readiness_approval(root, args.readiness_id)
             readiness = verify_merge_rollback_deploy_readiness(project_root=root, readiness_id=args.readiness_id, approval=approval)
             print(readiness.model_dump_json(indent=2))
+            return 0
+        if args.command == "approve-merge-execution":
+            approval = approve_merge_execution(
+                project_root=root,
+                readiness_id=args.readiness_id,
+                approved_by=args.approved_by,
+                approval_id=args.approval_id,
+                reason=args.reason,
+            )
+            print(approval.model_dump_json(indent=2))
+            return 0
+        if args.command == "execute-approved-merge":
+            approval = read_merge_execution_approval(root, args.readiness_id)
+            adapter_result = None
+            if args.adapter == "github":
+                plan = read_merge_rollback_deploy_readiness_plan(root, args.readiness_id)
+                evidence_path = Path(plan.merge_readiness_evidence_path)
+                if not evidence_path.is_absolute():
+                    plan.merge_readiness_evidence_path = str(root / evidence_path)
+                adapter_result = GitHubMergeExecutionAdapter().inspect(plan=plan)
+            execution = execute_approved_merge(project_root=root, readiness_id=args.readiness_id, approval=approval, adapter_result=adapter_result)
+            print(execution.model_dump_json(indent=2))
             return 0
         if args.command == "approve-promotion":
             dry_run = _load_workflow_smoke_report(root, args.run_id)

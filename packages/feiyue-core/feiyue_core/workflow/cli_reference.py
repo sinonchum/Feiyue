@@ -45,6 +45,8 @@ CLI_REFERENCE_COMMANDS: dict[str, list[tuple[str, str]]] = {
         ("feiyue-runs merge-rollback-deploy-readiness-plan <readiness_id> --merge-readiness-evidence-path <path> --rollback-command <cmd> --deploy-step <step> --post-merge-verification-command <cmd>", "Create explicit merge/rollback/deploy readiness design evidence without executing merge/deploy."),
         ("feiyue-runs approve-merge-rollback-deploy-readiness <readiness_id> --approved-by <user> --approval-id <id> --reason <text>", "Create exact approval for merge/rollback/deploy readiness design only."),
         ("feiyue-runs verify-merge-rollback-deploy-readiness <readiness_id>", "Verify approved merge/rollback/deploy readiness without merge/deploy side effects."),
+        ("feiyue-runs approve-merge-execution <readiness_id> --approved-by <user> --approval-id <id> --reason <text>", "Create exact approval for 8B approved merge execution."),
+        ("feiyue-runs execute-approved-merge <readiness_id> --adapter fake|github", "Execute an approved merge through a fail-closed adapter; fake adapter simulates only."),
     ],
 }
 

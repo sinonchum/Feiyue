@@ -30,6 +30,7 @@ local-notes/
 .hermes/semantic-reviews/
 .hermes/merge-readiness/
 .hermes/merge-rollback-deploy-readiness/
+.hermes/merge-executions/
 .hermes/live-smoke-plans/
 .hermes/live-smoke-sandboxes/
 .hermes/asset-reuse/

@@ -116,6 +116,68 @@ class MergeRollbackDeployReadinessEvidence(FeiyueModel):
     written_at: str | None = None
 
 
+class MergeExecutionApproval(FeiyueModel):
+    """Exact approval for 8B merge execution; adapters still enforce fail-closed safety."""
+
+    approval_id: str
+    approved_by: str
+    readiness_id: str
+    approved_action: str
+    readiness_plan_hash: str
+    pr_number: int
+    target_branch: str
+    approved_at: str
+    reason: str
+
+    @field_validator(
+        "approval_id",
+        "approved_by",
+        "readiness_id",
+        "approved_action",
+        "readiness_plan_hash",
+        "target_branch",
+        "approved_at",
+        "reason",
+    )
+    @classmethod
+    def _non_empty_text(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("must be non-empty")
+        return value
+
+
+class MergeExecutionAdapterResult(FeiyueModel):
+    adapter: str
+    status: ReleaseCandidateStatus
+    reason_codes: list[str] = Field(default_factory=list)
+    merge_performed: bool = False
+    external_side_effect_performed: bool = False
+    merge_commit_sha: str | None = None
+    pr_url: str | None = None
+
+
+class MergeExecutionEvidence(FeiyueModel):
+    readiness_id: str
+    status: ReleaseCandidateStatus
+    pr_number: int | None = None
+    pr_url: str | None = None
+    target_branch: str | None = None
+    readiness_plan_hash: str | None = None
+    approval_id: str | None = None
+    approval_applies: bool = False
+    adapter: str = "fake"
+    simulated_merge_performed: bool = False
+    merge_performed: bool = False
+    external_side_effect_performed: bool = False
+    merge_commit_sha: str | None = None
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    reason_codes: list[str] = Field(default_factory=list)
+    rollback_plan: list[str] = Field(default_factory=list)
+    post_merge_verification_plan: list[str] = Field(default_factory=list)
+    written_at: str | None = None
+
+
 class ProductionPromotionApproval(FeiyueModel):
     """Exact human approval for production-promotion readiness only."""
 
@@ -164,6 +226,10 @@ class ProductionPromotionReadiness(FeiyueModel):
 
 def merge_rollback_deploy_readiness_dir(project_root: str | Path, readiness_id: str) -> Path:
     return Path(project_root) / ".hermes" / "merge-rollback-deploy-readiness" / readiness_id
+
+
+def merge_execution_dir(project_root: str | Path, readiness_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "merge-executions" / readiness_id
 
 
 def create_merge_rollback_deploy_readiness_plan(
@@ -356,6 +422,184 @@ def verify_merge_rollback_deploy_readiness(
     )
     _write_json(merge_rollback_deploy_readiness_dir(root, readiness_id) / "readiness.json", evidence.model_dump(mode="json"))
     return evidence
+
+
+def approve_merge_execution(
+    *,
+    project_root: str | Path,
+    readiness_id: str,
+    approved_by: str,
+    approval_id: str,
+    reason: str,
+) -> MergeExecutionApproval:
+    plan = read_merge_rollback_deploy_readiness_plan(project_root, readiness_id)
+    readiness_path = merge_rollback_deploy_readiness_dir(project_root, readiness_id) / "readiness.json"
+    if not readiness_path.exists():
+        raise FileNotFoundError(f"Merge/rollback/deploy readiness evidence not found for readiness_id: {readiness_id}")
+    readiness = MergeRollbackDeployReadinessEvidence.model_validate_json(readiness_path.read_text(encoding="utf-8"))
+    if readiness.status != ReleaseCandidateStatus.READY:
+        raise ValueError(f"Merge execution approval requires ready readiness evidence, got: {readiness.status}")
+    plan_hash = plan.readiness_plan_hash or compute_merge_rollback_deploy_readiness_plan_hash(plan)
+    approval = MergeExecutionApproval(
+        approval_id=approval_id,
+        approved_by=approved_by,
+        readiness_id=readiness_id,
+        approved_action="execute_approved_merge",
+        readiness_plan_hash=plan_hash,
+        pr_number=plan.pr_number or 0,
+        target_branch=plan.target_branch or "",
+        approved_at=datetime.now(UTC).isoformat(),
+        reason=reason,
+    )
+    write_merge_execution_approval(project_root, approval)
+    return approval
+
+
+def write_merge_execution_approval(project_root: str | Path, approval: MergeExecutionApproval) -> Path:
+    path = merge_execution_dir(project_root, approval.readiness_id) / "approval.json"
+    _write_json(path, approval.model_dump(mode="json") | {"written_at": datetime.now(UTC).isoformat()})
+    return path
+
+
+def read_merge_execution_approval(project_root: str | Path, readiness_id: str) -> MergeExecutionApproval:
+    path = merge_execution_dir(project_root, readiness_id) / "approval.json"
+    if not path.exists():
+        raise FileNotFoundError(f"Merge execution approval not found for readiness_id: {readiness_id}")
+    payload = _read_json(path)
+    payload.pop("written_at", None)
+    return MergeExecutionApproval.model_validate(payload)
+
+
+def execute_approved_merge(
+    *,
+    project_root: str | Path,
+    readiness_id: str,
+    approval: MergeExecutionApproval | None = None,
+    adapter_result: MergeExecutionAdapterResult | None = None,
+) -> MergeExecutionEvidence:
+    root = Path(project_root)
+    reasons: list[str] = []
+    plan: MergeRollbackDeployReadinessPlan | None = None
+    readiness: MergeRollbackDeployReadinessEvidence | None = None
+    try:
+        plan = read_merge_rollback_deploy_readiness_plan(root, readiness_id)
+    except FileNotFoundError:
+        reasons.append("missing_merge_rollback_deploy_readiness_plan")
+    readiness_path = merge_rollback_deploy_readiness_dir(root, readiness_id) / "readiness.json"
+    if readiness_path.exists():
+        readiness = MergeRollbackDeployReadinessEvidence.model_validate_json(readiness_path.read_text(encoding="utf-8"))
+    else:
+        reasons.append("missing_merge_rollback_deploy_readiness_evidence")
+
+    if approval is None:
+        try:
+            approval = read_merge_execution_approval(root, readiness_id)
+        except FileNotFoundError:
+            reasons.append("missing_merge_execution_approval")
+
+    plan_hash = plan.readiness_plan_hash or compute_merge_rollback_deploy_readiness_plan_hash(plan) if plan is not None else None
+    if plan is not None:
+        if plan.status != ReleaseCandidateStatus.PLANNED:
+            reasons.append("merge_rollback_deploy_readiness_plan_not_planned")
+        if plan.merge_performed is not False:
+            reasons.append("plan_indicates_merge_performed")
+        if plan.deploy_performed is not False:
+            reasons.append("plan_indicates_deploy_performed")
+        if plan.production_mutated is not False:
+            reasons.append("plan_indicates_production_mutation")
+    if readiness is not None:
+        if readiness.status != ReleaseCandidateStatus.READY:
+            reasons.append("merge_rollback_deploy_readiness_not_ready")
+        if readiness.merge_performed is not False:
+            reasons.append("readiness_indicates_merge_performed")
+        if readiness.deploy_performed is not False:
+            reasons.append("readiness_indicates_deploy_performed")
+        if readiness.production_mutated is not False:
+            reasons.append("readiness_indicates_production_mutation")
+
+    if approval is not None and plan is not None:
+        if approval.readiness_id != readiness_id:
+            reasons.append("approval_readiness_id_mismatch")
+        if approval.approved_action != "execute_approved_merge":
+            reasons.append("approval_action_mismatch")
+        if approval.readiness_plan_hash != plan_hash:
+            reasons.append("approval_readiness_plan_hash_mismatch")
+        if approval.pr_number != (plan.pr_number or 0):
+            reasons.append("approval_pr_number_mismatch")
+        if approval.target_branch != (plan.target_branch or ""):
+            reasons.append("approval_target_branch_mismatch")
+
+    if adapter_result is None:
+        adapter_result = MergeExecutionAdapterResult(
+            adapter="fake",
+            status=ReleaseCandidateStatus.READY,
+            reason_codes=["fake_adapter_simulated_merge_only"],
+            merge_performed=False,
+            external_side_effect_performed=False,
+            pr_url=plan.pr_url if plan is not None else None,
+        )
+
+    if adapter_result.status != ReleaseCandidateStatus.READY:
+        reasons.extend(adapter_result.reason_codes)
+    if adapter_result.external_side_effect_performed and not adapter_result.merge_performed:
+        reasons.append("adapter_external_side_effect_without_merge")
+
+    status = ReleaseCandidateStatus.BLOCKED if reasons else ReleaseCandidateStatus.READY
+    adapter = adapter_result.adapter
+    evidence = MergeExecutionEvidence(
+        readiness_id=readiness_id,
+        status=status,
+        pr_number=plan.pr_number if plan is not None else None,
+        pr_url=adapter_result.pr_url or (plan.pr_url if plan is not None else None),
+        target_branch=plan.target_branch if plan is not None else None,
+        readiness_plan_hash=plan_hash,
+        approval_id=approval.approval_id if approval is not None else None,
+        approval_applies=status == ReleaseCandidateStatus.READY,
+        adapter=adapter,
+        simulated_merge_performed=status == ReleaseCandidateStatus.READY and adapter == "fake",
+        merge_performed=status == ReleaseCandidateStatus.READY and adapter_result.merge_performed,
+        external_side_effect_performed=status == ReleaseCandidateStatus.READY and adapter_result.external_side_effect_performed,
+        merge_commit_sha=adapter_result.merge_commit_sha if status == ReleaseCandidateStatus.READY else None,
+        deploy_performed=False,
+        production_mutated=False,
+        reason_codes=reasons if reasons else ["merge_execution_approval_applies", "fake_adapter_simulated_merge_only"] if adapter == "fake" else ["merge_execution_approval_applies"],
+        rollback_plan=plan.rollback_plan if plan is not None else [],
+        post_merge_verification_plan=plan.post_merge_verification_plan if plan is not None else [],
+        written_at=datetime.now(UTC).isoformat(),
+    )
+    out_dir = merge_execution_dir(root, readiness_id)
+    _write_json(out_dir / "execution.json", evidence.model_dump(mode="json"))
+    _write_json(out_dir / f"execution-{adapter}.json", evidence.model_dump(mode="json"))
+    return evidence
+
+
+class GitHubMergeExecutionAdapter:
+    """Fail-closed adapter shim for 8B; this class does not call GitHub merge APIs."""
+
+    def inspect(self, *, plan: MergeRollbackDeployReadinessPlan) -> MergeExecutionAdapterResult:
+        reasons: list[str] = []
+        evidence_path = Path(plan.merge_readiness_evidence_path)
+        if not evidence_path.is_absolute():
+            evidence_path = Path.cwd() / evidence_path
+        # The CLI passes project-local relative evidence; resolve from caller cwd only as a fallback.
+        if evidence_path.exists():
+            payload = _read_json(evidence_path)
+            if payload.get("is_draft") is True:
+                reasons.append("pr_is_draft")
+            if payload.get("checks_passed") is not True:
+                reasons.append("pr_checks_not_passed")
+        else:
+            reasons.append("missing_merge_readiness_evidence")
+        if reasons:
+            return MergeExecutionAdapterResult(adapter="github", status=ReleaseCandidateStatus.BLOCKED, reason_codes=reasons, merge_performed=False, external_side_effect_performed=False, pr_url=plan.pr_url)
+        return MergeExecutionAdapterResult(
+            adapter="github",
+            status=ReleaseCandidateStatus.BLOCKED,
+            reason_codes=["github_merge_adapter_requires_separate_explicit_merge_authorization"],
+            merge_performed=False,
+            external_side_effect_performed=False,
+            pr_url=plan.pr_url,
+        )
 
 
 def release_candidate_dir(project_root: str | Path, release_id: str) -> Path:
