@@ -45,6 +45,13 @@ from feiyue_core.workflow.routing_proposal import (
 )
 from feiyue_core.workflow.real_profile_workflow_runner import RealProfileWorkflowRunReport
 from feiyue_core.workflow.live_smoke_plan import build_live_smoke_plan, write_live_smoke_plan
+from feiyue_core.workflow.real_multi_worker_live_dry_run import (
+    RealMultiWorkerLiveDryRunAuthorization,
+    RealMultiWorkerLiveDryRunEvidence,
+    RealMultiWorkerLiveDryRunExecutor,
+    RealMultiWorkerLiveDryRunStatus,
+    RealMultiWorkerTeacherEscalationAuthorization,
+)
 from feiyue_core.workflow.multi_worker_orchestration import MultiWorkerOrchestrationPlan, MultiWorkerOrchestrationPlanner, MultiWorkerPlanError
 from feiyue_core.workflow.multi_worker_workflow_dry_run import (
     MultiWorkerProfileRunnerSelectionError,
@@ -191,6 +198,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     run_multi_worker_parser.add_argument("--profile-runner", choices=["fake", "hermes"], default="fake")
     run_multi_worker_parser.add_argument("--fake-worker-response-json")
     run_multi_worker_parser.add_argument("--hermes-run-record", help="Path to a persisted AuthorizedProviderRunRecord JSON for the selected worker")
+
+    real_multi_worker_parser = subparsers.add_parser(
+        "real-multi-worker-live-dry-run",
+        help="Run an explicitly authorized real multi-worker live dry-run seam and persist history evidence",
+    )
+    real_multi_worker_parser.add_argument("--plan-id", required=True)
+    real_multi_worker_parser.add_argument("--run-id", required=True)
+    real_multi_worker_parser.add_argument("--source-repo", required=True)
+    real_multi_worker_parser.add_argument("--project-name", required=True)
+    real_multi_worker_parser.add_argument("--task-id", required=True)
+    real_multi_worker_parser.add_argument("--title", required=True)
+    real_multi_worker_parser.add_argument("--scope", required=True)
+    real_multi_worker_parser.add_argument("--file-to-modify", action="append", required=True, dest="files_to_modify")
+    real_multi_worker_parser.add_argument("--verification-command", action="append", required=True, dest="verification_commands")
+    real_multi_worker_parser.add_argument("--acceptance-criterion", action="append", default=[], dest="acceptance_criteria")
+    real_multi_worker_parser.add_argument("--escalation-rule", default="Approved real multi-worker live dry-run only.")
+    real_multi_worker_parser.add_argument("--authorization-path", required=True)
+    real_multi_worker_parser.add_argument("--teacher-authorization-path")
+    real_multi_worker_parser.add_argument("--profile-runner", choices=["fake", "hermes"], default="fake")
+    real_multi_worker_parser.add_argument("--fake-worker-response-json")
+    real_multi_worker_parser.add_argument("--hermes-run-record", help="Path to a persisted AuthorizedProviderRunRecord JSON for the selected worker")
+    real_multi_worker_parser.add_argument("--cost-usd", type=float, default=0.0)
+    real_multi_worker_parser.add_argument("--latency-ms", type=float, default=0.0)
 
     review_inbox_parser = subparsers.add_parser("review-inbox", help="List pending local approval/review items without mutating state")
     review_inbox_parser.add_argument("--format", choices=["json"], default="json")
@@ -488,6 +518,61 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(result.model_dump_json(indent=2))
             return 0
+        if args.command == "real-multi-worker-live-dry-run":
+            plan = _read_multi_worker_plan(root, args.plan_id)
+            worker_profile = plan.route.worker_profile_ids[0]
+            contract = TaskContract(
+                task_id=args.task_id,
+                title=args.title,
+                scope=args.scope,
+                files_to_modify=args.files_to_modify,
+                acceptance_criteria=args.acceptance_criteria,
+                verification_commands=args.verification_commands,
+                escalation_rule=args.escalation_rule,
+            )
+            authorization = _read_real_multi_worker_authorization(Path(args.authorization_path))
+            teacher_authorization = (
+                _read_real_multi_worker_teacher_authorization(Path(args.teacher_authorization_path))
+                if args.teacher_authorization_path
+                else None
+            )
+            try:
+                runner = build_multi_worker_profile_runner(
+                    mode=args.profile_runner,
+                    project_root=root,
+                    worker_profile=worker_profile,
+                    fake_worker_response_json=args.fake_worker_response_json,
+                    hermes_run_record_path=args.hermes_run_record,
+                )
+            except MultiWorkerProfileRunnerSelectionError as exc:
+                result = _real_multi_worker_selection_blocked_evidence(
+                    root=root,
+                    run_id=args.run_id,
+                    source_repo=Path(args.source_repo),
+                    contract=contract,
+                    plan=plan,
+                    authorization=authorization,
+                    teacher_authorization=teacher_authorization,
+                    reason=str(exc),
+                    cost_usd=args.cost_usd,
+                    latency_ms=args.latency_ms,
+                )
+                print(result.model_dump_json(indent=2))
+                return 2
+            result = RealMultiWorkerLiveDryRunExecutor(profile_runner=runner).run(
+                project_root=root,
+                source_repo=Path(args.source_repo),
+                contract=contract,
+                project_name=args.project_name,
+                plan=plan,
+                authorization=authorization,
+                run_id=args.run_id,
+                teacher_escalation_authorization=teacher_authorization,
+                cost_usd=args.cost_usd,
+                latency_ms=args.latency_ms,
+            )
+            print(result.model_dump_json(indent=2))
+            return 0 if result.status != "blocked" else 2
     except (RunEvidenceNotFoundError, RoutingProposalError, MultiWorkerPlanError, CuratorLiveAssetLoopError, FileNotFoundError) as exc:
         print(str(exc), file=sys.stderr)
         return 2
@@ -508,6 +593,66 @@ def _read_multi_worker_plan(root: Path, plan_id: str) -> MultiWorkerOrchestratio
     if not plan_path.exists():
         raise FileNotFoundError(f"Multi-worker plan evidence not found for plan_id: {plan_id}")
     return MultiWorkerOrchestrationPlan.model_validate_json(plan_path.read_text(encoding="utf-8"))
+
+
+def _read_real_multi_worker_authorization(path: Path) -> RealMultiWorkerLiveDryRunAuthorization:
+    if not path.exists():
+        raise FileNotFoundError(f"Real multi-worker live dry-run authorization not found: {path}")
+    return RealMultiWorkerLiveDryRunAuthorization.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def _read_real_multi_worker_teacher_authorization(path: Path) -> RealMultiWorkerTeacherEscalationAuthorization:
+    if not path.exists():
+        raise FileNotFoundError(f"Real multi-worker teacher escalation authorization not found: {path}")
+    return RealMultiWorkerTeacherEscalationAuthorization.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def _real_multi_worker_selection_blocked_evidence(
+    *,
+    root: Path,
+    run_id: str,
+    source_repo: Path,
+    contract: TaskContract,
+    plan: MultiWorkerOrchestrationPlan,
+    authorization: RealMultiWorkerLiveDryRunAuthorization,
+    teacher_authorization: RealMultiWorkerTeacherEscalationAuthorization | None,
+    reason: str,
+    cost_usd: float,
+    latency_ms: float,
+) -> RealMultiWorkerLiveDryRunEvidence:
+    source_clean = _source_repo_clean(source_repo)
+    now = datetime.now(UTC).isoformat()
+    evidence = RealMultiWorkerLiveDryRunEvidence(
+        run_id=run_id,
+        task_id=contract.task_id,
+        plan_id=plan.plan_id,
+        status=RealMultiWorkerLiveDryRunStatus.BLOCKED,
+        verified=False,
+        worker_profile=plan.route.worker_profile_ids[0] if plan.route.worker_profile_ids else None,
+        teacher_profile=plan.route.teacher_profile_id,
+        provider_call_count=0,
+        cost_usd=cost_usd,
+        latency_ms=latency_ms,
+        source_clean=source_clean,
+        source_repo_clean=source_clean,
+        dry_run_only=True,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        route_plan_status=str(plan.route.status),
+        routing_apply_evidence_id=plan.routing_apply_evidence_id,
+        authorization_id=authorization.authorization_id,
+        teacher_authorization_id=teacher_authorization.authorization_id if teacher_authorization is not None else None,
+        reason_codes=["profile_runner_selection_failed", reason],
+        started_at=now,
+        completed_at=now,
+    )
+    RealMultiWorkerLiveDryRunExecutor._write_evidence(evidence, root)
+    return evidence
+
+
+def _source_repo_clean(source_repo: Path) -> bool:
+    completed = subprocess.run(["git", "status", "--porcelain"], cwd=source_repo, text=True, capture_output=True, check=False)
+    return completed.returncode == 0 and completed.stdout == ""
 
 
 def _profile_runner_selection_blocked_report(
