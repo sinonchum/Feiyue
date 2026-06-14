@@ -139,6 +139,29 @@ def test_true_multi_student_executor_merges_disjoint_fake_workers_and_verifies(t
     assert evidence.exists()
 
 
+def test_true_multi_student_executor_accepts_noisy_real_profile_stdout_with_json_object(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _init_repo(repo)
+    plan = _plan()
+    responses = _responses()
+    responses["student-impl"] = "⚠️  Reached maximum iterations (1). Requesting summary...\n" + responses["student-impl"]
+    responses["student-docs"] = "session_id: abc123\n" + responses["student-docs"]
+
+    report = MultiStudentDryRunExecutor(profile_runner=FakeProfileRunner(responses)).run(
+        project_root=tmp_path,
+        source_repo=repo,
+        project_name="toy",
+        contract=_contract(),
+        plan=plan,
+        approval=_approval(plan),
+        run_id="run.true-multi-student-noisy-stdout",
+    )
+
+    assert report.status == MultiStudentDryRunStatus.VERIFIED
+    assert report.provider_call_count == 2
+    assert "combined_verifier_passed" in report.reason_codes
+
+
 def test_true_multi_student_executor_blocks_approval_hash_mismatch_before_calls(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _init_repo(repo)

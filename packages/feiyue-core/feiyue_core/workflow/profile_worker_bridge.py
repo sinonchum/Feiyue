@@ -220,8 +220,8 @@ def _render_worker_prompt(contract: TaskContract) -> str:
 def _parse_candidate_writes(stdout: str) -> list[CandidateFileWrite]:
     try:
         payload = json.loads(stdout)
-    except json.JSONDecodeError as exc:
-        raise ValueError("profile output must be JSON") from exc
+    except json.JSONDecodeError:
+        payload = _extract_json_object(stdout)
     if not isinstance(payload, dict):
         raise ValueError("profile output must be a JSON object")
     raw_writes = payload.get("writes")
@@ -237,6 +237,19 @@ def _parse_candidate_writes(stdout: str) -> list[CandidateFileWrite]:
             raise ValueError("each write must include string path and content")
         writes.append(CandidateFileWrite(path=path, content=content))
     return writes
+
+
+def _extract_json_object(stdout: str) -> object:
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(stdout):
+        if char != "{":
+            continue
+        try:
+            payload, _end = decoder.raw_decode(stdout[index:])
+        except json.JSONDecodeError:
+            continue
+        return payload
+    raise ValueError("profile output must include a JSON object")
 
 
 def _non_empty(value: str, field_name: str) -> str:
