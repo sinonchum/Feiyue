@@ -58,6 +58,20 @@ python3 -m feiyue_core.evaluation.benchmark_runner \
 # expected marker: BENCHMARK_SMOKE_OK
 ```
 
+- Creative-to-execution provider-free E2E smoke command:
+
+```bash
+cd packages/feiyue-core
+python3 -m feiyue_core.creative.e2e_smoke \
+  --root ../.. \
+  --run-id wave5-5-local \
+  --seed "Turn a human creative seed into a verifier-backed task contract" \
+  --write-report
+# console script when installed: creative-e2e-smoke --run-id wave5-5-local --seed "..." --write-report
+# writes ../../.hermes/creative-e2e/wave5-5-local/evidence.json and report.md
+# expected marker: CREATIVE_E2E_SMOKE_OK
+```
+
 Read-only API endpoints:
 
 ```text
@@ -106,3 +120,8 @@ The first curator live asset loop has completed on verified Live B evidence. `fe
 ## Wave5-1 asset reuse / longitudinal gain smoke
 
 Status: provider-free dry-run harness implemented. `feiyue-runs asset-reuse-smoke --run-id <id> --lesson-path .hermes/lessons/<lesson>.md --write-report` loads a promoted project-local lesson from `.hermes/lessons`, injects it into a comparable deterministic smoke, and writes `.hermes/asset-reuse/<run_id>/evidence.json` plus `report.md`. Evidence is shaped for longitudinal/capability history follow-up and records `dry_run_only: true`, `promotion_attempted: false`, and `global_hermes_config_mutated: false`. Expected baseline remains a placeholder until a reviewed project-local lesson and longitudinal sample set are run together; do not infer production lift from the dry-run smoke alone.
+
+## Wave5-5 creative-to-execution E2E smoke
+
+Status: provider-free dry-run implemented. `creative-e2e-smoke --run-id <id> --seed <human-seed> --write-report` (or `python3 -m feiyue_core.creative.e2e_smoke`) creates a deterministic `CreativeBrief`, variants, critiques, selected-variant feedback, PRD/spec text, a `TaskContract`, and a fake verified workflow report. It persists curator-ready evidence under `.hermes/creative-e2e/<run_id>/evidence.json` and optional `report.md`. Evidence records `dry_run_only: true`, `promotion_attempted: false`, `curator_proposal_ready: true`, and `global_hermes_config_mutated: false`; no provider/profile calls, global Hermes mutation, or production promotion are attempted by default.
+

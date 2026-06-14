@@ -19,6 +19,7 @@ feiyue-runs-export = "feiyue_core.workflow.runs_export:main"
 feiyue-runs-export-verify = "feiyue_core.workflow.runs_export_verify:main"
 feiyue-runs-export-bundle = "feiyue_core.workflow.runs_export_bundle:main"
 feiyue-runs-export-all = "feiyue_core.workflow.runs_export_all:main"
+creative-e2e-smoke = "feiyue_core.creative.e2e_smoke:main"
 
 [project.optional-dependencies]
 dev = [
