@@ -44,6 +44,33 @@ class RefreshedMergeReadinessEvidence(FeiyueModel):
     written_at: str | None = None
 
 
+class PreMergeFinalAudit(FeiyueModel):
+    """8F-1 final audit artifact before asking for explicit real merge approval."""
+
+    audit_id: str
+    status: str
+    refreshed_readiness_id: str
+    refreshed_readiness_hash: str
+    pr_number: int
+    pr_url: str
+    source_branch: str
+    target_branch: str
+    head_sha: str | None = None
+    changed_files: list[str] = Field(default_factory=list)
+    checks: list[dict[str, object]] = Field(default_factory=list)
+    checks_passed: bool = False
+    merge_state_status: str | None = None
+    auto_merge_request: object | None = None
+    merge_approval_request_ready: bool = False
+    approved_action_to_request: str = "execute_real_github_merge"
+    reason_codes: list[str] = Field(default_factory=list)
+    merge_performed: bool = False
+    auto_merge_enabled: bool = False
+    deploy_performed: bool = False
+    production_mutated: bool = False
+    written_at: str | None = None
+
+
 class ReleaseCandidatePlan(FeiyueModel):
     """Fail-closed, local-only release-candidate evidence bundle."""
 
@@ -352,6 +379,75 @@ def pr_ready_for_review_dir(project_root: str | Path, readiness_id: str) -> Path
 
 def merge_readiness_dir(project_root: str | Path, refresh_id: str) -> Path:
     return Path(project_root) / ".hermes" / "merge-readiness" / refresh_id
+
+
+def pre_merge_audit_dir(project_root: str | Path, audit_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "pre-merge-audits" / audit_id
+
+
+def compute_refreshed_merge_readiness_hash(evidence: RefreshedMergeReadinessEvidence) -> str:
+    payload = evidence.model_dump(mode="json")
+    payload["written_at"] = None
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def create_pre_merge_final_audit(
+    *,
+    project_root: str | Path,
+    audit_id: str,
+    refreshed_readiness: RefreshedMergeReadinessEvidence,
+    current_head_sha: str | None,
+    changed_files: list[str],
+    checks: list[dict[str, object]],
+) -> PreMergeFinalAudit:
+    reasons: list[str] = []
+    checks_passed = bool(checks) and all(_check_passed(check) for check in checks)
+    if refreshed_readiness.status != "ready_for_human_merge_review":
+        reasons.append("refreshed_merge_readiness_not_ready")
+    if refreshed_readiness.is_draft:
+        reasons.append("pr_is_draft")
+    if refreshed_readiness.auto_merge_request is not None:
+        reasons.append("auto_merge_already_enabled")
+    if refreshed_readiness.merge_performed:
+        reasons.append("readiness_indicates_merge_performed")
+    if refreshed_readiness.deploy_performed:
+        reasons.append("readiness_indicates_deploy_performed")
+    if refreshed_readiness.production_mutated:
+        reasons.append("readiness_indicates_production_mutation")
+    if refreshed_readiness.head_sha and current_head_sha and refreshed_readiness.head_sha != current_head_sha:
+        reasons.append("head_sha_drift")
+    if not checks_passed or not refreshed_readiness.checks_passed:
+        reasons.append("pr_checks_not_passed")
+    if not changed_files:
+        reasons.append("changed_files_empty")
+    status = "blocked" if reasons else "approval_requested"
+    audit = PreMergeFinalAudit(
+        audit_id=audit_id,
+        status=status,
+        refreshed_readiness_id=refreshed_readiness.refresh_id,
+        refreshed_readiness_hash=compute_refreshed_merge_readiness_hash(refreshed_readiness),
+        pr_number=refreshed_readiness.pr_number,
+        pr_url=refreshed_readiness.pr_url,
+        source_branch=refreshed_readiness.source_branch,
+        target_branch=refreshed_readiness.target_branch,
+        head_sha=current_head_sha or refreshed_readiness.head_sha,
+        changed_files=changed_files,
+        checks=checks,
+        checks_passed=checks_passed,
+        merge_state_status=refreshed_readiness.merge_state_status,
+        auto_merge_request=refreshed_readiness.auto_merge_request,
+        merge_approval_request_ready=status == "approval_requested",
+        approved_action_to_request="execute_real_github_merge",
+        reason_codes=reasons if reasons else ["pre_merge_final_audit_passed_approval_request_ready", "evidence_only_no_merge_deploy_mutation"],
+        merge_performed=False,
+        auto_merge_enabled=False,
+        deploy_performed=False,
+        production_mutated=False,
+        written_at=datetime.now(UTC).isoformat(),
+    )
+    _write_json(pre_merge_audit_dir(project_root, audit_id) / "audit.json", audit.model_dump(mode="json"))
+    return audit
 
 
 def refresh_merge_readiness_after_ready_for_review(

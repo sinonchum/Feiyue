@@ -10,6 +10,7 @@ from feiyue_core.workflow.promotion_lifecycle import DraftPRApproval, DraftPRSta
 from feiyue_core.workflow.release_candidate import (
     MergeExecutionApproval,
     MergeExecutionAdapterResult,
+    PreMergeFinalAudit,
     MergeRollbackDeployReadinessApproval,
     PRReadyForReviewAdapterResult,
     PRReadyForReviewApproval,
@@ -24,6 +25,7 @@ from feiyue_core.workflow.release_candidate import (
     approve_production_promotion,
     create_merge_rollback_deploy_readiness_plan,
     create_release_candidate_plan,
+    create_pre_merge_final_audit,
     execute_approved_merge,
     refresh_merge_readiness_after_ready_for_review,
     transition_pr_ready_for_review,
@@ -968,5 +970,142 @@ def test_8e_cli_fake_refreshes_merge_readiness(tmp_path: Path) -> None:
     assert payload["checks_passed"] is True
     assert payload["is_draft"] is False
     assert payload["merge_performed"] is False
+    assert payload["deploy_performed"] is False
+    assert payload["production_mutated"] is False
+
+
+
+def test_8f1_pre_merge_final_audit_blocks_head_sha_drift(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    readiness = refresh_merge_readiness_after_ready_for_review(
+        project_root=repo,
+        refresh_id="wave8-8e",
+        pr_number=3,
+        pr_url="https://github.com/sinonchum/Feiyue/pull/3",
+        source_branch="feiyue/7b-real-feature-pr",
+        target_branch="main",
+        head_sha="old-sha",
+        is_draft=False,
+        pr_state="OPEN",
+        merge_state_status="CLEAN",
+        auto_merge_request=None,
+        checks=[{"name": "test", "bucket": "pass", "state": "SUCCESS"}],
+    )
+
+    audit = create_pre_merge_final_audit(
+        project_root=repo,
+        audit_id="wave8-8f1",
+        refreshed_readiness=readiness,
+        current_head_sha="new-sha",
+        changed_files=["README.md"],
+        checks=[{"name": "test", "bucket": "pass", "state": "SUCCESS"}],
+    )
+
+    assert audit.status == "blocked"
+    assert "head_sha_drift" in audit.reason_codes
+    assert audit.merge_approval_request_ready is False
+    assert audit.merge_performed is False
+    assert audit.auto_merge_enabled is False
+    assert audit.deploy_performed is False
+    assert audit.production_mutated is False
+
+
+def test_8f1_pre_merge_final_audit_creates_approval_request_artifact(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    checks = [{"name": "test", "bucket": "pass", "state": "SUCCESS"}]
+    readiness = refresh_merge_readiness_after_ready_for_review(
+        project_root=repo,
+        refresh_id="wave8-8e",
+        pr_number=3,
+        pr_url="https://github.com/sinonchum/Feiyue/pull/3",
+        source_branch="feiyue/7b-real-feature-pr",
+        target_branch="main",
+        head_sha="abc123",
+        is_draft=False,
+        pr_state="OPEN",
+        merge_state_status="CLEAN",
+        auto_merge_request=None,
+        checks=checks,
+    )
+
+    audit = create_pre_merge_final_audit(
+        project_root=repo,
+        audit_id="wave8-8f1",
+        refreshed_readiness=readiness,
+        current_head_sha="abc123",
+        changed_files=["README.md", "packages/feiyue-core/tests/test_release_candidate_gate.py"],
+        checks=checks,
+    )
+
+    assert isinstance(audit, PreMergeFinalAudit)
+    assert audit.status == "approval_requested"
+    assert audit.merge_approval_request_ready is True
+    assert audit.approved_action_to_request == "execute_real_github_merge"
+    assert audit.pr_number == 3
+    assert audit.head_sha == "abc123"
+    assert audit.target_branch == "main"
+    assert audit.changed_files == ["README.md", "packages/feiyue-core/tests/test_release_candidate_gate.py"]
+    assert audit.merge_performed is False
+    assert audit.auto_merge_enabled is False
+    assert audit.deploy_performed is False
+    assert audit.production_mutated is False
+    assert "pre_merge_final_audit_passed_approval_request_ready" in audit.reason_codes
+    persisted = json.loads((repo / ".hermes" / "pre-merge-audits" / "wave8-8f1" / "audit.json").read_text(encoding="utf-8"))
+    assert persisted["status"] == "approval_requested"
+    assert persisted["merge_approval_request_ready"] is True
+
+
+def test_8f1_cli_fake_creates_pre_merge_audit_request(tmp_path: Path) -> None:
+    repo = tmp_path / "toy-repo"
+    _init_toy_repo(repo)
+    checks = [{"name": "test", "bucket": "pass", "state": "SUCCESS"}]
+    refresh_merge_readiness_after_ready_for_review(
+        project_root=repo,
+        refresh_id="wave8-8e",
+        pr_number=3,
+        pr_url="https://github.com/sinonchum/Feiyue/pull/3",
+        source_branch="feiyue/7b-real-feature-pr",
+        target_branch="main",
+        head_sha="abc123",
+        is_draft=False,
+        pr_state="OPEN",
+        merge_state_status="CLEAN",
+        auto_merge_request=None,
+        checks=checks,
+    )
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(repo),
+            "pre-merge-final-audit",
+            "wave8-8f1-cli",
+            "--readiness-id",
+            "wave8-8e",
+            "--adapter",
+            "fake",
+            "--head-sha",
+            "abc123",
+            "--changed-file",
+            "README.md",
+            "--check",
+            "test:pass:SUCCESS",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "approval_requested"
+    assert payload["merge_approval_request_ready"] is True
+    assert payload["merge_performed"] is False
+    assert payload["auto_merge_enabled"] is False
     assert payload["deploy_performed"] is False
     assert payload["production_mutated"] is False

@@ -42,6 +42,7 @@ from feiyue_core.workflow.release_candidate import (
     approve_pr_ready_for_review_transition,
     approve_production_promotion,
     create_merge_rollback_deploy_readiness_plan,
+    create_pre_merge_final_audit,
     create_release_candidate_plan,
     execute_approved_merge,
     read_merge_execution_approval,
@@ -51,6 +52,7 @@ from feiyue_core.workflow.release_candidate import (
     read_pr_ready_for_review_approval,
     read_pr_ready_for_review_external_mutation_approval,
     read_production_promotion_approval,
+    RefreshedMergeReadinessEvidence,
     refresh_merge_readiness_after_ready_for_review,
     transition_pr_ready_for_review,
     verify_merge_rollback_deploy_readiness,
@@ -218,6 +220,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     refresh_merge_readiness_parser.add_argument("--merge-state-status", default="UNKNOWN")
     refresh_merge_readiness_parser.add_argument("--is-draft", action="store_true")
     refresh_merge_readiness_parser.add_argument("--check", action="append", default=[], help="Check tuple as name:bucket:state for fake adapter")
+
+    pre_merge_audit_parser = subparsers.add_parser("pre-merge-final-audit", help="Create final pre-merge audit and approval-request evidence; no merge/deploy")
+    pre_merge_audit_parser.add_argument("audit_id")
+    pre_merge_audit_parser.add_argument("--readiness-id", required=True)
+    pre_merge_audit_parser.add_argument("--adapter", choices=["fake", "github"], default="fake")
+    pre_merge_audit_parser.add_argument("--head-sha")
+    pre_merge_audit_parser.add_argument("--changed-file", action="append", default=[])
+    pre_merge_audit_parser.add_argument("--check", action="append", default=[], help="Check tuple as name:bucket:state for fake adapter")
 
     approve_parser = subparsers.add_parser("approve-promotion", help="Create exact approval evidence for a verified workflow dry run")
     approve_parser.add_argument("run_id")
@@ -727,6 +737,31 @@ def main(argv: Sequence[str] | None = None) -> int:
                     checks=checks,
                 )
             print(evidence.model_dump_json(indent=2))
+            return 0
+        if args.command == "pre-merge-final-audit":
+            readiness_path = root / ".hermes" / "merge-readiness" / args.readiness_id / "evidence.json"
+            if not readiness_path.exists():
+                print(f"merge-readiness evidence not found: {readiness_path}", file=sys.stderr)
+                return 2
+            readiness = RefreshedMergeReadinessEvidence.model_validate_json(readiness_path.read_text(encoding="utf-8"))
+            if args.adapter == "github":
+                view = json.loads(_gh("pr", "view", str(readiness.pr_number), "--json", "number,isDraft,state,mergeStateStatus,autoMergeRequest,headRefName,baseRefName,url,headRefOid", cwd=root))
+                checks = json.loads(_gh("pr", "checks", str(readiness.pr_number), "--json", "name,state,bucket,workflow", cwd=root))
+                changed_files = [line for line in _gh("pr", "diff", str(readiness.pr_number), "--name-only", cwd=root).splitlines() if line.strip()]
+                current_head_sha = view.get("headRefOid")
+            else:
+                checks = [_parse_check_tuple(item) for item in args.check]
+                changed_files = list(args.changed_file)
+                current_head_sha = args.head_sha
+            audit = create_pre_merge_final_audit(
+                project_root=root,
+                audit_id=args.audit_id,
+                refreshed_readiness=readiness,
+                current_head_sha=current_head_sha,
+                changed_files=changed_files,
+                checks=checks,
+            )
+            print(audit.model_dump_json(indent=2))
             return 0
         if args.command == "approve-promotion":
             dry_run = _load_workflow_smoke_report(root, args.run_id)
