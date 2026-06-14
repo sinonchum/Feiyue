@@ -55,3 +55,6 @@ local-notes/
 
 # Feiyue local Wave9 task-pack evidence
 .hermes/wave9-task-packs/
+
+# Feiyue local Wave9 real multi-worker dry-run evidence
+.hermes/wave9-real-multi-worker-runs/

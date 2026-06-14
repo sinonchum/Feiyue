@@ -9,12 +9,16 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from feiyue_core.providers.profile_runner import FakeProfileRunner
 from feiyue_core.workflow.wave9_task_pack import (
     Wave9AuthorizationCheckStatus,
+    Wave9ExecutionStatus,
     Wave9TaskAssignment,
     Wave9TaskPack,
     Wave9TaskPackAuthorization,
+    Wave9TaskPackExecutor,
     approve_wave9_task_pack_execution,
+    read_wave9_execution_evidence,
     read_wave9_task_pack_authorization,
     task_pack_hash,
     validate_wave9_task_pack_authorization,
@@ -330,3 +334,209 @@ def test_wave9_3_cli_approves_task_pack_execution_without_provider_calls(tmp_pat
     assert payload["promotion_attempted"] is False
     assert payload["production_mutated"] is False
     assert (tmp_path / ".hermes" / "wave9-task-packs" / "wave9-3-cli-task-pack" / "authorization.json").exists()
+
+
+
+def _source_repo(tmp_path: Path) -> Path:
+    source = tmp_path / "source"
+    (source / "packages" / "feiyue-core" / "feiyue_core" / "workflow").mkdir(parents=True)
+    (source / "packages" / "feiyue-core" / "tests").mkdir(parents=True)
+    (source / "packages" / "feiyue-core" / "feiyue_core" / "__init__.py").write_text("", encoding="utf-8")
+    (source / "packages" / "feiyue-core" / "feiyue_core" / "workflow" / "__init__.py").write_text("", encoding="utf-8")
+    (source / "packages" / "feiyue-core" / "feiyue_core" / "workflow" / "wave9_marker.py").write_text(
+        "def wave9_marker():\n    return 'pending'\n",
+        encoding="utf-8",
+    )
+    (source / "packages" / "feiyue-core" / "tests" / "test_wave9_marker.py").write_text(
+        "from feiyue_core.workflow.wave9_marker import wave9_marker\n\n"
+        "def test_wave9_marker():\n    assert wave9_marker() == 'verified'\n",
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "init"], cwd=source, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "add", "."], cwd=source, check=True, capture_output=True, text=True)
+    subprocess.run(["git", "commit", "-m", "seed"], cwd=source, check=True, capture_output=True, text=True)
+    return source
+
+
+def test_wave9_4_executor_blocks_without_authorization_before_provider_calls(tmp_path: Path) -> None:
+    source = _source_repo(tmp_path)
+    pack = Wave9TaskPack(
+        task_pack_id="wave9-4-task-pack",
+        task_id="wave9.real-multi-worker.marker",
+        title="Wave9 real multi-worker marker task",
+        summary="Tiny scoped task pack for a future real multi-worker dry-run.",
+        assignments=_assignments(),
+        merge_strategy="reject_on_conflict",
+        verifier_commands=["PYTHONPATH=packages/feiyue-core python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q"],
+        review_criteria=["combined verifier passes", "source checkout remains clean"],
+        dry_run_only=True,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        reason_codes=["wave9_task_pack_pre_execution_only"],
+    )
+
+    report = Wave9TaskPackExecutor(profile_runner=FakeProfileRunner({})).run(
+        project_root=tmp_path,
+        source_repo=source,
+        project_name="Feiyue",
+        task_pack=pack,
+        authorization=None,
+        run_id="wave9-4-blocked",
+    )
+
+    assert report.status == Wave9ExecutionStatus.BLOCKED
+    assert report.provider_call_count == 0
+    assert report.authorization_applies is False
+    assert "missing_wave9_task_pack_authorization" in report.reason_codes
+    assert report.dry_run_only is True
+    assert report.promotion_attempted is False
+    assert report.external_pr_created is False
+    assert report.merge_performed is False
+    assert report.deploy_performed is False
+    assert report.global_hermes_config_mutated is False
+    assert report.production_mutated is False
+
+
+def test_wave9_4_executor_runs_authorized_dry_run_in_sandbox(tmp_path: Path) -> None:
+    source = _source_repo(tmp_path)
+    pack = Wave9TaskPack(
+        task_pack_id="wave9-4-task-pack",
+        task_id="wave9.real-multi-worker.marker",
+        title="Wave9 real multi-worker marker task",
+        summary="Tiny scoped task pack for a future real multi-worker dry-run.",
+        assignments=_assignments(),
+        merge_strategy="reject_on_conflict",
+        verifier_commands=["PYTHONPATH=packages/feiyue-core python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q"],
+        review_criteria=["combined verifier passes", "source checkout remains clean"],
+        dry_run_only=True,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        reason_codes=["wave9_task_pack_pre_execution_only"],
+    )
+    write_wave9_task_pack(pack, tmp_path)
+    authorization = approve_wave9_task_pack_execution(
+        project_root=tmp_path,
+        task_pack=pack,
+        approval_id="wave9-4-approval",
+        approved_by="test-suite",
+        reason="Authorize Wave9 dry-run execution only.",
+        max_total_profile_calls=2,
+    )
+    responses = {
+        "feiyue-mid-deepseek-pro": json.dumps({
+            "writes": [
+                {
+                    "path": "packages/feiyue-core/feiyue_core/workflow/wave9_marker.py",
+                    "content": "def wave9_marker():\n    return 'verified'\n",
+                }
+            ]
+        }),
+        "feiyue-strong-gpt55": json.dumps({
+            "writes": [
+                {
+                    "path": "packages/feiyue-core/tests/test_wave9_marker.py",
+                    "content": "from feiyue_core.workflow.wave9_marker import wave9_marker\n\ndef test_wave9_marker():\n    assert wave9_marker() == 'verified'\n",
+                }
+            ]
+        }),
+    }
+
+    report = Wave9TaskPackExecutor(profile_runner=FakeProfileRunner(responses)).run(
+        project_root=tmp_path,
+        source_repo=source,
+        project_name="Feiyue",
+        task_pack=pack,
+        authorization=authorization,
+        run_id="wave9-4-verified",
+    )
+    loaded = read_wave9_execution_evidence(tmp_path, "wave9-4-verified")
+
+    assert report.status == Wave9ExecutionStatus.VERIFIED
+    assert loaded == report
+    assert report.authorization_applies is True
+    assert report.approval_id == "wave9-4-approval"
+    assert report.provider_call_count == 2
+    assert report.conflict_files == []
+    assert all(item["exit_code"] == 0 for item in report.verifier_outputs)
+    assert [item.status for item in report.assignment_reports] == ["candidate_ready", "candidate_ready"]
+    assert report.dry_run_only is True
+    assert report.promotion_attempted is False
+    assert report.external_pr_created is False
+    assert report.merge_performed is False
+    assert report.deploy_performed is False
+    assert report.global_hermes_config_mutated is False
+    assert report.production_mutated is False
+    assert report.source_repo_clean is True
+    assert (source / "packages" / "feiyue-core" / "feiyue_core" / "workflow" / "wave9_marker.py").read_text(encoding="utf-8").strip().endswith("'pending'")
+
+
+def test_wave9_4_cli_runs_authorized_fake_dry_run(tmp_path: Path) -> None:
+    source = _source_repo(tmp_path)
+    pack = Wave9TaskPack(
+        task_pack_id="wave9-4-cli-task-pack",
+        task_id="wave9.real-multi-worker.marker",
+        title="Wave9 real multi-worker marker task",
+        summary="Tiny scoped task pack for a future real multi-worker dry-run.",
+        assignments=_assignments(),
+        merge_strategy="reject_on_conflict",
+        verifier_commands=["PYTHONPATH=packages/feiyue-core python -m pytest packages/feiyue-core/tests/test_wave9_marker.py -q"],
+        review_criteria=["combined verifier passes", "source checkout remains clean"],
+        dry_run_only=True,
+        promotion_attempted=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        reason_codes=["wave9_task_pack_pre_execution_only"],
+    )
+    write_wave9_task_pack(pack, tmp_path)
+    approve_wave9_task_pack_execution(
+        project_root=tmp_path,
+        task_pack=pack,
+        approval_id="wave9-4-cli-approval",
+        approved_by="test-suite",
+        reason="Authorize Wave9 dry-run execution only.",
+        max_total_profile_calls=2,
+    )
+    impl_response = json.dumps({"writes": [{"path": "packages/feiyue-core/feiyue_core/workflow/wave9_marker.py", "content": "def wave9_marker():\n    return 'verified'\n"}]})
+    test_response = json.dumps({"writes": [{"path": "packages/feiyue-core/tests/test_wave9_marker.py", "content": "from feiyue_core.workflow.wave9_marker import wave9_marker\n\ndef test_wave9_marker():\n    assert wave9_marker() == 'verified'\n"}]})
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "feiyue_core.workflow.runs_cli",
+            "--root",
+            str(tmp_path),
+            "run-approved-wave9-real-multi-worker-dry-run",
+            "--task-pack-id",
+            "wave9-4-cli-task-pack",
+            "--run-id",
+            "wave9-4-cli-run",
+            "--source-repo",
+            str(source),
+            "--project-name",
+            "Feiyue",
+            "--profile-runner",
+            "fake",
+            "--fake-response",
+            f"feiyue-mid-deepseek-pro={impl_response}",
+            "--fake-response",
+            f"feiyue-strong-gpt55={test_response}",
+        ],
+        text=True,
+        capture_output=True,
+        check=True,
+        env=_cli_env(),
+    )
+
+    payload = json.loads(completed.stdout)
+    assert payload["status"] == "verified"
+    assert payload["provider_call_count"] == 2
+    assert payload["dry_run_only"] is True
+    assert payload["promotion_attempted"] is False
+    assert payload["external_pr_created"] is False
+    assert payload["merge_performed"] is False
+    assert payload["deploy_performed"] is False
+    assert payload["production_mutated"] is False
+    assert (tmp_path / ".hermes" / "wave9-real-multi-worker-runs" / "wave9-4-cli-run" / "evidence.json").exists()

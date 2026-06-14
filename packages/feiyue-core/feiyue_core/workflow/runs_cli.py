@@ -115,8 +115,10 @@ from feiyue_core.workflow.true_multi_student_workflow import (
 from feiyue_core.workflow.wave9_task_pack import (
     Wave9TaskAssignment,
     Wave9TaskPack,
+    Wave9TaskPackExecutor,
     approve_wave9_task_pack_execution,
     read_wave9_task_pack,
+    read_wave9_task_pack_authorization,
     task_pack_hash,
     write_wave9_task_pack,
 )
@@ -438,6 +440,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     approve_wave9_parser.add_argument("--approval-id", required=True)
     approve_wave9_parser.add_argument("--reason", required=True)
     approve_wave9_parser.add_argument("--max-total-profile-calls", type=int, required=True)
+
+    run_wave9_parser = subparsers.add_parser(
+        "run-approved-wave9-real-multi-worker-dry-run",
+        help="Run an exact-authorized Wave9 real multi-worker dry-run in a sandbox",
+    )
+    run_wave9_parser.add_argument("--task-pack-id", required=True)
+    run_wave9_parser.add_argument("--run-id", required=True)
+    run_wave9_parser.add_argument("--source-repo", required=True)
+    run_wave9_parser.add_argument("--project-name", required=True)
+    run_wave9_parser.add_argument("--profile-runner", choices=["fake", "hermes"], default="fake")
+    run_wave9_parser.add_argument("--fake-response", action="append", dest="fake_responses", default=[], help="profile=json_response")
+    run_wave9_parser.add_argument("--hermes-run-record", action="append", dest="hermes_run_records", default=[], help="AuthorizedProviderRunRecord JSON path; repeat once per profile call")
 
     real_multi_worker_parser = subparsers.add_parser(
         "real-multi-worker-live-dry-run",
@@ -1199,6 +1213,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(authorization.model_dump_json(indent=2))
             return 0
+        if args.command == "run-approved-wave9-real-multi-worker-dry-run":
+            pack = read_wave9_task_pack(root, args.task_pack_id)
+            authorization = read_wave9_task_pack_authorization(root, args.task_pack_id)
+            if args.profile_runner == "fake":
+                runner = FakeProfileRunner(_parse_fake_response_pairs(args.fake_responses))
+            else:
+                records = [load_authorized_provider_run_record(path) for path in args.hermes_run_records]
+                runner = SequencedHermesProfileRunner(project_root=root, run_records=records)
+            result = Wave9TaskPackExecutor(profile_runner=runner).run(
+                project_root=root,
+                source_repo=Path(args.source_repo),
+                project_name=args.project_name,
+                task_pack=pack,
+                authorization=authorization,
+                run_id=args.run_id,
+            )
+            print(result.model_dump_json(indent=2))
+            return 0 if result.status != "blocked" else 2
         if args.command == "real-multi-worker-live-dry-run":
             plan = _read_multi_worker_plan(root, args.plan_id)
             worker_profile = plan.route.worker_profile_ids[0]

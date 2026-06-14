@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
+import subprocess
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
@@ -9,7 +11,9 @@ from typing import Literal
 
 from pydantic import Field, field_validator, model_validator
 
+from feiyue_core.providers.profile_runner import ProfileRunRequest
 from feiyue_core.schemas.common import FeiyueModel
+from feiyue_core.workflow.profile_worker_bridge import ProfileRunnerLike, _parse_candidate_writes
 
 Wave9AssignmentRole = Literal["implementation", "tests", "docs", "review", "verifier"]
 Wave9MergeStrategy = Literal["reject_on_conflict", "ordered_overlay", "reviewer_selected_patch"]
@@ -17,6 +21,12 @@ Wave9MergeStrategy = Literal["reject_on_conflict", "ordered_overlay", "reviewer_
 
 class Wave9AuthorizationCheckStatus(StrEnum):
     AUTHORIZED = "authorized"
+    BLOCKED = "blocked"
+
+
+class Wave9ExecutionStatus(StrEnum):
+    VERIFIED = "verified"
+    FAILED = "failed"
     BLOCKED = "blocked"
 
 
@@ -185,6 +195,220 @@ class Wave9AuthorizationCheck(FeiyueModel):
     reason_codes: list[str]
 
 
+class Wave9AssignmentExecutionReport(FeiyueModel):
+    assignment_id: str
+    profile_id: str
+    role: str
+    status: str
+    candidate_files: list[str] = Field(default_factory=list)
+    allowed_scope: bool = True
+    exit_code: int = 0
+    reason_codes: list[str] = Field(default_factory=list)
+
+
+class Wave9ExecutionReport(FeiyueModel):
+    run_id: str
+    task_pack_id: str
+    task_id: str
+    status: Wave9ExecutionStatus
+    authorization_applies: bool = False
+    approval_id: str | None = None
+    assignment_reports: list[Wave9AssignmentExecutionReport] = Field(default_factory=list)
+    provider_call_count: int = Field(default=0, ge=0)
+    reason_codes: list[str]
+    conflict_files: list[str] = Field(default_factory=list)
+    verifier_outputs: list[dict[str, object]] = Field(default_factory=list)
+    sandbox_path: str | None = None
+    dry_run_only: bool = True
+    promotion_attempted: bool = False
+    external_pr_created: bool = False
+    merge_performed: bool = False
+    deploy_performed: bool = False
+    global_hermes_config_mutated: bool = False
+    production_mutated: bool = False
+    source_repo_clean: bool = True
+
+
+class Wave9TaskPackExecutor:
+    def __init__(self, *, profile_runner: ProfileRunnerLike) -> None:
+        self._profile_runner = profile_runner
+
+    def run(
+        self,
+        *,
+        project_root: str | Path,
+        source_repo: str | Path,
+        project_name: str,
+        task_pack: Wave9TaskPack,
+        authorization: Wave9TaskPackAuthorization | None,
+        run_id: str,
+    ) -> Wave9ExecutionReport:
+        root = Path(project_root)
+        source = Path(source_repo)
+        check = validate_wave9_task_pack_authorization(pack=task_pack, authorization=authorization)
+        if check.status is Wave9AuthorizationCheckStatus.BLOCKED:
+            report = _wave9_report(
+                run_id=run_id,
+                task_pack=task_pack,
+                status=Wave9ExecutionStatus.BLOCKED,
+                authorization_applies=False,
+                approval_id=authorization.approval_id if authorization else None,
+                provider_call_count=0,
+                reason_codes=check.reason_codes,
+                source_repo_clean=_source_clean(source),
+            )
+            write_wave9_execution_evidence(report, root)
+            return report
+
+        sandbox = wave9_execution_sandbox_path(root, run_id)
+        if sandbox.exists():
+            shutil.rmtree(sandbox)
+        shutil.copytree(source, sandbox, ignore=shutil.ignore_patterns(".git", ".hermes", "__pycache__", ".pytest_cache"))
+
+        provider_call_count = 0
+        assignment_reports: list[Wave9AssignmentExecutionReport] = []
+        writes_by_path: dict[str, list[str]] = {}
+        write_payloads: list[tuple[str, str, str]] = []
+        reasons = ["wave9_task_pack_authorization_applies", "wave9_real_multi_worker_dry_run_only"]
+
+        for assignment in task_pack.assignments:
+            result = self._profile_runner.run(
+                ProfileRunRequest(
+                    profile=assignment.profile_id,
+                    role=assignment.role,
+                    prompt=_wave9_assignment_prompt(project_name=project_name, task_pack=task_pack, assignment=assignment),
+                    source_ids=(task_pack.task_pack_id, assignment.assignment_id),
+                )
+            )
+            provider_call_count += 1
+            if result.exit_code != 0:
+                assignment_reports.append(
+                    Wave9AssignmentExecutionReport(
+                        assignment_id=assignment.assignment_id,
+                        profile_id=assignment.profile_id,
+                        role=assignment.role,
+                        status="failed",
+                        exit_code=result.exit_code,
+                        reason_codes=["profile_run_failed"],
+                    )
+                )
+                report = _wave9_report(
+                    run_id=run_id,
+                    task_pack=task_pack,
+                    status=Wave9ExecutionStatus.FAILED,
+                    authorization_applies=True,
+                    approval_id=authorization.approval_id if authorization else None,
+                    provider_call_count=provider_call_count,
+                    reason_codes=[*reasons, "profile_run_failed"],
+                    assignment_reports=assignment_reports,
+                    sandbox_path=str(sandbox),
+                    source_repo_clean=_source_clean(source),
+                )
+                write_wave9_execution_evidence(report, root)
+                return report
+            try:
+                writes = _parse_candidate_writes(result.stdout)
+            except ValueError as exc:
+                assignment_reports.append(
+                    Wave9AssignmentExecutionReport(
+                        assignment_id=assignment.assignment_id,
+                        profile_id=assignment.profile_id,
+                        role=assignment.role,
+                        status="failed",
+                        exit_code=result.exit_code,
+                        reason_codes=[f"candidate_write_parse_failed:{exc}"],
+                    )
+                )
+                report = _wave9_report(
+                    run_id=run_id,
+                    task_pack=task_pack,
+                    status=Wave9ExecutionStatus.FAILED,
+                    authorization_applies=True,
+                    approval_id=authorization.approval_id if authorization else None,
+                    provider_call_count=provider_call_count,
+                    reason_codes=[*reasons, "candidate_write_parse_failed"],
+                    assignment_reports=assignment_reports,
+                    sandbox_path=str(sandbox),
+                    source_repo_clean=_source_clean(source),
+                )
+                write_wave9_execution_evidence(report, root)
+                return report
+            candidate_files = [write.path for write in writes]
+            allowed_scope = all(_path_allowed(write.path, assignment.allowed_files) for write in writes)
+            assignment_reports.append(
+                Wave9AssignmentExecutionReport(
+                    assignment_id=assignment.assignment_id,
+                    profile_id=assignment.profile_id,
+                    role=assignment.role,
+                    status="candidate_ready" if allowed_scope else "blocked",
+                    candidate_files=candidate_files,
+                    allowed_scope=allowed_scope,
+                    exit_code=result.exit_code,
+                    reason_codes=["candidate_writes_scope_ok"] if allowed_scope else ["candidate_write_outside_assignment_scope"],
+                )
+            )
+            if not allowed_scope:
+                report = _wave9_report(
+                    run_id=run_id,
+                    task_pack=task_pack,
+                    status=Wave9ExecutionStatus.BLOCKED,
+                    authorization_applies=True,
+                    approval_id=authorization.approval_id if authorization else None,
+                    provider_call_count=provider_call_count,
+                    reason_codes=[*reasons, "candidate_write_outside_assignment_scope"],
+                    assignment_reports=assignment_reports,
+                    sandbox_path=str(sandbox),
+                    source_repo_clean=_source_clean(source),
+                )
+                write_wave9_execution_evidence(report, root)
+                return report
+            for write in writes:
+                writes_by_path.setdefault(write.path, []).append(assignment.assignment_id)
+                write_payloads.append((assignment.assignment_id, write.path, write.content))
+
+        conflict_files = sorted(path for path, assignment_ids in writes_by_path.items() if len(assignment_ids) > 1)
+        if conflict_files and task_pack.merge_strategy == "reject_on_conflict":
+            report = _wave9_report(
+                run_id=run_id,
+                task_pack=task_pack,
+                status=Wave9ExecutionStatus.BLOCKED,
+                authorization_applies=True,
+                approval_id=authorization.approval_id if authorization else None,
+                provider_call_count=provider_call_count,
+                reason_codes=[*reasons, "merge_conflict_reject_on_conflict"],
+                assignment_reports=assignment_reports,
+                conflict_files=conflict_files,
+                sandbox_path=str(sandbox),
+                source_repo_clean=_source_clean(source),
+            )
+            write_wave9_execution_evidence(report, root)
+            return report
+
+        for _assignment_id, path, content in write_payloads:
+            target = sandbox / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(content, encoding="utf-8")
+
+        verifier_outputs = _run_verifiers(sandbox, task_pack.verifier_commands)
+        verifier_passed = all(item["exit_code"] == 0 for item in verifier_outputs)
+        report = _wave9_report(
+            run_id=run_id,
+            task_pack=task_pack,
+            status=Wave9ExecutionStatus.VERIFIED if verifier_passed else Wave9ExecutionStatus.FAILED,
+            authorization_applies=True,
+            approval_id=authorization.approval_id if authorization else None,
+            provider_call_count=provider_call_count,
+            reason_codes=[*reasons, "combined_verifier_passed"] if verifier_passed else [*reasons, "combined_verifier_failed"],
+            assignment_reports=assignment_reports,
+            conflict_files=conflict_files,
+            verifier_outputs=verifier_outputs,
+            sandbox_path=str(sandbox),
+            source_repo_clean=_source_clean(source),
+        )
+        write_wave9_execution_evidence(report, root)
+        return report
+
+
 def task_pack_hash(pack: Wave9TaskPack) -> str:
     payload = pack.model_dump(mode="json")
     payload["task_pack_hash"] = None
@@ -305,3 +529,119 @@ def write_wave9_task_pack(pack: Wave9TaskPack, project_root: str | Path) -> Path
 def read_wave9_task_pack(project_root: str | Path, task_pack_id: str) -> Wave9TaskPack:
     path = wave9_task_pack_path(project_root, task_pack_id)
     return Wave9TaskPack.model_validate_json(path.read_text(encoding="utf-8"))
+
+
+def wave9_execution_evidence_path(project_root: str | Path, run_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "wave9-real-multi-worker-runs" / run_id / "evidence.json"
+
+
+def wave9_execution_sandbox_path(project_root: str | Path, run_id: str) -> Path:
+    return Path(project_root) / ".hermes" / "wave9-real-multi-worker-runs" / run_id / "sandbox"
+
+
+def write_wave9_execution_evidence(report: Wave9ExecutionReport, project_root: str | Path) -> Path:
+    path = wave9_execution_evidence_path(project_root, report.run_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = report.model_dump(mode="json") | {"written_at": datetime.now(UTC).isoformat()}
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def read_wave9_execution_evidence(project_root: str | Path, run_id: str) -> Wave9ExecutionReport:
+    path = wave9_execution_evidence_path(project_root, run_id)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    payload.pop("written_at", None)
+    return Wave9ExecutionReport.model_validate(payload)
+
+
+def _wave9_assignment_prompt(*, project_name: str, task_pack: Wave9TaskPack, assignment: Wave9TaskAssignment) -> str:
+    return "\n".join(
+        [
+            "Produce JSON only with shape {\"writes\":[{\"path\":str,\"content\":str}] }.",
+            f"Project: {project_name}",
+            f"Task pack: {task_pack.task_pack_id}",
+            f"Task ID: {task_pack.task_id}",
+            f"Title: {task_pack.title}",
+            f"Summary: {task_pack.summary}",
+            f"Assignment: {assignment.assignment_id}",
+            f"Role: {assignment.role}",
+            f"Objective: {assignment.objective}",
+            f"Allowed files: {', '.join(assignment.allowed_files)}",
+            f"Verifier commands: {'; '.join(assignment.verifier_commands)}",
+            "Do not include markdown fences or commentary.",
+            "Do not modify global Hermes config, create PRs, merge, deploy, promote, or mutate production.",
+        ]
+    )
+
+
+def _path_allowed(path: str, allowed_files: list[str]) -> bool:
+    return any(path == allowed or path.startswith(f"{allowed.rstrip('/')}/") for allowed in allowed_files)
+
+
+def _run_verifiers(cwd: Path, commands: list[str]) -> list[dict[str, object]]:
+    outputs: list[dict[str, object]] = []
+    for command in commands:
+        completed = subprocess.run(command, cwd=cwd, shell=True, text=True, capture_output=True, check=False)
+        outputs.append(
+            {
+                "command": command,
+                "exit_code": completed.returncode,
+                "stdout": completed.stdout[-4000:],
+                "stderr": completed.stderr[-4000:],
+            }
+        )
+    return outputs
+
+
+def _source_clean(source_repo: Path) -> bool:
+    completed = subprocess.run(["git", "status", "--porcelain"], cwd=source_repo, text=True, capture_output=True, check=False)
+    return completed.returncode == 0 and completed.stdout == ""
+
+
+def _wave9_report(
+    *,
+    run_id: str,
+    task_pack: Wave9TaskPack,
+    status: Wave9ExecutionStatus,
+    authorization_applies: bool,
+    approval_id: str | None,
+    provider_call_count: int,
+    reason_codes: list[str],
+    assignment_reports: list[Wave9AssignmentExecutionReport] | None = None,
+    conflict_files: list[str] | None = None,
+    verifier_outputs: list[dict[str, object]] | None = None,
+    sandbox_path: str | None = None,
+    source_repo_clean: bool = True,
+) -> Wave9ExecutionReport:
+    return Wave9ExecutionReport(
+        run_id=run_id,
+        task_pack_id=task_pack.task_pack_id,
+        task_id=task_pack.task_id,
+        status=status,
+        authorization_applies=authorization_applies,
+        approval_id=approval_id,
+        assignment_reports=assignment_reports or [],
+        provider_call_count=provider_call_count,
+        reason_codes=_dedupe(reason_codes),
+        conflict_files=conflict_files or [],
+        verifier_outputs=verifier_outputs or [],
+        sandbox_path=sandbox_path,
+        dry_run_only=True,
+        promotion_attempted=False,
+        external_pr_created=False,
+        merge_performed=False,
+        deploy_performed=False,
+        global_hermes_config_mutated=False,
+        production_mutated=False,
+        source_repo_clean=source_repo_clean,
+    )
+
+
+def _dedupe(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value not in seen:
+            result.append(value)
+            seen.add(value)
+    return result

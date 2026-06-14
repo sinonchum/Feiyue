@@ -68,3 +68,4 @@ Generated from the productized `feiyue-runs` command registry.
 - `feiyue-runs post-merge-handoff <handoff_id> --pr-number <n> --pr-state MERGED --main-head-sha <sha> --local-test-baseline <baseline>` — Create post-merge verification and no-deploy release handoff evidence.
 - `feiyue-runs wave9-task-pack <task_pack_id> --task-id <id> --assignment <assignment_spec>` — Create provider-free Wave9 real multi-worker task-pack evidence; no provider calls or mutation.
 - `feiyue-runs approve-wave9-real-multi-worker-run --task-pack-id <id> --approved-by <user> --approval-id <id>` — Create exact authorization for a Wave9 real multi-worker dry-run task pack; no provider calls or mutation.
+- `feiyue-runs run-approved-wave9-real-multi-worker-dry-run --task-pack-id <id> --run-id <id> --source-repo <path>` — Execute an exact-authorized Wave9 real multi-worker dry-run in an isolated sandbox; no PR, merge, deploy, or production mutation.
