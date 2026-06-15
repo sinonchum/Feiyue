@@ -36,7 +36,7 @@ Run from `packages/feiyue-core` unless noted otherwise.
    python -m pytest -q
    ```
 
-   Current baseline: 699 passed
+   Current baseline: 700 passed
 
 3. Static export-all smoke:
 
@@ -177,3 +177,12 @@ The latest evidence-only deployment boundary is `wave13-1-deploy-rollback-readin
 - Wave14-3: `routing_learning_apply_loop_ready: true`, `routing_table_mutated: false`, and human-reviewed apply remains required before mutation.
 - Wave14-4: `deploy_target_selected: local-release-artifact`, `requires_exact_deploy_approval: true`, `deploy_performed: false`, and `production_mutated: false`.
 - Treat this as release-artifact readiness, not a production deployment.
+
+## Wave14 real-environment 1-4 authorized run
+
+Executed `wave14-real-env-1to4-20260615` after explicit user authorization (`我授权，真实环境跑一轮1-4`).
+
+- Wave14-1: one real `feiyue-mid-deepseek-pro` Hermes profile subprocess call completed with `status: verified`, `provider_call_count: 1`, source repo clean, dry-run-only execution, no promotion, and no global Hermes config mutation.
+- Wave14-2: exported `.hermes/static-run-reports/wave14-real-env-1to4-20260615-operator-cockpit.zip`; `static_export_all_ok: true`; review inbox remained read-only.
+- Wave14-3: generated `wave14-real-env-1to4-20260615-routing-learning-proposal`; **safe routing apply hold** remains because the proposal includes stale/non-installed `steady-4c` alongside the real `feiyue-mid-deepseek-pro` recommendation. Do not apply until the stale profile recommendation is filtered or explicitly approved; current `routing_table_mutated: false`.
+- Wave14-4: verified `wave14-real-env-1to4-20260615-local-release-artifact-readiness-v2`; local release artifact readiness is ready, but `deploy_performed: false` and `production_mutated: false` because no external production target was supplied.
