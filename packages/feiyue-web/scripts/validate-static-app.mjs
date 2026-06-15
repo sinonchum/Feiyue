@@ -12,6 +12,7 @@ if (!contents['src/index.html'].includes('Feiyue Operator Console')) failures.pu
 if (!combined.includes('Hermes Bridge')) failures.push('missing Hermes Bridge boundary language');
 if (!combined.includes('data-action="create-hermes-session-draft"')) failures.push('Hermes dry-run session draft action is missing');
 if (!combined.includes('data-action="approve-first-session-draft"')) failures.push('approve-first-session-draft action is missing');
+if (!combined.includes('verifier-report')) failures.push('verifier-report endpoint reference is missing');
 if (combined.includes('start-hermes-session-draft')) failures.push('legacy Hermes session start action must stay absent');
 if (!combined.includes('disabled data-action="apply-routing-proposal"')) failures.push('routing apply action is not visibly disabled');
 if (/<form\b/i.test(combined)) failures.push('forms are not allowed in the static scaffold');

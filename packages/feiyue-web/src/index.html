@@ -13,9 +13,9 @@
       <div class="hero__row">
         <div>
           <h1 id="page-title">Feiyue Operator Console</h1>
-          <p class="lede">G-4 operator console for reviewing evidence, drafting approval intents, simulating Hermes Bridge events, and creating exact dry-run approval gates — without starting Hermes or calling providers.</p>
+          <p class="lede">G-5 operator console for reviewing evidence, drafting approval intents, simulating Hermes Bridge events, creating exact dry-run approval gates, and cross-checking verifier evidence — without starting Hermes or calling providers.</p>
         </div>
-        <div class="status-pill" data-safe-state="readonly">G-4 approval-gated dry-run</div>
+        <div class="status-pill" data-safe-state="readonly">G-5 verifier dashboard</div>
       </div>
     </header>
 
@@ -62,6 +62,7 @@
           <li>G-3 emits provider-free simulated Bridge events.</li>
           <li>Operator creates exact approval gate via <code>POST /api/hermes-session-drafts/:id/approve-dry-run</code>.</li>
           <li>G-4 emits approval events; draft status transitions to <code>approved_dry_run</code>.</li>
+          <li>G-5 cross-checks verifier evidence: event stream consistency, verification check pass/fail, anomaly detection.</li>
           <li>Real Hermes session still requires a second exact human approval gate.</li>
         </ol>
       </div>
@@ -96,6 +97,23 @@
           <p>No approvals yet.</p>
         </div>
         <pre class="code-block" id="approval-summary">Waiting for <code>GET /api/approval-gate</code>.</pre>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="verifier-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Cross-check dashboard</p>
+          <h2 id="verifier-title">Verifier Evidence Dashboard</h2>
+        </div>
+        <a href="/api/verifier-report" data-api-link>verifier report JSON</a>
+      </div>
+      <p>G-5 aggregates all verifier evidence from approval gates and cross-checks event stream consistency, verification checks, and safety boundary preservation.</p>
+      <div class="split">
+        <div class="list" id="verifier-list">
+          <p>No verifier data yet.</p>
+        </div>
+        <pre class="code-block" id="verifier-summary">Waiting for <code>GET /api/verifier-report</code>.</pre>
       </div>
     </section>
 

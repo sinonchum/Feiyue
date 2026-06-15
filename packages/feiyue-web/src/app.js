@@ -9,6 +9,7 @@ const endpoints = {
   reviewIntents: '/api/review-intents',
   hermesSessionDrafts: '/api/hermes-session-drafts',
   approvalGate: '/api/approval-gate',
+  verifierReport: '/api/verifier-report',
 };
 
 const state = {
@@ -22,6 +23,7 @@ const state = {
   reviewIntents: null,
   hermesSessionDrafts: null,
   approvalGate: null,
+  verifierReport: null,
 };
 
 function setText(id, value) {
@@ -198,6 +200,34 @@ function renderApprovals(payload) {
   `).join('');
 }
 
+function renderVerifier(payload) {
+  const reports = payload?.reports || [];
+  const target = document.getElementById('verifier-list');
+  setText('verifier-summary', [
+    `approvals = ${payload?.total_approvals ?? 0}`,
+    `checks_passed = ${payload?.total_verification_checks_passed ?? 0}`,
+    `anomalies = ${payload?.total_anomalies ?? 0}`,
+    `all_boundary_preserved = ${String(payload?.all_boundary_preserved === true)}`,
+    `all_provider_calls_zero = ${String(payload?.all_provider_calls_zero === true)}`,
+    `all_hermes_not_started = ${String(payload?.all_hermes_not_started === true)}`,
+    `dry_run_only = ${String(payload?.dry_run_only === true)}`,
+  ].join('\n'));
+  if (!target) return;
+  if (!reports.length) {
+    target.className = 'list empty';
+    target.textContent = 'No verifier data yet. Create a session draft and approve it first.';
+    return;
+  }
+  target.className = 'list';
+  target.innerHTML = reports.slice(0, 8).map((r) => {
+    const anomalies = r.anomalies?.length ? `⚠ ${escapeHtml(r.anomalies.join(', '))}` : '✓ no anomalies';
+    return `<article class="list-item">
+      <strong>${escapeHtml(r.draft_id)}</strong>
+      <span>${escapeHtml(r.status)} · ${r.verification_checks ? Object.values(r.verification_checks).filter(Boolean).length : 0}/${r.verification_checks ? Object.keys(r.verification_checks).length : 0} checks · ${anomalies}</span>
+    </article>`;
+  }).join('');
+}
+
 async function createIntentDraftForFirstReviewItem() {
   const item = state.reviewInbox?.items?.[0];
   if (!item) return;
@@ -307,7 +337,7 @@ function renderOfflineState(error) {
   setText('asset-count', 'offline');
   setText('worker-route', 'offline');
   const message = `API unavailable in static mode: ${error.message}`;
-  for (const id of ['runs-list', 'review-list', 'approval-list']) {
+  for (const id of ['runs-list', 'review-list', 'approval-list', 'verifier-list']) {
     const target = document.getElementById(id);
     if (target) {
       target.className = 'list empty';
@@ -320,6 +350,7 @@ function renderOfflineState(error) {
   setText('intent-summary', message);
   setText('session-summary', message);
   setText('approval-summary', message);
+  setText('verifier-summary', message);
 }
 
 function escapeHtml(value) {
@@ -336,7 +367,7 @@ async function boot() {
   wireHermesSessionDraftButton();
   wireApproveDraftButton();
   try {
-    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents, hermesSessionDrafts, approvalGate] = await Promise.all([
+    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents, hermesSessionDrafts, approvalGate, verifierReport] = await Promise.all([
       getJson(endpoints.overview),
       getJson(endpoints.runs),
       getJson(endpoints.reviewInbox),
@@ -347,6 +378,7 @@ async function boot() {
       getJson(endpoints.reviewIntents),
       getJson(endpoints.hermesSessionDrafts),
       getJson(endpoints.approvalGate),
+      getJson(endpoints.verifierReport),
     ]);
     state.overview = overview;
     state.runs = runs;
@@ -358,6 +390,7 @@ async function boot() {
     state.reviewIntents = reviewIntents;
     state.hermesSessionDrafts = hermesSessionDrafts;
     state.approvalGate = approvalGate;
+    state.verifierReport = verifierReport;
     renderOverview(overview);
     renderRuns(runs);
     renderReviewInbox(reviewInbox);
@@ -367,6 +400,7 @@ async function boot() {
     renderReviewIntents(reviewIntents);
     renderHermesSessions(hermesSessionDrafts);
     renderApprovals(approvalGate);
+    renderVerifier(verifierReport);
   } catch (error) {
     renderOfflineState(error);
   }

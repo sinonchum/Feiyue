@@ -95,10 +95,10 @@ def test_g3_overview_api_reports_hermes_dry_run_mode_without_raw_secret_leak(tmp
 
     after = {path.relative_to(tmp_path).as_posix(): path.stat().st_mtime_ns for path in tmp_path.rglob("*") if path.is_file()}
     assert after == before
-    assert overview["surface"] == "feiyue_operator_console_g4"
-    assert overview["mode"] == "approval_gated_dry_run"
+    assert overview["surface"] == "feiyue_operator_console_g5"
+    assert overview["mode"] == "verifier_dashboard"
     assert overview["mutates_state"] is False
-    assert overview["write_endpoints_added"] == 3
+    assert overview["write_endpoints_added"] == 4
     assert overview["provider_call_count"] == 0
     assert overview["hermes_started"] is False
     assert overview["routing"]["worker_primary"] == "local-qwen25-coder"
@@ -107,6 +107,9 @@ def test_g3_overview_api_reports_hermes_dry_run_mode_without_raw_secret_leak(tmp
     assert overview["review_intents"] == {"total_drafts": 0, "draft_only": True}
     assert overview["hermes_sessions"] == {"total_drafts": 0, "dry_run_only": True}
     assert overview["approval_gate"] == {"total_approvals": 0, "dry_run_only": True}
+    assert overview["verifier_report"]["total_approvals"] == 0
+    assert overview["verifier_report"]["total_anomalies"] == 0
+    assert overview["verifier_report"]["all_boundary_preserved"] is True
     assert "SHOULD_NOT_LEAK" not in json.dumps(overview, sort_keys=True)
 
 
@@ -124,6 +127,7 @@ def test_g4_api_routes_and_app_shell_are_served(tmp_path) -> None:
         intents = _get_json(f"{base_url}/api/review-intents")
         sessions = _get_json(f"{base_url}/api/hermes-session-drafts")
         approvals = _get_json(f"{base_url}/api/approval-gate")
+        verifier = _get_json(f"{base_url}/api/verifier-report")
 
     assert app_content_type == "text/html; charset=utf-8"
     assert css_content_type == "text/css; charset=utf-8"
@@ -132,6 +136,7 @@ def test_g4_api_routes_and_app_shell_are_served(tmp_path) -> None:
     assert "Review Intent Drafts" in html
     assert "Session Draft Events" in html
     assert "Dry-Run Approvals" in html
+    assert "Verifier Evidence Dashboard" in html
     assert 'href="/app/styles.css"' in html
     assert 'src="/app/app.js"' in html
     assert "GET /api/overview" in html
@@ -151,6 +156,7 @@ def test_g4_api_routes_and_app_shell_are_served(tmp_path) -> None:
     assert approvals["approvals"] == []
     assert approvals["dry_run_only"] is True
     assert approvals["hermes_started"] is False
+    assert verifier["total_approvals"] == 0
     assert "SHOULD_NOT_LEAK" not in json.dumps(dogfood, sort_keys=True)
 
 
