@@ -87,3 +87,4 @@ local-notes/
 .hermes/review-intent-drafts/
 .hermes/hermes-session-drafts/
 .hermes/approval-gate/
+.hermes/execution-output/

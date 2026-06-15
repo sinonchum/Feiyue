@@ -14,6 +14,7 @@ if (!combined.includes('data-action="create-hermes-session-draft"')) failures.pu
 if (!combined.includes('data-action="approve-first-session-draft"')) failures.push('approve-first-session-draft action is missing');
 if (!combined.includes('verifier-report')) failures.push('verifier-report endpoint reference is missing');
 if (!combined.includes('review-item-create-draft')) failures.push('review item create draft button class is missing');
+if (!combined.includes('execute-approved-dry-run')) failures.push('execute-approved-dry-run button id is missing');
 if (combined.includes('start-hermes-session-draft')) failures.push('legacy Hermes session start action must stay absent');
 if (!combined.includes('disabled data-action="apply-routing-proposal"')) failures.push('routing apply action is not visibly disabled');
 if (/<form\b/i.test(combined)) failures.push('forms are not allowed in the static scaffold');

@@ -30,6 +30,13 @@ from feiyue_core.workflow.verifier_report import (
     generate_verifier_report,
     generate_event_diff,
 )
+from feiyue_core.workflow.execution_output import (
+    ExecutionOutputError,
+    ExecutionRequest,
+    execute_approved_dry_run,
+    list_execution_outputs,
+    read_execution_output,
+)
 from feiyue_core.workflow.review_inbox import ReviewInbox
 from feiyue_core.workflow.review_intents import (
     ReviewIntentDraftError,
@@ -139,11 +146,12 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
     approvals = list_dry_run_approvals(project_root).model_dump(mode="json")
     report = generate_verifier_report(project_root)
     review_count = len(review_summary.get("items", []))
+    exec_summary = list_execution_outputs(project_root)
     return {
-        "surface": "feiyue_operator_console_g6",
-        "mode": "draft_templates_from_inbox",
+        "surface": "feiyue_operator_console_g7",
+        "mode": "approved_dry_run_execution",
         "mutates_state": False,
-        "write_endpoints_added": 5,
+        "write_endpoints_added": 6,
         "provider_call_count": 0,
         "hermes_sessions": {"total_drafts": len(sessions.get("drafts", [])), "dry_run_only": sessions.get("dry_run_only", True)},
         "approval_gate": {"total_approvals": len(approvals.get("approvals", [])), "dry_run_only": approvals.get("dry_run_only", True)},
@@ -159,6 +167,7 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
         "frontend_dogfood": {"total_runs": len(dogfood["runs"]), "status": dogfood["status"]},
         "verifier_report": {"total_approvals": report.total_approvals, "total_anomalies": report.total_anomalies, "total_checks_passed": report.total_verification_checks_passed, "all_boundary_preserved": report.all_boundary_preserved, "all_provider_calls_zero": report.all_provider_calls_zero, "all_hermes_not_started": report.all_hermes_not_started, "dry_run_only": report.dry_run_only},
         "templates": {"from_review_inbox": True, "review_item_count": review_count},
+        "execution_output": {"total_outputs": len(exec_summary.outputs), "dry_run_only_executions": exec_summary.dry_run_only, "provider_call_count": exec_summary.provider_call_count, "hermes_started": exec_summary.hermes_started},
         "review_intents": {"total_drafts": len(intents.get("drafts", [])), "draft_only": True},
     }
 
@@ -702,6 +711,20 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                         markdown = RunEvidenceLoader(root).render_handoff_summary(parts[1])
                         self._send_text(200, markdown, content_type="text/markdown; charset=utf-8")
                         return
+                if path == "/api/execution-output":
+                    self._send_json(200, list_execution_outputs(root).model_dump(mode="json"))
+                    return
+                if path.startswith("/api/execution-output/"):
+                    parts = [part for part in path.split("/") if part]
+                    if len(parts) >= 3:
+                        try:
+                            output = read_execution_output(root, parts[2])
+                            self._send_json(200, output.model_dump(mode="json"))
+                        except ExecutionOutputError as exc:
+                            self._send_json(exc.status_code, {"error": "execution_output_not_found", "message": str(exc)})
+                        return
+                    self._send_json(400, {"error": "invalid_path", "path": path})
+                    return
                 self._send_json(404, {"error": "not_found", "path": path})
             except RunEvidenceNotFoundError as exc:
                 self._send_json(
@@ -798,6 +821,22 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                         self._send_json(exc.status_code, {"error": "dry_run_approval_rejected", "message": str(exc)})
                     except ValueError as exc:
                         self._send_json(400, {"error": "invalid_dry_run_approval", "message": str(exc)})
+                    return
+                self._send_json(400, {"error": "invalid_path", "path": path})
+                return
+            if path.startswith("/api/hermes-session-drafts/") and path.endswith("/execute-approved"):
+                parts = [part for part in path.split("/") if part]
+                if len(parts) == 4:
+                    draft_id = parts[2]
+                    try:
+                        payload = self._read_json_body()
+                        request = ExecutionRequest.model_validate(payload)
+                        result = execute_approved_dry_run(root, draft_id, request)
+                        self._send_json(201, result.model_dump(mode="json"))
+                    except ExecutionOutputError as exc:
+                        self._send_json(exc.status_code, {"error": "execution_output_rejected", "message": str(exc)})
+                    except ValueError as exc:
+                        self._send_json(400, {"error": "invalid_execution_request", "message": str(exc)})
                     return
                 self._send_json(400, {"error": "invalid_path", "path": path})
                 return
