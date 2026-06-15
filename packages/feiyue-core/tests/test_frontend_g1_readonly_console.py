@@ -95,10 +95,10 @@ def test_g3_overview_api_reports_hermes_dry_run_mode_without_raw_secret_leak(tmp
 
     after = {path.relative_to(tmp_path).as_posix(): path.stat().st_mtime_ns for path in tmp_path.rglob("*") if path.is_file()}
     assert after == before
-    assert overview["surface"] == "feiyue_operator_console_g5"
-    assert overview["mode"] == "verifier_dashboard"
+    assert overview["surface"] == "feiyue_operator_console_g6"
+    assert overview["mode"] == "draft_templates_from_inbox"
     assert overview["mutates_state"] is False
-    assert overview["write_endpoints_added"] == 4
+    assert overview["write_endpoints_added"] == 5
     assert overview["provider_call_count"] == 0
     assert overview["hermes_started"] is False
     assert overview["routing"]["worker_primary"] == "local-qwen25-coder"
@@ -110,6 +110,8 @@ def test_g3_overview_api_reports_hermes_dry_run_mode_without_raw_secret_leak(tmp
     assert overview["verifier_report"]["total_approvals"] == 0
     assert overview["verifier_report"]["total_anomalies"] == 0
     assert overview["verifier_report"]["all_boundary_preserved"] is True
+    assert overview["templates"]["from_review_inbox"] is True
+    assert overview["templates"]["review_item_count"] >= 0
     assert "SHOULD_NOT_LEAK" not in json.dumps(overview, sort_keys=True)
 
 

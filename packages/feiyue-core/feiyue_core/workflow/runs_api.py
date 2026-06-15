@@ -138,23 +138,15 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
     sessions = list_hermes_session_drafts(project_root).model_dump(mode="json")
     approvals = list_dry_run_approvals(project_root).model_dump(mode="json")
     report = generate_verifier_report(project_root)
+    review_count = len(review_summary.get("items", []))
     return {
-        "surface": "feiyue_operator_console_g5",
-        "mode": "verifier_dashboard",
+        "surface": "feiyue_operator_console_g6",
+        "mode": "draft_templates_from_inbox",
         "mutates_state": False,
-        "write_endpoints_added": 4,
+        "write_endpoints_added": 5,
         "provider_call_count": 0,
         "hermes_sessions": {"total_drafts": len(sessions.get("drafts", [])), "dry_run_only": sessions.get("dry_run_only", True)},
         "approval_gate": {"total_approvals": len(approvals.get("approvals", [])), "dry_run_only": approvals.get("dry_run_only", True)},
-        "verifier_report": {
-            "total_approvals": report.total_approvals,
-            "total_anomalies": report.total_anomalies,
-            "total_checks_passed": report.total_verification_checks_passed,
-            "all_boundary_preserved": report.all_boundary_preserved,
-            "all_provider_calls_zero": report.all_provider_calls_zero,
-            "all_hermes_not_started": report.all_hermes_not_started,
-            "dry_run_only": report.dry_run_only,
-        },
         "hermes_started": False,
         "runs": {"total_runs": run_summary.get("total_runs", 0)},
         "review_inbox": {"total_items": len(review_summary.get("items", []))},
@@ -165,6 +157,8 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
             "feedback_status": capabilities["feedback_status"],
         },
         "frontend_dogfood": {"total_runs": len(dogfood["runs"]), "status": dogfood["status"]},
+        "verifier_report": {"total_approvals": report.total_approvals, "total_anomalies": report.total_anomalies, "total_checks_passed": report.total_verification_checks_passed, "all_boundary_preserved": report.all_boundary_preserved, "all_provider_calls_zero": report.all_provider_calls_zero, "all_hermes_not_started": report.all_hermes_not_started, "dry_run_only": report.dry_run_only},
+        "templates": {"from_review_inbox": True, "review_item_count": review_count},
         "review_intents": {"total_drafts": len(intents.get("drafts", [])), "draft_only": True},
     }
 
@@ -736,6 +730,49 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                 except ValueError as exc:
                     self._send_json(400, {"error": "invalid_review_intent_draft", "message": str(exc)})
                 return
+            if path.startswith("/api/hermes-session-drafts/from-review-item/"):
+                parts = [part for part in path.split("/") if part]
+                if len(parts) >= 5:
+                    item_id = parts[4]
+                    try:
+                        inbox = ReviewInbox(root)
+                        items = inbox.summary().items
+                        target = next((i for i in items if i.item_id == item_id), None)
+                        if not target:
+                            self._send_json(404, {"error": "review_item_not_found", "message": f"no review inbox item with id {item_id}"})
+                            return
+                        # Generate template fields from the review item
+                        goal_templates = {
+                            "approval_blocked": "Review blocked approval evidence and prepare dry-run session.",
+                            "approval_pending": "Review pending approval and simulate session behavior.",
+                            "config_change": "Review configuration change and validate in dry-run session.",
+                            "evidence_gap": "Review missing evidence and prepare session to generate supplemental evidence.",
+                        }
+                        goal = goal_templates.get(target.recommended_action, target.recommended_action)
+                        profile = "dry-run"
+                        toolsets_map = {
+                            "approval_blocked": ["file", "web"],
+                            "approval_pending": ["file"],
+                            "config_change": ["file", "terminal"],
+                            "evidence_gap": ["file", "terminal", "web"],
+                        }
+                        toolsets = toolsets_map.get(target.recommended_action, ["none"])
+                        draft_request = HermesSessionDraftRequest(
+                            goal=f"{goal} (from review: {target.item_type})",
+                            profile=profile,
+                            toolsets=toolsets,
+                            created_by="feiyue-operator-console",
+                            reason=f"g6_template_from_review_item:{target.item_id}:{target.recommended_action}",
+                            dry_run_only=True,
+                            provider_call_budget=0,
+                        )
+                        result = create_hermes_session_draft(root, draft_request)
+                        self._send_json(201, result.model_dump(mode="json"))
+                    except HermesSessionDraftError as exc:
+                        self._send_json(exc.status_code, {"error": "hermes_session_draft_rejected", "message": str(exc)})
+                    except ValueError as exc:
+                        self._send_json(400, {"error": "invalid_hermes_session_draft", "message": str(exc)})
+                    return
             if path == "/api/hermes-session-drafts":
                 try:
                     payload = self._read_json_body()

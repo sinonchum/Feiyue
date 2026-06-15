@@ -48,6 +48,7 @@ def test_frontend_scaffold_is_read_only_by_default() -> None:
     assert "api/" in html
     assert "approval-gate" in html
     assert "verifier-report" in html
+    assert "review-item-create-draft" in combined
 
 def test_frontend_scaffold_uses_dark_institutional_palette() -> None:
     css = (WEB / "src" / "styles.css").read_text(encoding="utf-8")
