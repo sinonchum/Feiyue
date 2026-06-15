@@ -95,8 +95,8 @@ def test_g3_overview_api_reports_hermes_dry_run_mode_without_raw_secret_leak(tmp
 
     after = {path.relative_to(tmp_path).as_posix(): path.stat().st_mtime_ns for path in tmp_path.rglob("*") if path.is_file()}
     assert after == before
-    assert overview["surface"] == "feiyue_operator_console_g7"
-    assert overview["mode"] == "approved_dry_run_execution"
+    assert overview["surface"] == "feiyue_operator_console_g8"
+    assert overview["mode"] == "audit_trail_enabled"
     assert overview["mutates_state"] is False
     assert overview["write_endpoints_added"] == 6
     assert overview["provider_call_count"] == 0
@@ -115,6 +115,7 @@ def test_g3_overview_api_reports_hermes_dry_run_mode_without_raw_secret_leak(tmp
     assert overview["execution_output"]["total_outputs"] >= 0
     assert overview["execution_output"]["dry_run_only_executions"] is True
     assert overview["execution_output"]["provider_call_count"] == 0
+    assert overview["audit_trail"] == {"total_entries": 0, "sources": {}, "mutates_state": False}
     assert "SHOULD_NOT_LEAK" not in json.dumps(overview, sort_keys=True)
 
 

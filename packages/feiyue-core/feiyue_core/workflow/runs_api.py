@@ -44,6 +44,7 @@ from feiyue_core.workflow.review_intents import (
     create_review_intent_draft,
     list_review_intent_drafts,
 )
+from feiyue_core.workflow.audit_trail import generate_audit_trail, AuditTrailResult
 
 
 def _esc(value: object) -> str:
@@ -147,9 +148,10 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
     report = generate_verifier_report(project_root)
     review_count = len(review_summary.get("items", []))
     exec_summary = list_execution_outputs(project_root)
+    audit_trail = generate_audit_trail(project_root)
     return {
-        "surface": "feiyue_operator_console_g7",
-        "mode": "approved_dry_run_execution",
+        "surface": "feiyue_operator_console_g8",
+        "mode": "audit_trail_enabled",
         "mutates_state": False,
         "write_endpoints_added": 6,
         "provider_call_count": 0,
@@ -169,6 +171,7 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
         "templates": {"from_review_inbox": True, "review_item_count": review_count},
         "execution_output": {"total_outputs": len(exec_summary.outputs), "dry_run_only_executions": exec_summary.dry_run_only, "provider_call_count": exec_summary.provider_call_count, "hermes_started": exec_summary.hermes_started},
         "review_intents": {"total_drafts": len(intents.get("drafts", [])), "draft_only": True},
+        "audit_trail": {"total_entries": audit_trail.total_entries, "sources": audit_trail.sources_found, "mutates_state": False},
     }
 
 
@@ -724,6 +727,31 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                             self._send_json(exc.status_code, {"error": "execution_output_not_found", "message": str(exc)})
                         return
                     self._send_json(400, {"error": "invalid_path", "path": path})
+                    return
+                if path.startswith("/api/audit-trail"):
+                    parsed = urlparse(self.path)
+                    qs = {k: v[0] for k, v in (p.split("=", 1) for p in parsed.query.split("&") if "=" in p)} if parsed.query else {}
+                    since = qs.get("since", None)
+                    audit = generate_audit_trail(root, since=since)
+                    self._send_json(200, {
+                        "total_entries": audit.total_entries,
+                        "since": audit.since,
+                        "sources_found": audit.sources_found,
+                        "provider_call_count": audit.provider_call_count,
+                        "hermes_started": audit.hermes_started,
+                        "global_hermes_config_mutated": audit.global_hermes_config_mutated,
+                        "production_mutated": audit.production_mutated,
+                        "entries": [
+                            {
+                                "timestamp": e.timestamp,
+                                "source": e.source,
+                                "event_type": e.event_type,
+                                "description": e.description,
+                                "details": e.details,
+                            }
+                            for e in audit.entries
+                        ],
+                    })
                     return
                 self._send_json(404, {"error": "not_found", "path": path})
             except RunEvidenceNotFoundError as exc:
