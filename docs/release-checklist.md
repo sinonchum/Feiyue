@@ -36,7 +36,7 @@ Run from `packages/feiyue-core` unless noted otherwise.
    python -m pytest -q
    ```
 
-   Current baseline: 695 passed
+   Current baseline: 696 passed
 
 3. Static export-all smoke:
 
@@ -156,3 +156,14 @@ Do not proceed without explicit human approval for:
 - Enabling real multi-worker routing.
 - Promoting changes into external production repositories.
 - Storing long-lived sensitive artifacts.
+
+## Wave13-1 deploy/rollback readiness
+
+The latest evidence-only deployment boundary is `wave13-1-deploy-rollback-readiness-20260615`.
+
+- Scope: readiness design only.
+- Source readiness evidence: `.hermes/merge-readiness/wave8-8e-pr3-nondraft-merge-readiness-refresh/evidence.json`.
+- Verification command: `feiyue-runs verify-merge-rollback-deploy-readiness wave13-1-deploy-rollback-readiness-20260615`.
+- Expected marker: `approval_applies: true`.
+- Required safety booleans: `merge_performed: false`, `auto_merge_enabled: false`, `deploy_performed: false`, and `production_mutated: false`.
+- Real deploy remains blocked until a concrete target environment, rollback command, post-deploy health check, and exact deployment approval are supplied.
