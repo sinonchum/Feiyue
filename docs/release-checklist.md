@@ -36,7 +36,7 @@ Run from `packages/feiyue-core` unless noted otherwise.
    python -m pytest -q
    ```
 
-   Current baseline: 700 passed
+   Current baseline: 701 passed
 
 3. Static export-all smoke:
 
@@ -186,3 +186,12 @@ Executed `wave14-real-env-1to4-20260615` after explicit user authorization (`我
 - Wave14-2: exported `.hermes/static-run-reports/wave14-real-env-1to4-20260615-operator-cockpit.zip`; `static_export_all_ok: true`; review inbox remained read-only.
 - Wave14-3: generated `wave14-real-env-1to4-20260615-routing-learning-proposal`; **safe routing apply hold** remains because the proposal includes stale/non-installed `steady-4c` alongside the real `feiyue-mid-deepseek-pro` recommendation. Do not apply until the stale profile recommendation is filtered or explicitly approved; current `routing_table_mutated: false`.
 - Wave14-4: verified `wave14-real-env-1to4-20260615-local-release-artifact-readiness-v2`; local release artifact readiness is ready, but `deploy_performed: false` and `production_mutated: false` because no external production target was supplied.
+
+## Wave14 filtered Routing Apply
+
+Executed after user instruction to run Routing Apply before deployment discussion.
+
+- Proposal: `wave14-real-env-1to4-20260615-routing-learning-filtered`.
+- Filter: `steady-4c excluded` because it is a stale/non-installed historical recommendation.
+- Result: `status: applied`; `applied_profiles: feiyue-mid-deepseek-pro`; `routing_table_mutated: false` because the route already pointed at `feiyue-mid-deepseek-pro`.
+- Deployment remains untouched: `deploy_performed: false`, `production_mutated: false`.
