@@ -95,10 +95,10 @@ def test_g3_overview_api_reports_hermes_dry_run_mode_without_raw_secret_leak(tmp
 
     after = {path.relative_to(tmp_path).as_posix(): path.stat().st_mtime_ns for path in tmp_path.rglob("*") if path.is_file()}
     assert after == before
-    assert overview["surface"] == "feiyue_operator_console_g3"
-    assert overview["mode"] == "hermes_bridge_dry_run_events"
+    assert overview["surface"] == "feiyue_operator_console_g4"
+    assert overview["mode"] == "approval_gated_dry_run"
     assert overview["mutates_state"] is False
-    assert overview["write_endpoints_added"] == 2
+    assert overview["write_endpoints_added"] == 3
     assert overview["provider_call_count"] == 0
     assert overview["hermes_started"] is False
     assert overview["routing"]["worker_primary"] == "local-qwen25-coder"
@@ -106,10 +106,11 @@ def test_g3_overview_api_reports_hermes_dry_run_mode_without_raw_secret_leak(tmp
     assert overview["frontend_dogfood"]["total_runs"] == 1
     assert overview["review_intents"] == {"total_drafts": 0, "draft_only": True}
     assert overview["hermes_sessions"] == {"total_drafts": 0, "dry_run_only": True}
+    assert overview["approval_gate"] == {"total_approvals": 0, "dry_run_only": True}
     assert "SHOULD_NOT_LEAK" not in json.dumps(overview, sort_keys=True)
 
 
-def test_g3_api_routes_and_app_shell_are_served(tmp_path) -> None:
+def test_g4_api_routes_and_app_shell_are_served(tmp_path) -> None:
     _write_g3_fixture(tmp_path)
 
     with _api_server(tmp_path) as base_url:
@@ -122,6 +123,7 @@ def test_g3_api_routes_and_app_shell_are_served(tmp_path) -> None:
         dogfood = _get_json(f"{base_url}/api/frontend-dogfood")
         intents = _get_json(f"{base_url}/api/review-intents")
         sessions = _get_json(f"{base_url}/api/hermes-session-drafts")
+        approvals = _get_json(f"{base_url}/api/approval-gate")
 
     assert app_content_type == "text/html; charset=utf-8"
     assert css_content_type == "text/css; charset=utf-8"
@@ -129,6 +131,7 @@ def test_g3_api_routes_and_app_shell_are_served(tmp_path) -> None:
     assert "Feiyue Operator Console" in html
     assert "Review Intent Drafts" in html
     assert "Session Draft Events" in html
+    assert "Dry-Run Approvals" in html
     assert 'href="/app/styles.css"' in html
     assert 'src="/app/app.js"' in html
     assert "GET /api/overview" in html
@@ -145,6 +148,9 @@ def test_g3_api_routes_and_app_shell_are_served(tmp_path) -> None:
     assert intents["write_endpoints_added"] == 1
     assert sessions["drafts"] == []
     assert sessions["hermes_started"] is False
+    assert approvals["approvals"] == []
+    assert approvals["dry_run_only"] is True
+    assert approvals["hermes_started"] is False
     assert "SHOULD_NOT_LEAK" not in json.dumps(dogfood, sort_keys=True)
 
 
@@ -274,6 +280,149 @@ def test_g3_rejects_real_hermes_session_escalation(tmp_path) -> None:
 
     assert payload["error"] == "invalid_hermes_session_draft"
     assert not list((tmp_path / ".hermes" / "hermes-session-drafts").glob("*/draft.json"))
+
+
+def test_g4_approve_dry_run_creates_exact_approval_and_updates_draft(tmp_path) -> None:
+    _write_g3_fixture(tmp_path)
+    root = tmp_path
+
+    # Use an inline server for both create and approve
+    with _api_server(root) as base_url:
+        # Create draft
+        status, created = _post_json(
+            f"{base_url}/api/hermes-session-drafts",
+            {
+                "goal": "G-4 dogfood: test approval gate after session draft.",
+                "profile": "dry-run",
+                "toolsets": ["none"],
+                "created_by": "test-operator",
+                "reason": "g4_test_session_draft",
+                "dry_run_only": True,
+                "provider_call_budget": 0,
+            },
+        )
+        assert status == 201
+        draft_id = created["draft"]["draft_id"]
+
+        # 2. Approve it
+        status, approved = _post_json(
+            f"{base_url}/api/hermes-session-drafts/{draft_id}/approve-dry-run",
+            {
+                "approved_by": "test-verifier",
+                "reason": "g4_test_dry_run_approval",
+                "dry_run_only_verified": True,
+                "provider_call_budget_verified": 0,
+                "no_hermes_start_verified": True,
+                "no_production_mutation_verified": True,
+                "no_global_config_mutation_verified": True,
+            },
+        )
+        assert status == 201
+
+        # 3. Read back
+        approval = _get_json(f"{base_url}/api/approval-gate/{draft_id}")
+        draft = _get_json(f"{base_url}/api/hermes-session-drafts/{draft_id}")
+
+    # Assert approval
+    assert approved["approval"]["draft_id"] == draft_id
+    assert approved["approval"]["status"] == "approved_dry_run"
+    assert approved["approval"]["approved_by"] == "test-verifier"
+    assert approved["dry_run_only"] is True
+    assert approved["provider_call_count"] == 0
+    assert approved["hermes_started"] is False
+    assert approved["global_hermes_config_mutated"] is False
+    assert approved["production_mutated"] is False
+
+    # Assert approval artifacts
+    gate_dir = root / ".hermes" / "approval-gate" / draft_id
+    assert (gate_dir / "approval.json").exists()
+    assert (gate_dir / "verifier-evidence.json").exists()
+    assert (gate_dir / "events.json").exists()
+
+    # Assert draft status updated
+    assert draft["status"] == "approved_dry_run"
+    assert draft["approval_required"] is True
+    assert draft["hermes_started"] is False
+
+    # Assert approval API lists it
+    assert approval["approval_id"] == draft_id
+    assert approval["status"] == "approved_dry_run"
+
+
+def test_g4_rejects_approval_for_nonexistent_draft(tmp_path) -> None:
+    with _api_server(tmp_path) as base_url:
+        request = Request(
+            f"{base_url}/api/hermes-session-drafts/fake-id-12345/approve-dry-run",
+            data=json.dumps({
+                "approved_by": "test",
+                "reason": "test",
+                "dry_run_only_verified": True,
+                "provider_call_budget_verified": 0,
+                "no_hermes_start_verified": True,
+                "no_production_mutation_verified": True,
+                "no_global_config_mutation_verified": True,
+            }).encode("utf-8"),
+            headers={"content-type": "application/json"},
+            method="POST",
+        )
+        try:
+            urlopen(request, timeout=5)
+        except HTTPError as exc:
+            assert exc.code == 404
+            payload = json.loads(exc.read().decode("utf-8"))
+        else:  # pragma: no cover - defensive
+            raise AssertionError("POST unexpectedly succeeded")
+
+    assert payload["error"] == "dry_run_approval_rejected"
+
+
+def test_g4_rejects_approval_escalation_with_provider_budget(tmp_path) -> None:
+    _write_g3_fixture(tmp_path)
+    root = tmp_path
+    draft_id = None
+
+    with _api_server(root) as base_url:
+        # Create draft
+        status, created = _post_json(
+            f"{base_url}/api/hermes-session-drafts",
+            {
+                "goal": "G-4 escalation test",
+                "profile": "dry-run",
+                "toolsets": ["none"],
+                "created_by": "test",
+                "reason": "escalation_test",
+                "dry_run_only": True,
+                "provider_call_budget": 0,
+            },
+        )
+        assert status == 201
+        draft_id = created["draft"]["draft_id"]
+
+        # Try to approve with dry_run_only_verified=False
+        import urllib.error
+        req = Request(
+            f"{base_url}/api/hermes-session-drafts/{draft_id}/approve-dry-run",
+            data=json.dumps({
+                "approved_by": "test",
+                "reason": "attempted_escalation",
+                "dry_run_only_verified": False,
+                "provider_call_budget_verified": 0,
+                "no_hermes_start_verified": True,
+                "no_production_mutation_verified": True,
+                "no_global_config_mutation_verified": True,
+            }).encode("utf-8"),
+            headers={"content-type": "application/json"},
+            method="POST",
+        )
+        try:
+            urlopen(req, timeout=5)
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 400
+            payload = json.loads(exc.read().decode("utf-8"))
+        else:
+            raise AssertionError("POST unexpectedly succeeded")
+
+    assert payload["error"] == "invalid_dry_run_approval"
 
 
 def test_g3_other_write_methods_remain_blocked(tmp_path) -> None:
