@@ -129,7 +129,7 @@ li {
 }
 
 .cards {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   margin: 20px 0;
 }
 
@@ -154,6 +154,11 @@ li {
   margin: 10px 0 6px;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 34px;
+}
+
+.value--small {
+  font-size: 20px;
+  word-break: break-word;
 }
 
 .panel {

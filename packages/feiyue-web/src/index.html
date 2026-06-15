@@ -13,9 +13,9 @@
       <div class="hero__row">
         <div>
           <h1 id="page-title">Feiyue Operator Console</h1>
-          <p class="lede">Read-only frontend scaffold for reviewing Feiyue evidence, routing state, and future nested Hermes sessions.</p>
+          <p class="lede">Read-only frontend served by Feiyue for reviewing evidence, routing state, and future nested Hermes sessions.</p>
         </div>
-        <div class="status-pill" data-safe-state="readonly">read-only scaffold</div>
+        <div class="status-pill" data-safe-state="readonly">G-1 read-only console</div>
       </div>
     </header>
 
@@ -23,7 +23,7 @@
       <article class="card">
         <span class="label">Runs</span>
         <strong class="value" id="runs-count">—</strong>
-        <p>Evidence records exposed through the existing Feiyue API.</p>
+        <p>Evidence records exposed through <code>GET /api/overview</code>.</p>
       </article>
       <article class="card">
         <span class="label">Review inbox</span>
@@ -34,6 +34,11 @@
         <span class="label">Assets</span>
         <strong class="value" id="asset-count">—</strong>
         <p>Project-local evidence and asset summaries.</p>
+      </article>
+      <article class="card">
+        <span class="label">Worker route</span>
+        <strong class="value value--small" id="worker-route">—</strong>
+        <p>Read from project-local <code>.hermes/model-routing.yaml</code>.</p>
       </article>
     </section>
 
@@ -66,7 +71,7 @@
           <h2 id="evidence-title">Evidence Explorer</h2>
           <a href="/dashboard" data-api-link>current dashboard</a>
         </div>
-        <div id="runs-list" class="list empty">Waiting for <code>GET /runs</code>.</div>
+        <div id="runs-list" class="list empty">Waiting for <code>GET /api/overview</code>.</div>
       </article>
 
       <article class="panel" aria-labelledby="review-title">
@@ -86,8 +91,26 @@
         </div>
         <button class="ghost-button" type="button" disabled data-action="apply-routing-proposal">Apply approved routing</button>
       </div>
-      <p>Future routing writes must use Feiyue's exact approval objects and <code>RoutingApplyGate</code>. This scaffold intentionally contains no enabled write controls.</p>
-      <pre class="code-block" id="routing-summary">worker.primary = fetched by future /api/routing summary</pre>
+      <p>Future routing writes must use Feiyue's exact approval objects and <code>RoutingApplyGate</code>. This console intentionally contains no enabled write controls.</p>
+      <pre class="code-block" id="routing-summary">worker.primary = loading from /api/routing</pre>
+    </section>
+
+    <section class="grid two-col">
+      <article class="panel" aria-labelledby="capabilities-title">
+        <div class="panel__header">
+          <h2 id="capabilities-title">Capability Summary</h2>
+          <a href="/api/capabilities" data-api-link>capabilities JSON</a>
+        </div>
+        <pre class="code-block" id="capability-summary">Waiting for <code>GET /api/capabilities</code>.</pre>
+      </article>
+
+      <article class="panel" aria-labelledby="dogfood-title">
+        <div class="panel__header">
+          <h2 id="dogfood-title">Frontend Dogfood</h2>
+          <a href="/api/frontend-dogfood" data-api-link>dogfood JSON</a>
+        </div>
+        <pre class="code-block" id="dogfood-summary">Waiting for <code>GET /api/frontend-dogfood</code>.</pre>
+      </article>
     </section>
   </main>
   <script type="module" src="./app.js"></script>

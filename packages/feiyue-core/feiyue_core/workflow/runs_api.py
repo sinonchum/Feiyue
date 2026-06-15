@@ -17,6 +17,123 @@ def _esc(value: object) -> str:
     return html.escape("" if value is None else str(value), quote=True)
 
 
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[4]
+
+
+def _frontend_source_root() -> Path:
+    return _repo_root() / "packages" / "feiyue-web" / "src"
+
+
+def _read_json_file(path: Path) -> object | None:
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return {"error": "invalid_json", "path": path.name}
+
+
+def _read_model_routing(project_root: str | Path) -> dict[str, object]:
+    """Read the project-local model routing table without requiring PyYAML."""
+
+    root = Path(project_root)
+    path = root / ".hermes" / "model-routing.yaml"
+    routes: dict[str, dict[str, str]] = {}
+    current_role: str | None = None
+    if path.exists():
+        for raw_line in path.read_text(encoding="utf-8").splitlines():
+            line = raw_line.rstrip()
+            if not line.strip() or line.lstrip().startswith("#"):
+                continue
+            if line.startswith("  ") and not line.startswith("    ") and line.strip().endswith(":"):
+                current_role = line.strip().removesuffix(":")
+                routes.setdefault(current_role, {})
+                continue
+            if line.startswith("    ") and current_role and ":" in line:
+                key, value = line.strip().split(":", 1)
+                routes[current_role][key.strip()] = value.strip().strip('"\'')
+    return {
+        "status": "found" if path.exists() else "missing",
+        "path": ".hermes/model-routing.yaml",
+        "mutates_state": False,
+        "routes": routes,
+        "worker_primary": routes.get("worker", {}).get("primary"),
+    }
+
+
+def _read_capabilities(project_root: str | Path) -> dict[str, object]:
+    root = Path(project_root)
+    history = _read_json_file(root / ".hermes" / "capability-history" / "latest.json")
+    feedback = _read_json_file(root / ".hermes" / "capability-feedback" / "latest.json")
+    return {
+        "mutates_state": False,
+        "capability_history": history,
+        "capability_feedback": feedback,
+        "history_status": "found" if history is not None else "missing",
+        "feedback_status": "found" if feedback is not None else "missing",
+    }
+
+
+def _read_frontend_dogfood(project_root: str | Path) -> dict[str, object]:
+    root = Path(project_root)
+    dogfood_root = root / ".hermes" / "frontend-dogfood"
+    runs = []
+    if dogfood_root.exists():
+        for evidence_path in sorted(dogfood_root.glob("*/evidence.json")):
+            payload = _read_json_file(evidence_path)
+            if isinstance(payload, dict):
+                runs.append(
+                    {
+                        "run_id": payload.get("run_id") or evidence_path.parent.name,
+                        "status": payload.get("status", "unknown"),
+                        "task_type": payload.get("task_type"),
+                        "evidence_path": evidence_path.relative_to(root).as_posix(),
+                        "provider_call_count": payload.get("provider_call_count"),
+                        "global_hermes_config_mutated": payload.get("global_hermes_config_mutated"),
+                        "production_mutated": payload.get("production_mutated"),
+                    }
+                )
+    return {
+        "mutates_state": False,
+        "status": "found" if runs else "empty",
+        "runs": runs,
+    }
+
+
+def read_operator_console_overview(project_root: str | Path) -> dict[str, object]:
+    run_summary = RunCatalog(project_root).summary().model_dump(mode="json")
+    review_summary = ReviewInbox(project_root).summary().model_dump(mode="json")
+    asset_summary = AssetCatalog(project_root).summary().model_dump(mode="json")
+    routing = _read_model_routing(project_root)
+    capabilities = _read_capabilities(project_root)
+    dogfood = _read_frontend_dogfood(project_root)
+    return {
+        "surface": "feiyue_operator_console_g1",
+        "mode": "read_only",
+        "mutates_state": False,
+        "write_endpoints_added": 0,
+        "provider_call_count": 0,
+        "runs": {"total_runs": run_summary.get("total_runs", 0)},
+        "review_inbox": {"total_items": len(review_summary.get("items", []))},
+        "assets": {"total_assets": asset_summary.get("total_assets", 0)},
+        "routing": {"worker_primary": routing.get("worker_primary"), "status": routing.get("status")},
+        "capabilities": {
+            "history_status": capabilities["history_status"],
+            "feedback_status": capabilities["feedback_status"],
+        },
+        "frontend_dogfood": {"total_runs": len(dogfood["runs"]), "status": dogfood["status"]},
+    }
+
+
+def render_operator_console_app() -> str:
+    path = _frontend_source_root() / "index.html"
+    html_text = path.read_text(encoding="utf-8")
+    return html_text.replace('href="./styles.css"', 'href="/app/styles.css"').replace(
+        'src="./app.js"', 'src="/app/app.js"'
+    )
+
+
 def render_runs_dashboard(project_root: str | Path) -> str:
     """Render a human-readable, read-only dashboard for persisted run evidence."""
 
@@ -445,6 +562,27 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
         def do_GET(self) -> None:  # noqa: N802 - stdlib handler API
             path = unquote(urlparse(self.path).path).rstrip("/") or "/"
             try:
+                if path == "/app":
+                    self._send_text(200, render_operator_console_app(), content_type="text/html; charset=utf-8")
+                    return
+                if path == "/app/app.js":
+                    self._send_static_file(_frontend_source_root() / "app.js", "text/javascript; charset=utf-8")
+                    return
+                if path == "/app/styles.css":
+                    self._send_static_file(_frontend_source_root() / "styles.css", "text/css; charset=utf-8")
+                    return
+                if path == "/api/overview":
+                    self._send_json(200, read_operator_console_overview(root))
+                    return
+                if path == "/api/routing":
+                    self._send_json(200, _read_model_routing(root))
+                    return
+                if path == "/api/capabilities":
+                    self._send_json(200, _read_capabilities(root))
+                    return
+                if path == "/api/frontend-dogfood":
+                    self._send_json(200, _read_frontend_dogfood(root))
+                    return
                 if path in ("/", "/dashboard"):
                     self._send_text(200, render_runs_dashboard(root), content_type="text/html; charset=utf-8")
                     return
@@ -515,6 +653,17 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
         def _send_text(self, status: int, body_text: str, *, content_type: str) -> None:
             body = body_text.encode("utf-8")
             self.send_response(status)
+            self.send_header("content-type", content_type)
+            self.send_header("content-length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _send_static_file(self, path: Path, content_type: str) -> None:
+            if not path.exists() or not path.is_file():
+                self._send_json(404, {"error": "static_asset_not_found", "path": path.name})
+                return
+            body = path.read_bytes()
+            self.send_response(200)
             self.send_header("content-type", content_type)
             self.send_header("content-length", str(len(body)))
             self.end_headers()
