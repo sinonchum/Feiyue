@@ -13,9 +13,9 @@
       <div class="hero__row">
         <div>
           <h1 id="page-title">Feiyue Operator Console</h1>
-          <p class="lede">G-6 operator console for reviewing evidence, drafting approval intents, creating session drafts from review inbox items via templates, simulating Hermes Bridge events, creating exa...[truncated]
+          <p class="lede">G-7 operator console for reviewing evidence, drafting approval intents, creating session drafts from review inbox items via templates, simulating Hermes Bridge events, creating exa...[truncated]
         </div>
-        <div class="status-pill" data-safe-state="readonly">G-6 draft templates</div>
+        <div class="status-pill" data-safe-state="readonly">G-7 approved dry-run execution</div>
       </div>
     </header>
 
@@ -64,6 +64,7 @@
           <li>G-4 emits approval events; draft status transitions to <code>approved_dry_run</code>.</li>
           <li>G-5 cross-checks verifier evidence: event stream consistency, verification checks, and boundary preservation across every approval gate.</li>
           <li>G-6 pre-fills session draft fields from review inbox items via templates.</li>
+          <li>G-7 replays approval events as execution output for approved dry-run drafts (two-phase: draft → approval → execute-no-provider).</li>
           <li>Real Hermes session still requires a second exact human approval gate.</li>
         </ol>
       </div>
@@ -77,6 +78,7 @@
         </div>
         <div class="panel__actions">
           <button class="ghost-button" type="button" data-action="approve-first-session-draft" id="approve-first-session-draft" disabled>Approve first blocked draft</button>
+          <button class="ghost-button" type="button" data-action="execute-approved-dry-run" id="execute-approved-dry-run" disabled>Execute approved dry-run</button>
           <a href="/api/hermes-session-drafts" data-api-link>session drafts JSON</a>
         </div>
       </div>
@@ -115,6 +117,23 @@
           <p>No verifier data yet.</p>
         </div>
         <pre class="code-block" id="verifier-summary">Waiting for <code>GET /api/verifier-report</code>.</pre>
+      </div>
+    </section>
+
+    <section class="panel" aria-labelledby="execution-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Two-phase execution</p>
+          <h2 id="execution-title">Execution Output</h2>
+        </div>
+        <a href="/api/execution-output" data-api-link>execution output JSON</a>
+      </div>
+      <p>G-7 replays approval events as execution output. Draft must be <code>approved_dry_run</code> before execution. Execution keeps <code>provider_call_count=0</code>, <code>hermes_started=false</code>, and <code>production_mutated=false</code>.</p>
+      <div class="split">
+        <div class="list" id="execution-output-list">
+          <p>No execution outputs yet.</p>
+        </div>
+        <pre class="code-block" id="execution-output-summary">Waiting for <code>GET /api/execution-output</code>.</pre>
       </div>
     </section>
 

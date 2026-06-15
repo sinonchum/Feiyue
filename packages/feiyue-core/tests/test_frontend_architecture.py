@@ -46,6 +46,8 @@ def test_frontend_scaffold_is_read_only_by_default() -> None:
     assert "localstorage" not in combined
     assert "sessionstorage" not in combined
     assert "api/" in html
+    assert "api/execution-output" in html
+    assert "execute-approved-dry-run" in html
     assert "approval-gate" in html
     assert "verifier-report" in html
     assert "review-item-create-draft" in combined

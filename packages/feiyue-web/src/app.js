@@ -10,6 +10,7 @@ const endpoints = {
   hermesSessionDrafts: '/api/hermes-session-drafts',
   approvalGate: '/api/approval-gate',
   verifierReport: '/api/verifier-report',
+  executionOutput: '/api/execution-output',
 };
 
 const state = {
@@ -24,6 +25,7 @@ const state = {
   hermesSessionDrafts: null,
   approvalGate: null,
   verifierReport: null,
+  executionOutput: null,
 };
 
 function setText(id, value) {
@@ -152,8 +154,11 @@ function renderReviewIntents(payload) {
 function renderHermesSessions(payload, events = []) {
   const drafts = payload?.drafts || [];
   const approveButton = document.getElementById('approve-first-session-draft');
+  const executeButton = document.getElementById('execute-approved-dry-run');
   const firstBlockedIndex = drafts.findIndex((d) => d.status === 'blocked_until_exact_approval');
+  const firstApprovedIndex = drafts.findIndex((d) => d.status === 'approved_dry_run');
   if (approveButton) approveButton.disabled = firstBlockedIndex === -1;
+  if (executeButton) executeButton.disabled = firstApprovedIndex === -1;
   const lines = [
     `drafts = ${drafts.length}`,
     `dry_run_only = true`,
@@ -199,6 +204,40 @@ function renderApprovals(payload) {
       <span>${escapeHtml(a.status)} · by ${escapeHtml(a.approved_by)}</span>
     </article>
   `).join('');
+}
+
+function renderExecutionOutput(payload) {
+  const outputs = payload?.outputs || [];
+  const lines = [
+    `outputs = ${outputs.length}`,
+    `provider_call_count = ${payload?.provider_call_count ?? 0}`,
+    `hermes_started = ${String(payload?.hermes_started === true)}`,
+    `global_hermes_config_mutated = ${String(payload?.global_hermes_config_mutated === true)}`,
+    `production_mutated = ${String(payload?.production_mutated === true)}`,
+  ];
+  for (const out of outputs.slice(0, 4)) {
+    const events = out.events ? out.events.map((e) => e.event_type).join(', ') : '';
+    lines.push(`${out.session_draft_id}: ${out.event_count} events · executed by ${escapeHtml(out.executed_by)}`);
+  }
+  setText('execution-output-summary', lines.join('\n'));
+  const target = document.getElementById('execution-output-list');
+  if (!target) return;
+  if (!outputs.length) {
+    target.className = 'list empty';
+    target.textContent = 'No execution outputs yet. Create a session draft, approve it, then execute it.';
+    return;
+  }
+  target.className = 'list';
+  target.innerHTML = outputs.slice(0, 8).map((out) => {
+    const eventList = (out.events || []).slice(0, 5).map((e) =>
+      `${e.sequence}. ${e.event_type}: ${escapeHtml(e.message)}`
+    ).join('\n');
+    return `<article class="list-item">
+      <strong>${escapeHtml(out.session_draft_id)}</strong>
+      <span>${out.event_count} events · by ${escapeHtml(out.executed_by)} · ${escapeHtml(out.executed_at)}</span>
+      <pre class="code-block code-block--inline">${eventList}</pre>
+    </article>`;
+  }).join('');
 }
 
 function renderVerifier(payload) {
@@ -295,6 +334,25 @@ async function createDraftFromReviewItem(itemId) {
   setText('session-summary', `${document.getElementById('session-summary')?.textContent || ''}\ncreated from review: ${result.draft.draft_id}`);
 }
 
+async function executeFirstApprovedDraft() {
+  const drafts = state.hermesSessionDrafts?.drafts || [];
+  const firstApproved = drafts.find((d) => d.status === 'approved_dry_run');
+  if (!firstApproved) return;
+  const result = await postJson(`/api/hermes-session-drafts/${firstApproved.draft_id}/execute-approved`, {
+    executed_by: 'feiyue-operator-console',
+    reason: 'g7_operator_executed_approved_dry_run',
+  });
+  const [updatedSessions, updatedExecution] = await Promise.all([
+    getJson(endpoints.hermesSessionDrafts),
+    getJson(endpoints.executionOutput),
+  ]);
+  state.hermesSessionDrafts = updatedSessions;
+  state.executionOutput = updatedExecution;
+  renderHermesSessions(updatedSessions, result.events || result.execution?.events || []);
+  renderExecutionOutput(updatedExecution);
+  setText('session-summary', `${document.getElementById('session-summary')?.textContent || ''}\nexecuted = ${result.session_draft_id} · ${result.event_count} events`);
+}
+
 function wireIntentDraftButton() {
   const button = document.getElementById('create-intent-draft');
   if (!button) return;
@@ -356,13 +414,28 @@ function wireApproveDraftButton() {
   });
 }
 
+function wireExecuteApprovedButton() {
+  const button = document.getElementById('execute-approved-dry-run');
+  if (!button) return;
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await executeFirstApprovedDraft();
+    } catch (error) {
+      setText('execution-output-summary', `execution failed: ${error.message}`);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 function renderOfflineState(error) {
   setText('runs-count', 'offline');
   setText('review-count', 'offline');
   setText('asset-count', 'offline');
   setText('worker-route', 'offline');
   const message = `API unavailable in static mode: ${error.message}`;
-  for (const id of ['runs-list', 'review-list', 'approval-list', 'verifier-list']) {
+  for (const id of ['runs-list', 'review-list', 'approval-list', 'verifier-list', 'execution-output-list']) {
     const target = document.getElementById(id);
     if (target) {
       target.className = 'list empty';
@@ -376,6 +449,7 @@ function renderOfflineState(error) {
   setText('session-summary', message);
   setText('approval-summary', message);
   setText('verifier-summary', message);
+  setText('execution-output-summary', message);
 }
 
 function escapeHtml(value) {
@@ -392,8 +466,9 @@ async function boot() {
   wireReviewCreateDraftButtons();
   wireHermesSessionDraftButton();
   wireApproveDraftButton();
+  wireExecuteApprovedButton();
   try {
-    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents, hermesSessionDrafts, approvalGate, verifierReport] = await Promise.all([
+    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents, hermesSessionDrafts, approvalGate, verifierReport, executionOutput] = await Promise.all([
       getJson(endpoints.overview),
       getJson(endpoints.runs),
       getJson(endpoints.reviewInbox),
@@ -405,6 +480,7 @@ async function boot() {
       getJson(endpoints.hermesSessionDrafts),
       getJson(endpoints.approvalGate),
       getJson(endpoints.verifierReport),
+      getJson(endpoints.executionOutput),
     ]);
     state.overview = overview;
     state.runs = runs;
@@ -417,6 +493,7 @@ async function boot() {
     state.hermesSessionDrafts = hermesSessionDrafts;
     state.approvalGate = approvalGate;
     state.verifierReport = verifierReport;
+    state.executionOutput = executionOutput;
     renderOverview(overview);
     renderRuns(runs);
     renderReviewInbox(reviewInbox);
@@ -427,6 +504,7 @@ async function boot() {
     renderHermesSessions(hermesSessionDrafts);
     renderApprovals(approvalGate);
     renderVerifier(verifierReport);
+    renderExecutionOutput(executionOutput);
   } catch (error) {
     renderOfflineState(error);
   }
