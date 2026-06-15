@@ -1,13 +1,21 @@
 const endpoints = {
+  overview: '/api/overview',
   runs: '/runs',
   reviewInbox: '/review-inbox',
   assets: '/assets',
+  routing: '/api/routing',
+  capabilities: '/api/capabilities',
+  frontendDogfood: '/api/frontend-dogfood',
 };
 
 const state = {
+  overview: null,
   runs: null,
   reviewInbox: null,
   assets: null,
+  routing: null,
+  capabilities: null,
+  frontendDogfood: null,
 };
 
 function setText(id, value) {
@@ -21,9 +29,15 @@ async function getJson(path) {
   return response.json();
 }
 
+function renderOverview(payload) {
+  setText('runs-count', String(payload?.runs?.total_runs ?? 0));
+  setText('review-count', String(payload?.review_inbox?.total_items ?? 0));
+  setText('asset-count', String(payload?.assets?.total_assets ?? 0));
+  setText('worker-route', payload?.routing?.worker_primary || 'unassigned');
+}
+
 function renderRuns(payload) {
   const items = payload?.runs || payload?.items || [];
-  setText('runs-count', String(items.length ?? 0));
   const target = document.getElementById('runs-list');
   if (!target) return;
   if (!items.length) {
@@ -42,7 +56,6 @@ function renderRuns(payload) {
 
 function renderReviewInbox(payload) {
   const items = payload?.items || [];
-  setText('review-count', String(items.length));
   const target = document.getElementById('review-list');
   if (!target) return;
   if (!items.length) {
@@ -59,15 +72,51 @@ function renderReviewInbox(payload) {
   `).join('');
 }
 
-function renderAssets(payload) {
-  const total = payload?.total_assets ?? payload?.assets?.length ?? payload?.items?.length ?? 0;
-  setText('asset-count', String(total));
+function renderRouting(payload) {
+  const routes = payload?.routes || {};
+  const lines = [
+    `status = ${payload?.status || 'unknown'}`,
+    `worker.primary = ${payload?.worker_primary || 'unassigned'}`,
+    `mutates_state = ${String(payload?.mutates_state === true)}`,
+  ];
+  for (const [role, route] of Object.entries(routes)) {
+    lines.push(`${role}.primary = ${route?.primary || 'unassigned'}`);
+  }
+  setText('routing-summary', lines.join('\n'));
+}
+
+function renderCapabilities(payload) {
+  const lines = [
+    `history_status = ${payload?.history_status || 'unknown'}`,
+    `feedback_status = ${payload?.feedback_status || 'unknown'}`,
+    `mutates_state = ${String(payload?.mutates_state === true)}`,
+  ];
+  const history = payload?.capability_history;
+  const feedback = payload?.capability_feedback;
+  if (history?.profile_id) lines.push(`profile_id = ${history.profile_id}`);
+  if (history?.total_runs !== undefined) lines.push(`history.total_runs = ${history.total_runs}`);
+  if (feedback?.metrics?.verification_rate !== undefined) lines.push(`feedback.verification_rate = ${feedback.metrics.verification_rate}`);
+  setText('capability-summary', lines.join('\n'));
+}
+
+function renderFrontendDogfood(payload) {
+  const runs = payload?.runs || [];
+  const lines = [
+    `status = ${payload?.status || 'unknown'}`,
+    `runs = ${runs.length}`,
+    `mutates_state = ${String(payload?.mutates_state === true)}`,
+  ];
+  for (const run of runs.slice(0, 6)) {
+    lines.push(`${run.run_id}: ${run.status}`);
+  }
+  setText('dogfood-summary', lines.join('\n'));
 }
 
 function renderOfflineState(error) {
   setText('runs-count', 'offline');
   setText('review-count', 'offline');
   setText('asset-count', 'offline');
+  setText('worker-route', 'offline');
   const message = `API unavailable in static mode: ${error.message}`;
   for (const id of ['runs-list', 'review-list']) {
     const target = document.getElementById(id);
@@ -76,6 +125,9 @@ function renderOfflineState(error) {
       target.textContent = message;
     }
   }
+  setText('routing-summary', message);
+  setText('capability-summary', message);
+  setText('dogfood-summary', message);
 }
 
 function escapeHtml(value) {
@@ -89,17 +141,28 @@ function escapeHtml(value) {
 
 async function boot() {
   try {
-    const [runs, reviewInbox, assets] = await Promise.all([
+    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood] = await Promise.all([
+      getJson(endpoints.overview),
       getJson(endpoints.runs),
       getJson(endpoints.reviewInbox),
       getJson(endpoints.assets),
+      getJson(endpoints.routing),
+      getJson(endpoints.capabilities),
+      getJson(endpoints.frontendDogfood),
     ]);
+    state.overview = overview;
     state.runs = runs;
     state.reviewInbox = reviewInbox;
     state.assets = assets;
+    state.routing = routing;
+    state.capabilities = capabilities;
+    state.frontendDogfood = frontendDogfood;
+    renderOverview(overview);
     renderRuns(runs);
     renderReviewInbox(reviewInbox);
-    renderAssets(assets);
+    renderRouting(routing);
+    renderCapabilities(capabilities);
+    renderFrontendDogfood(frontendDogfood);
   } catch (error) {
     renderOfflineState(error);
   }
