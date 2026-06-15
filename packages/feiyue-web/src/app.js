@@ -7,6 +7,7 @@ const endpoints = {
   capabilities: '/api/capabilities',
   frontendDogfood: '/api/frontend-dogfood',
   reviewIntents: '/api/review-intents',
+  hermesSessionDrafts: '/api/hermes-session-drafts',
 };
 
 const state = {
@@ -18,6 +19,7 @@ const state = {
   capabilities: null,
   frontendDogfood: null,
   reviewIntents: null,
+  hermesSessionDrafts: null,
 };
 
 function setText(id, value) {
@@ -142,6 +144,25 @@ function renderReviewIntents(payload) {
   setText('intent-summary', lines.join('\n'));
 }
 
+function renderHermesSessions(payload, events = []) {
+  const drafts = payload?.drafts || [];
+  const lines = [
+    `drafts = ${drafts.length}`,
+    `dry_run_only = true`,
+    `provider_call_count = ${payload?.provider_call_count ?? 0}`,
+    `hermes_started = ${String(payload?.hermes_started === true)}`,
+    `global_hermes_config_mutated = ${String(payload?.global_hermes_config_mutated === true)}`,
+    `production_mutated = ${String(payload?.production_mutated === true)}`,
+  ];
+  for (const draft of drafts.slice(0, 4)) {
+    lines.push(`${draft.draft_id}: ${draft.status} / ${draft.profile}`);
+  }
+  for (const event of events.slice(0, 6)) {
+    lines.push(`${event.sequence}. ${event.event_type}: ${event.message}`);
+  }
+  setText('session-summary', lines.join('\n'));
+}
+
 async function createIntentDraftForFirstReviewItem() {
   const item = state.reviewInbox?.items?.[0];
   if (!item) return;
@@ -160,6 +181,22 @@ async function createIntentDraftForFirstReviewItem() {
   setText('intent-summary', `${document.getElementById('intent-summary')?.textContent || ''}\ncreated = ${result.draft.intent_id}`);
 }
 
+async function createHermesSessionDraft() {
+  const result = await postJson(endpoints.hermesSessionDrafts, {
+    goal: 'Inspect Feiyue evidence and prepare next operator-console improvement; dry-run only.',
+    profile: 'dry-run',
+    toolsets: ['none'],
+    created_by: 'feiyue-operator-console',
+    reason: 'g3_operator_requested_provider_free_session_draft',
+    dry_run_only: true,
+    provider_call_budget: 0,
+  });
+  const updated = await getJson(endpoints.hermesSessionDrafts);
+  const events = await getJson(`/api/hermes-session-events/${result.draft.draft_id}`);
+  state.hermesSessionDrafts = updated;
+  renderHermesSessions(updated, events);
+}
+
 function wireIntentDraftButton() {
   const button = document.getElementById('create-intent-draft');
   if (!button) return;
@@ -171,6 +208,21 @@ function wireIntentDraftButton() {
       setText('intent-summary', `intent draft failed: ${error.message}`);
     } finally {
       button.disabled = !(state.reviewInbox?.items?.length > 0);
+    }
+  });
+}
+
+function wireHermesSessionDraftButton() {
+  const button = document.getElementById('create-hermes-session-draft');
+  if (!button) return;
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await createHermesSessionDraft();
+    } catch (error) {
+      setText('session-summary', `session draft failed: ${error.message}`);
+    } finally {
+      button.disabled = false;
     }
   });
 }
@@ -192,6 +244,7 @@ function renderOfflineState(error) {
   setText('capability-summary', message);
   setText('dogfood-summary', message);
   setText('intent-summary', message);
+  setText('session-summary', message);
 }
 
 function escapeHtml(value) {
@@ -205,8 +258,9 @@ function escapeHtml(value) {
 
 async function boot() {
   wireIntentDraftButton();
+  wireHermesSessionDraftButton();
   try {
-    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents] = await Promise.all([
+    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents, hermesSessionDrafts] = await Promise.all([
       getJson(endpoints.overview),
       getJson(endpoints.runs),
       getJson(endpoints.reviewInbox),
@@ -215,6 +269,7 @@ async function boot() {
       getJson(endpoints.capabilities),
       getJson(endpoints.frontendDogfood),
       getJson(endpoints.reviewIntents),
+      getJson(endpoints.hermesSessionDrafts),
     ]);
     state.overview = overview;
     state.runs = runs;
@@ -224,6 +279,7 @@ async function boot() {
     state.capabilities = capabilities;
     state.frontendDogfood = frontendDogfood;
     state.reviewIntents = reviewIntents;
+    state.hermesSessionDrafts = hermesSessionDrafts;
     renderOverview(overview);
     renderRuns(runs);
     renderReviewInbox(reviewInbox);
@@ -231,6 +287,7 @@ async function boot() {
     renderCapabilities(capabilities);
     renderFrontendDogfood(frontendDogfood);
     renderReviewIntents(reviewIntents);
+    renderHermesSessions(hermesSessionDrafts);
   } catch (error) {
     renderOfflineState(error);
   }
