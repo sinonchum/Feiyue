@@ -72,3 +72,15 @@ local-notes/
 .hermes/wave9-pr-reviews/
 .hermes/wave9-capability-ingestions/
 .hermes/wave9-post-merge-handoffs/
+
+# Feiyue local Qwen/Ollama dogfood evidence and sandboxes
+.hermes/phase-b-sources/
+.hermes/phase-b-workflow-benchmarks/
+.hermes/phase-c-sources/
+.hermes/phase-c-workflow-benchmarks/
+.hermes/phase-d-sources/
+.hermes/phase-d-workflow-benchmarks/
+.hermes/phase-e-routing-proposals/
+.hermes/phase-f-routing-apply/
+.hermes/gui-inspection/
+.hermes/frontend-dogfood/

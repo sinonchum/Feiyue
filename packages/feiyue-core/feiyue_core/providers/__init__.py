@@ -18,6 +18,7 @@ from .diagnostics import (
 from .errors import ProviderError, ProviderErrorKind
 from .fake import BaseProvider, FakeStudentProvider, FakeTeacherProvider
 from .integration import ProfileRunOutcome, ProfileRunner, run_profile_with_diagnostic
+from .ollama_runner import CandidateWriteRepairingProfileRunner, OllamaCallEvidence, OllamaProfileRunner
 from .profile_runner import (
     FakeProfileRunner,
     HermesProfileSubprocessRunner,
@@ -29,11 +30,14 @@ __all__ = [
     "BaseProvider",
     "AuthorizedProviderRunRecord",
     "AuthorizedScope",
+    "CandidateWriteRepairingProfileRunner",
     "FakeProfileRunner",
     "FakeStudentProvider",
     "FakeTeacherProvider",
     "HermesProfileSubprocessRunner",
     "ModelProfile",
+    "OllamaCallEvidence",
+    "OllamaProfileRunner",
     "ProfileRunOutcome",
     "ProfileRunRequest",
     "ProfileRunResult",

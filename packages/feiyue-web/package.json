@@ -1,0 +1,14 @@
+{
+  "name": "@feiyue/web",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Dependency-free Feiyue operator console scaffold for evidence-first Hermes embedding.",
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/build-static.mjs",
+    "validate": "node scripts/validate-static-app.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

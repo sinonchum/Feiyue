@@ -106,6 +106,9 @@ GET /runs/<task_id>/handoff
 - [`docs/rollback-guide.md`](docs/rollback-guide.md) — rollback evidence requirements, local rollback simulation, and stop conditions.
 - [`docs/real-provider-integration-plan.md`](docs/real-provider-integration-plan.md) — plan-only sequence and safety checklist for explicitly authorized real provider execution, Hermes profile subprocess smoke, teacher escalation, and real weak/strong benchmark work.
 - [`docs/real-multi-worker-live-dry-run.md`](docs/real-multi-worker-live-dry-run.md) — Wave5-3 fake-first/fail-closed CLI seam for authorized real Hermes multi-worker dry-run evidence under `.hermes/real-multi-worker-runs/<run_id>/evidence.json`.
+- [`docs/feiyue-frontend-hermes-embedding.md`](docs/feiyue-frontend-hermes-embedding.md) — frontend architecture proposal for a Feiyue operator console with a safe Hermes Bridge sidecar boundary.
+- [`docs/plans/feiyue-frontend-dogfood-real-task.md`](docs/plans/feiyue-frontend-dogfood-real-task.md) — plan for using the Feiyue frontend itself as a real recursive dogfood task and benchmark.
+- [`docs/plans/local-qwen-feiyue-github-submission-plan.md`](docs/plans/local-qwen-feiyue-github-submission-plan.md) — proposed commit/PR stack for local Qwen dogfood, Phase A-F scripts, and frontend scaffolding.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution rules for TDD, provider-free defaults, secret handling, and CI expectations.
 - [`docs/resilient-session-runtime.md`](docs/resilient-session-runtime.md) — feature design for anti-amnesia runtime recovery across model fallback, network/power loss, and unknown side effects.
 - [`docs/AI递归自我提升现状讨论 2026-06-12.md`](docs/AI递归自我提升现状讨论%202026-06-12.md) — discussion notes on practical Recursive Self-Improvement (RSI), synthetic data, self-play, AI feedback, inference-time self-correction, environment-driven feedback, and agent loops.
