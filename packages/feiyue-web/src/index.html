@@ -13,9 +13,9 @@
       <div class="hero__row">
         <div>
           <h1 id="page-title">Feiyue Operator Console</h1>
-          <p class="lede">G-5 operator console for reviewing evidence, drafting approval intents, simulating Hermes Bridge events, creating exact dry-run approval gates, and cross-checking verifier evidence — without starting Hermes or calling providers.</p>
+          <p class="lede">G-6 operator console for reviewing evidence, drafting approval intents, creating session drafts from review inbox items via templates, simulating Hermes Bridge events, creating exa...[truncated]
         </div>
-        <div class="status-pill" data-safe-state="readonly">G-5 verifier dashboard</div>
+        <div class="status-pill" data-safe-state="readonly">G-6 draft templates</div>
       </div>
     </header>
 
@@ -62,7 +62,8 @@
           <li>G-3 emits provider-free simulated Bridge events.</li>
           <li>Operator creates exact approval gate via <code>POST /api/hermes-session-drafts/:id/approve-dry-run</code>.</li>
           <li>G-4 emits approval events; draft status transitions to <code>approved_dry_run</code>.</li>
-          <li>G-5 cross-checks verifier evidence: event stream consistency, verification check pass/fail, anomaly detection.</li>
+          <li>G-5 cross-checks verifier evidence: event stream consistency, verification checks, and boundary preservation across every approval gate.</li>
+          <li>G-6 pre-fills session draft fields from review inbox items via templates.</li>
           <li>Real Hermes session still requires a second exact human approval gate.</li>
         </ol>
       </div>

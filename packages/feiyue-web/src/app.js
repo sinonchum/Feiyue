@@ -89,6 +89,7 @@ function renderReviewInbox(payload) {
     <article class="list-item">
       <strong>${escapeHtml(item.item_type || 'review item')} / ${escapeHtml(item.status || 'unknown')}</strong>
       <span>${escapeHtml(item.recommended_action || 'review')} · ${escapeHtml(item.evidence_path || '')}</span>
+      <button class="ghost-button review-item-create-draft" type="button" data-item-id="${escapeHtml(item.item_id)}">Create draft</button>
     </article>
   `).join('');
 }
@@ -286,6 +287,14 @@ async function approveFirstSessionDraft() {
   setText('session-summary', `${document.getElementById('session-summary')?.textContent || ''}\napproved = ${result.approval.approval_id}`);
 }
 
+async function createDraftFromReviewItem(itemId) {
+  const result = await postJson(`/api/hermes-session-drafts/from-review-item/${itemId}`, {});
+  const updated = await getJson(endpoints.hermesSessionDrafts);
+  state.hermesSessionDrafts = updated;
+  renderHermesSessions(updated, []);
+  setText('session-summary', `${document.getElementById('session-summary')?.textContent || ''}\ncreated from review: ${result.draft.draft_id}`);
+}
+
 function wireIntentDraftButton() {
   const button = document.getElementById('create-intent-draft');
   if (!button) return;
@@ -297,6 +306,22 @@ function wireIntentDraftButton() {
       setText('intent-summary', `intent draft failed: ${error.message}`);
     } finally {
       button.disabled = !(state.reviewInbox?.items?.length > 0);
+    }
+  });
+}
+
+function wireReviewCreateDraftButtons() {
+  document.addEventListener('click', async (event) => {
+    const button = event.target.closest('.review-item-create-draft');
+    if (!button) return;
+    button.disabled = true;
+    const itemId = button.getAttribute('data-item-id');
+    try {
+      await createDraftFromReviewItem(itemId);
+    } catch (error) {
+      setText('session-summary', `draft from review item failed: ${error.message}`);
+    } finally {
+      button.disabled = false;
     }
   });
 }
@@ -364,6 +389,7 @@ function escapeHtml(value) {
 
 async function boot() {
   wireIntentDraftButton();
+  wireReviewCreateDraftButtons();
   wireHermesSessionDraftButton();
   wireApproveDraftButton();
   try {
