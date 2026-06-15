@@ -36,7 +36,7 @@ Run from `packages/feiyue-core` unless noted otherwise.
    python -m pytest -q
    ```
 
-   Current baseline: 701 passed
+   Current baseline: 702 passed
 
 3. Static export-all smoke:
 
@@ -195,3 +195,15 @@ Executed after user instruction to run Routing Apply before deployment discussio
 - Filter: `steady-4c excluded` because it is a stale/non-installed historical recommendation.
 - Result: `status: applied`; `applied_profiles: feiyue-mid-deepseek-pro`; `routing_table_mutated: false` because the route already pointed at `feiyue-mid-deepseek-pro`.
 - Deployment remains untouched: `deploy_performed: false`, `production_mutated: false`.
+
+## Wave14 Deployment 1 GitHub Release Artifact
+
+Published after explicit approval (`同意Deployment 1`).
+
+- Release: `wave14-real-env-20260615` — https://github.com/sinonchum/Feiyue/releases/tag/wave14-real-env-20260615
+- Asset: `wave14-real-env-1to4-20260615-operator-cockpit.zip`
+- Asset SHA256: `b6913a8cf30c4e1f2bfcacfcc421717744edf0a972ef596f3f849c3e4bf8301e`
+- Source commit: `c09f8ab8e7cd3f1b0b2c0b4b98880eaf3aba5aed`
+- CI: https://github.com/sinonchum/Feiyue/actions/runs/27543390141
+- Verification: `post_download_manifest_verify: STATIC_REPORT_VERIFY_OK checked_files=3`
+- Deployment scope: `deploy_target: github_release_artifact`; `deploy_performed: true`; no service started; no external API deployed; `production_mutated: false`.
