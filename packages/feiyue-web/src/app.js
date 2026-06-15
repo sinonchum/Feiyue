@@ -11,6 +11,7 @@ const endpoints = {
   approvalGate: '/api/approval-gate',
   verifierReport: '/api/verifier-report',
   executionOutput: '/api/execution-output',
+  auditTrail: '/api/audit-trail',
 };
 
 const state = {
@@ -26,6 +27,7 @@ const state = {
   approvalGate: null,
   verifierReport: null,
   executionOutput: null,
+  auditTrail: null,
 };
 
 function setText(id, value) {
@@ -240,6 +242,43 @@ function renderExecutionOutput(payload) {
   }).join('');
 }
 
+function renderAuditTrail(payload) {
+  const entries = payload?.entries || [];
+  const target = document.getElementById('audit-trail-list');
+  setText('audit-trail-summary', [
+    `entries = ${payload?.total_entries ?? 0}`,
+    `since = ${payload?.since || 'all'}`,
+    `sources = ${Object.entries(payload?.sources_found || {}).map(([k, v]) => `${k}:${v}`).join(', ')}`,
+    `provider_call_count = ${payload?.provider_call_count ?? 0}`,
+    `hermes_started = ${String(payload?.hermes_started === true)}`,
+    `production_mutated = ${String(payload?.production_mutated === true)}`,
+  ].join('\n'));
+  if (!target) return;
+  if (!entries.length) {
+    target.className = 'list empty';
+    target.textContent = 'No audit trail entries yet. Create session drafts, approvals, or executions to populate the trail.';
+    return;
+  }
+  target.className = 'list';
+  // Show last 50 entries, most recent first
+  target.innerHTML = entries.slice(-50).reverse().map((e) => {
+    const details = e.details || {};
+    const extra = Object.entries(details).slice(0, 4)
+      .filter(([k]) => !['sequence', 'redacted', 'message'].includes(k))
+      .map(([k, v]) => `${k}=${escapeHtml(String(v)).slice(0, 60)}`)
+      .join(' · ');
+    return `<article class="list-item audit-entry audit-entry--${escapeHtml(e.source)}">
+      <div class="audit-entry__header">
+        <strong>${escapeHtml(e.event_type)}</strong>
+        <span class="audit-entry__source">${escapeHtml(e.source)}</span>
+        <time class="audit-entry__time">${escapeHtml(e.timestamp)}</time>
+      </div>
+      <p class="audit-entry__desc">${escapeHtml(e.description).slice(0, 200)}</p>
+      ${extra ? `<pre class="code-block code-block--inline">${extra}</pre>` : ''}
+    </article>`;
+  }).join('');
+}
+
 function renderVerifier(payload) {
   const reports = payload?.reports || [];
   const target = document.getElementById('verifier-list');
@@ -435,7 +474,7 @@ function renderOfflineState(error) {
   setText('asset-count', 'offline');
   setText('worker-route', 'offline');
   const message = `API unavailable in static mode: ${error.message}`;
-  for (const id of ['runs-list', 'review-list', 'approval-list', 'verifier-list', 'execution-output-list']) {
+  for (const id of ['runs-list', 'review-list', 'approval-list', 'verifier-list', 'execution-output-list', 'audit-trail-list']) {
     const target = document.getElementById(id);
     if (target) {
       target.className = 'list empty';
@@ -450,6 +489,7 @@ function renderOfflineState(error) {
   setText('approval-summary', message);
   setText('verifier-summary', message);
   setText('execution-output-summary', message);
+  setText('audit-trail-summary', message);
 }
 
 function escapeHtml(value) {
@@ -468,7 +508,7 @@ async function boot() {
   wireApproveDraftButton();
   wireExecuteApprovedButton();
   try {
-    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents, hermesSessionDrafts, approvalGate, verifierReport, executionOutput] = await Promise.all([
+    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents, hermesSessionDrafts, approvalGate, verifierReport, executionOutput, auditTrail] = await Promise.all([
       getJson(endpoints.overview),
       getJson(endpoints.runs),
       getJson(endpoints.reviewInbox),
@@ -481,6 +521,7 @@ async function boot() {
       getJson(endpoints.approvalGate),
       getJson(endpoints.verifierReport),
       getJson(endpoints.executionOutput),
+      getJson(endpoints.auditTrail),
     ]);
     state.overview = overview;
     state.runs = runs;
@@ -494,6 +535,7 @@ async function boot() {
     state.approvalGate = approvalGate;
     state.verifierReport = verifierReport;
     state.executionOutput = executionOutput;
+    state.auditTrail = auditTrail;
     renderOverview(overview);
     renderRuns(runs);
     renderReviewInbox(reviewInbox);
@@ -505,6 +547,7 @@ async function boot() {
     renderApprovals(approvalGate);
     renderVerifier(verifierReport);
     renderExecutionOutput(executionOutput);
+    renderAuditTrail(auditTrail);
   } catch (error) {
     renderOfflineState(error);
   }

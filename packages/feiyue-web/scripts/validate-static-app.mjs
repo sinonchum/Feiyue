@@ -15,6 +15,8 @@ if (!combined.includes('data-action="approve-first-session-draft"')) failures.pu
 if (!combined.includes('verifier-report')) failures.push('verifier-report endpoint reference is missing');
 if (!combined.includes('review-item-create-draft')) failures.push('review item create draft button class is missing');
 if (!combined.includes('execute-approved-dry-run')) failures.push('execute-approved-dry-run button id is missing');
+if (!combined.includes('audit-trail')) failures.push('audit-trail references (G-8) are missing');
+if (!combined.includes('G-8')) failures.push('G-8 surface identifier is missing');
 if (combined.includes('start-hermes-session-draft')) failures.push('legacy Hermes session start action must stay absent');
 if (!combined.includes('disabled data-action="apply-routing-proposal"')) failures.push('routing apply action is not visibly disabled');
 if (/<form\b/i.test(combined)) failures.push('forms are not allowed in the static scaffold');

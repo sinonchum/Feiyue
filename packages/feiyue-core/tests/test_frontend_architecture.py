@@ -47,6 +47,9 @@ def test_frontend_scaffold_is_read_only_by_default() -> None:
     assert "sessionstorage" not in combined
     assert "api/" in html
     assert "api/execution-output" in html
+    assert "api/audit-trail" in html
+    assert "audit-trail-list" in html
+    assert "audit-trail-summary" in html
     assert "execute-approved-dry-run" in html
     assert "approval-gate" in html
     assert "verifier-report" in html
@@ -59,3 +62,49 @@ def test_frontend_scaffold_uses_dark_institutional_palette() -> None:
     assert "--panel: #111827" in css
     assert "--ink: #e5e7eb" in css
     assert "--accent: #2dd4bf" in css
+
+
+def test_audit_trail_module_scans_all_artifact_sources() -> None:
+    """G-8: audit_trail.generate_audit_trail aggregates from all sources."""
+    from feiyue_core.workflow.audit_trail import generate_audit_trail, AuditEntry, AuditTrailResult
+
+    # Empty project - should return empty result
+    result = generate_audit_trail("/tmp/feiyue-test-audit-empty")
+    assert isinstance(result, AuditTrailResult)
+    assert result.total_entries == 0
+    assert result.sources_found == {}
+    assert result.provider_call_count == 0
+    assert result.hermes_started is False
+    assert result.global_hermes_config_mutated is False
+    assert result.production_mutated is False
+
+    # Since filter with ISO timestamp
+    result_filtered = generate_audit_trail(
+        "/tmp/feiyue-test-audit-empty",
+        since="2026-01-01T00:00:00+00:00",
+    )
+    assert result_filtered.total_entries == 0
+    assert result_filtered.since == "2026-01-01T00:00:00+00:00"
+
+    # Verify AuditEntry dataclass shape
+    entry = AuditEntry(
+        timestamp="2026-06-15T12:00:00+00:00",
+        source="draft",
+        event_type="session_draft_created",
+        description="Test entry",
+        details={"draft_id": "test-001"},
+    )
+    assert entry.timestamp == "2026-06-15T12:00:00+00:00"
+    assert entry.source == "draft"
+    assert entry.event_type == "session_draft_created"
+    assert entry.description == "Test entry"
+    assert entry.details == {"draft_id": "test-001"}
+
+    # Verify overview surface reports G-8 mode
+    from feiyue_core.workflow.runs_api import read_operator_console_overview
+    overview = read_operator_console_overview("/tmp/feiyue-test-audit-empty")
+    assert overview["surface"] == "feiyue_operator_console_g8"
+    assert overview["mode"] == "audit_trail_enabled"
+    assert "audit_trail" in overview
+    assert overview["audit_trail"]["total_entries"] == 0
+    assert overview["audit_trail"]["mutates_state"] is False
