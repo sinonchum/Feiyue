@@ -36,7 +36,7 @@ Run from `packages/feiyue-core` unless noted otherwise.
    python -m pytest -q
    ```
 
-   Current baseline: 702 passed
+   Current baseline: 703 passed
 
 3. Static export-all smoke:
 
@@ -207,3 +207,15 @@ Published after explicit approval (`同意Deployment 1`).
 - CI: https://github.com/sinonchum/Feiyue/actions/runs/27543390141
 - Verification: `post_download_manifest_verify: STATIC_REPORT_VERIFY_OK checked_files=3`
 - Deployment scope: `deploy_target: github_release_artifact`; `deploy_performed: true`; no service started; no external API deployed; `production_mutated: false`.
+
+## Wave14 Deployment 2 GitHub Pages Static Cockpit
+
+Published after the user selected option A: a standalone public Pages repo containing only the exported static cockpit.
+
+- Public repo: `sinonchum/Feiyue-operator-cockpit` — https://github.com/sinonchum/Feiyue-operator-cockpit
+- Cockpit URL: https://sinonchum.github.io/Feiyue-operator-cockpit/wave14-real-env-20260615/
+- public_pages_commit: 964c138914c567d1b0f0102597df1bd23e3a28d4
+- Source asset: `wave14-real-env-1to4-20260615-operator-cockpit.zip`
+- Source asset SHA256: `b6913a8cf30c4e1f2bfcacfcc421717744edf0a972ef596f3f849c3e4bf8301e`
+- Verification: `index.html`, `manifest.json`, `assets/index.html`, and `review-inbox/index.html` returned HTTP 200; remote manifest matched local.
+- Deployment scope: `deploy_target: github_pages_static_cockpit_public_repo`; `deploy_performed: true`; `github_pages_config_mutated: true`; `private_source_repo_publicized: false`; `external_api_deployed: false`; `provider_call_count: 0`; `production_mutated: false`.
