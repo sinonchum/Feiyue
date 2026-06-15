@@ -13,9 +13,9 @@
       <div class="hero__row">
         <div>
           <h1 id="page-title">Feiyue Operator Console</h1>
-          <p class="lede">G-2 operator console for reviewing evidence and creating draft-only approval intents without applying routing or starting Hermes sessions.</p>
+          <p class="lede">G-3 operator console for reviewing evidence, drafting approvals, and simulating redacted Hermes Bridge session events without starting Hermes.</p>
         </div>
-        <div class="status-pill" data-safe-state="readonly">G-2 intent drafts</div>
+        <div class="status-pill" data-safe-state="readonly">G-3 Hermes dry-run events</div>
       </div>
     </header>
 
@@ -48,7 +48,7 @@
           <p class="eyebrow">Nested runtime boundary</p>
           <h2 id="hermes-console-title">Hermes Agent Console</h2>
         </div>
-        <button class="ghost-button" type="button" disabled data-action="start-hermes-session-draft">Start session draft</button>
+        <button class="ghost-button" type="button" data-action="create-hermes-session-draft" id="create-hermes-session-draft">Create dry-run session draft</button>
       </div>
       <div class="split">
         <div>
@@ -59,10 +59,22 @@
           <li>Operator reviews evidence in Feiyue.</li>
           <li>UI submits an intent draft.</li>
           <li>Backend checks policy and approval gates.</li>
-          <li>Hermes Bridge runs an allowed profile/session.</li>
-          <li>Evidence is written under <code>.hermes/</code> and refreshed here.</li>
+          <li>G-3 emits provider-free simulated Bridge events.</li>
+          <li>Exact approval is required before any real Hermes session can start.</li>
         </ol>
       </div>
+    </section>
+
+    <section class="panel" aria-labelledby="session-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Hermes Bridge dry-run</p>
+          <h2 id="session-title">Session Draft Events</h2>
+        </div>
+        <a href="/api/hermes-session-drafts" data-api-link>session drafts JSON</a>
+      </div>
+      <p>G-3 writes only provider-free dry-run session drafts under <code>.hermes/hermes-session-drafts/</code>. It does not start Hermes, call providers, execute tools, or mutate global configuration.</p>
+      <pre class="code-block" id="session-summary">Waiting for <code>GET /api/hermes-session-drafts</code>.</pre>
     </section>
 
     <section class="grid two-col">

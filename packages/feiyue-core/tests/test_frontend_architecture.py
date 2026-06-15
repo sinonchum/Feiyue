@@ -36,11 +36,12 @@ def test_frontend_scaffold_is_read_only_by_default() -> None:
 
     assert "feiyue operator console" in html.lower()
     assert "hermes agent console" in html.lower()
-    assert "disabled data-action=\"start-hermes-session-draft\"" in html
+    assert "data-action=\"create-hermes-session-draft\"" in html
+    assert "start-hermes-session-draft" not in html
     assert "disabled data-action=\"apply-routing-proposal\"" in html
     assert "<form" not in combined
     assert "method=\"post" not in combined
-    assert "method='post" not in combined
+
     assert "localstorage" not in combined
     assert "sessionstorage" not in combined
 

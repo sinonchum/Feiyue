@@ -10,6 +10,13 @@ from urllib.parse import unquote, urlparse
 
 from feiyue_core.workflow.asset_catalog import AssetCatalog
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
+from feiyue_core.workflow.hermes_sessions import (
+    HermesSessionDraftError,
+    HermesSessionDraftRequest,
+    create_hermes_session_draft,
+    list_hermes_session_drafts,
+    read_hermes_session_events,
+)
 from feiyue_core.workflow.review_inbox import ReviewInbox
 from feiyue_core.workflow.review_intents import (
     ReviewIntentDraftError,
@@ -115,12 +122,14 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
     capabilities = _read_capabilities(project_root)
     dogfood = _read_frontend_dogfood(project_root)
     intents = list_review_intent_drafts(project_root).model_dump(mode="json")
+    sessions = list_hermes_session_drafts(project_root).model_dump(mode="json")
     return {
-        "surface": "feiyue_operator_console_g2",
-        "mode": "review_intent_drafts",
+        "surface": "feiyue_operator_console_g3",
+        "mode": "hermes_bridge_dry_run_events",
         "mutates_state": False,
-        "write_endpoints_added": 1,
+        "write_endpoints_added": 2,
         "provider_call_count": 0,
+        "hermes_started": False,
         "runs": {"total_runs": run_summary.get("total_runs", 0)},
         "review_inbox": {"total_items": len(review_summary.get("items", []))},
         "assets": {"total_assets": asset_summary.get("total_assets", 0)},
@@ -131,6 +140,7 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
         },
         "frontend_dogfood": {"total_runs": len(dogfood["runs"]), "status": dogfood["status"]},
         "review_intents": {"total_drafts": len(intents.get("drafts", [])), "draft_only": True},
+        "hermes_sessions": {"total_drafts": len(sessions.get("drafts", [])), "dry_run_only": True},
     }
 
 
@@ -594,6 +604,15 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                 if path == "/api/review-intents":
                     self._send_json(200, list_review_intent_drafts(root).model_dump(mode="json"))
                     return
+                if path == "/api/hermes-session-drafts":
+                    self._send_json(200, list_hermes_session_drafts(root).model_dump(mode="json"))
+                    return
+                if path.startswith("/api/hermes-session-events/"):
+                    parts = [part for part in path.split("/") if part]
+                    if len(parts) == 3:
+                        events = read_hermes_session_events(root, parts[2])
+                        self._send_json(200, [event.model_dump(mode="json") for event in events])
+                        return
                 if path in ("/", "/dashboard"):
                     self._send_text(200, render_runs_dashboard(root), content_type="text/html; charset=utf-8")
                     return
@@ -637,6 +656,8 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                         "path": str(exc.path),
                     },
                 )
+            except HermesSessionDraftError as exc:
+                self._send_json(exc.status_code, {"error": "hermes_session_events_not_found", "message": str(exc)})
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
             path = unquote(urlparse(self.path).path).rstrip("/") or "/"
@@ -650,6 +671,17 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                     self._send_json(exc.status_code, {"error": "review_intent_draft_rejected", "message": str(exc)})
                 except ValueError as exc:
                     self._send_json(400, {"error": "invalid_review_intent_draft", "message": str(exc)})
+                return
+            if path == "/api/hermes-session-drafts":
+                try:
+                    payload = self._read_json_body()
+                    request = HermesSessionDraftRequest.model_validate(payload)
+                    result = create_hermes_session_draft(root, request)
+                    self._send_json(201, result.model_dump(mode="json"))
+                except HermesSessionDraftError as exc:
+                    self._send_json(exc.status_code, {"error": "hermes_session_draft_rejected", "message": str(exc)})
+                except ValueError as exc:
+                    self._send_json(400, {"error": "invalid_hermes_session_draft", "message": str(exc)})
                 return
             self._send_json(405, {"error": "method_not_allowed", "method": "POST"})
 
