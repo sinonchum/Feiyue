@@ -36,7 +36,7 @@ Run from `packages/feiyue-core` unless noted otherwise.
    python -m pytest -q
    ```
 
-   Current baseline: 696 passed
+   Current baseline: 699 passed
 
 3. Static export-all smoke:
 
@@ -167,3 +167,13 @@ The latest evidence-only deployment boundary is `wave13-1-deploy-rollback-readin
 - Expected marker: `approval_applies: true`.
 - Required safety booleans: `merge_performed: false`, `auto_merge_enabled: false`, `deploy_performed: false`, and `production_mutated: false`.
 - Real deploy remains blocked until a concrete target environment, rollback command, post-deploy health check, and exact deployment approval are supplied.
+
+## Wave14-1 through Wave14-4 closure batch
+
+`Wave14ClosureRunner` executed `wave14-closure-20260615` as the latest no-deploy closure evidence.
+
+- Wave14-1: `longitudinal_task_count: 3` and `longitudinal_teacher_call_rate_delta: -1.0`.
+- Wave14-2: `operator_cockpit_v1_ready: true` and `evidence_explorer_verified: true`.
+- Wave14-3: `routing_learning_apply_loop_ready: true`, `routing_table_mutated: false`, and human-reviewed apply remains required before mutation.
+- Wave14-4: `deploy_target_selected: local-release-artifact`, `requires_exact_deploy_approval: true`, `deploy_performed: false`, and `production_mutated: false`.
+- Treat this as release-artifact readiness, not a production deployment.
