@@ -17,6 +17,15 @@ from feiyue_core.workflow.hermes_sessions import (
     list_hermes_session_drafts,
     read_hermes_session_events,
 )
+from feiyue_core.workflow.approval_gate import (
+    DryRunApprovalError,
+    DryRunApprovalRequest,
+    create_dry_run_approval,
+    list_dry_run_approvals,
+    read_dry_run_approval,
+    read_approval_events,
+    read_approval_verifier_evidence,
+)
 from feiyue_core.workflow.review_inbox import ReviewInbox
 from feiyue_core.workflow.review_intents import (
     ReviewIntentDraftError,
@@ -123,12 +132,15 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
     dogfood = _read_frontend_dogfood(project_root)
     intents = list_review_intent_drafts(project_root).model_dump(mode="json")
     sessions = list_hermes_session_drafts(project_root).model_dump(mode="json")
+    approvals = list_dry_run_approvals(project_root).model_dump(mode="json")
     return {
-        "surface": "feiyue_operator_console_g3",
-        "mode": "hermes_bridge_dry_run_events",
+        "surface": "feiyue_operator_console_g4",
+        "mode": "approval_gated_dry_run",
         "mutates_state": False,
-        "write_endpoints_added": 2,
+        "write_endpoints_added": 3,
         "provider_call_count": 0,
+        "hermes_sessions": {"total_drafts": len(sessions.get("drafts", [])), "dry_run_only": sessions.get("dry_run_only", True)},
+        "approval_gate": {"total_approvals": len(approvals.get("approvals", [])), "dry_run_only": approvals.get("dry_run_only", True)},
         "hermes_started": False,
         "runs": {"total_runs": run_summary.get("total_runs", 0)},
         "review_inbox": {"total_items": len(review_summary.get("items", []))},
@@ -140,7 +152,6 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
         },
         "frontend_dogfood": {"total_runs": len(dogfood["runs"]), "status": dogfood["status"]},
         "review_intents": {"total_drafts": len(intents.get("drafts", [])), "draft_only": True},
-        "hermes_sessions": {"total_drafts": len(sessions.get("drafts", [])), "dry_run_only": True},
     }
 
 
@@ -607,11 +618,41 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                 if path == "/api/hermes-session-drafts":
                     self._send_json(200, list_hermes_session_drafts(root).model_dump(mode="json"))
                     return
+                if path.startswith("/api/hermes-session-drafts/") and path.endswith("/approve-dry-run"):
+                    self._send_json(200, {"error": "use_POST", "message": "Use POST to approve a dry-run session draft"})
+                    return
+                if path.startswith("/api/hermes-session-drafts/"):
+                    parts = [part for part in path.split("/") if part]
+                    if len(parts) == 3:
+                        drafts_summary = list_hermes_session_drafts(root).model_dump(mode="json")
+                        for draft in drafts_summary.get("drafts", []):
+                            if draft.get("draft_id") == parts[2]:
+                                self._send_json(200, draft)
+                                return
+                        self._send_json(404, {"error": "draft_not_found", "draft_id": parts[2]})
+                        return
                 if path.startswith("/api/hermes-session-events/"):
                     parts = [part for part in path.split("/") if part]
                     if len(parts) == 3:
                         events = read_hermes_session_events(root, parts[2])
                         self._send_json(200, [event.model_dump(mode="json") for event in events])
+                        return
+                if path == "/api/approval-gate":
+                    self._send_json(200, list_dry_run_approvals(root).model_dump(mode="json"))
+                    return
+                if path.startswith("/api/approval-gate/"):
+                    parts = [part for part in path.split("/") if part]
+                    if len(parts) >= 3 and parts[2]:
+                        if len(parts) >= 4 and parts[3] == "events":
+                            events = read_approval_events(root, parts[2])
+                            self._send_json(200, events)
+                            return
+                        if len(parts) >= 4 and parts[3] == "verifier-evidence":
+                            evidence = read_approval_verifier_evidence(root, parts[2])
+                            self._send_json(200, evidence)
+                            return
+                        approval = read_dry_run_approval(root, parts[2])
+                        self._send_json(200, approval.model_dump(mode="json"))
                         return
                 if path in ("/", "/dashboard"):
                     self._send_text(200, render_runs_dashboard(root), content_type="text/html; charset=utf-8")
@@ -658,6 +699,8 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                 )
             except HermesSessionDraftError as exc:
                 self._send_json(exc.status_code, {"error": "hermes_session_events_not_found", "message": str(exc)})
+            except DryRunApprovalError as exc:
+                self._send_json(exc.status_code, {"error": "dry_run_approval_error", "message": str(exc)})
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
             path = unquote(urlparse(self.path).path).rstrip("/") or "/"
@@ -682,6 +725,23 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                     self._send_json(exc.status_code, {"error": "hermes_session_draft_rejected", "message": str(exc)})
                 except ValueError as exc:
                     self._send_json(400, {"error": "invalid_hermes_session_draft", "message": str(exc)})
+                return
+            if path.startswith("/api/hermes-session-drafts/") and path.endswith("/approve-dry-run"):
+                parts = [part for part in path.split("/") if part]
+                if len(parts) == 4:
+                    draft_id = parts[2]
+                    try:
+                        payload = self._read_json_body()
+                        payload["draft_id"] = draft_id
+                        request = DryRunApprovalRequest.model_validate(payload)
+                        result = create_dry_run_approval(root, request)
+                        self._send_json(201, result.model_dump(mode="json"))
+                    except DryRunApprovalError as exc:
+                        self._send_json(exc.status_code, {"error": "dry_run_approval_rejected", "message": str(exc)})
+                    except ValueError as exc:
+                        self._send_json(400, {"error": "invalid_dry_run_approval", "message": str(exc)})
+                    return
+                self._send_json(400, {"error": "invalid_path", "path": path})
                 return
             self._send_json(405, {"error": "method_not_allowed", "method": "POST"})
 

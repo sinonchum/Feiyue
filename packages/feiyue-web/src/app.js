@@ -8,6 +8,7 @@ const endpoints = {
   frontendDogfood: '/api/frontend-dogfood',
   reviewIntents: '/api/review-intents',
   hermesSessionDrafts: '/api/hermes-session-drafts',
+  approvalGate: '/api/approval-gate',
 };
 
 const state = {
@@ -20,6 +21,7 @@ const state = {
   frontendDogfood: null,
   reviewIntents: null,
   hermesSessionDrafts: null,
+  approvalGate: null,
 };
 
 function setText(id, value) {
@@ -146,6 +148,9 @@ function renderReviewIntents(payload) {
 
 function renderHermesSessions(payload, events = []) {
   const drafts = payload?.drafts || [];
+  const approveButton = document.getElementById('approve-first-session-draft');
+  const firstBlockedIndex = drafts.findIndex((d) => d.status === 'blocked_until_exact_approval');
+  if (approveButton) approveButton.disabled = firstBlockedIndex === -1;
   const lines = [
     `drafts = ${drafts.length}`,
     `dry_run_only = true`,
@@ -161,6 +166,36 @@ function renderHermesSessions(payload, events = []) {
     lines.push(`${event.sequence}. ${event.event_type}: ${event.message}`);
   }
   setText('session-summary', lines.join('\n'));
+}
+
+function renderApprovals(payload) {
+  const approvals = payload?.approvals || [];
+  const target = document.getElementById('approval-list');
+  const lines = [
+    `approvals = ${approvals.length}`,
+    `dry_run_only = ${String(payload?.dry_run_only === true)}`,
+    `provider_call_count = ${payload?.provider_call_count ?? 0}`,
+    `hermes_started = ${String(payload?.hermes_started === true)}`,
+    `global_hermes_config_mutated = ${String(payload?.global_hermes_config_mutated === true)}`,
+    `production_mutated = ${String(payload?.production_mutated === true)}`,
+  ];
+  for (const approval of approvals.slice(0, 6)) {
+    lines.push(`${approval.approval_id}: ${approval.status} / by ${approval.approved_by}`);
+  }
+  setText('approval-summary', lines.join('\n'));
+  if (!target) return;
+  if (!approvals.length) {
+    target.className = 'list empty';
+    target.textContent = 'No dry-run approvals yet. Create a session draft first, then approve it.';
+    return;
+  }
+  target.className = 'list';
+  target.innerHTML = approvals.slice(0, 8).map((a) => `
+    <article class="list-item">
+      <strong>${escapeHtml(a.approval_id)}</strong>
+      <span>${escapeHtml(a.status)} · by ${escapeHtml(a.approved_by)}</span>
+    </article>
+  `).join('');
 }
 
 async function createIntentDraftForFirstReviewItem() {
@@ -197,6 +232,30 @@ async function createHermesSessionDraft() {
   renderHermesSessions(updated, events);
 }
 
+async function approveFirstSessionDraft() {
+  const drafts = state.hermesSessionDrafts?.drafts || [];
+  const firstBlocked = drafts.find((d) => d.status === 'blocked_until_exact_approval');
+  if (!firstBlocked) return;
+  const result = await postJson(`/api/hermes-session-drafts/${firstBlocked.draft_id}/approve-dry-run`, {
+    approved_by: 'feiyue-operator-console',
+    reason: 'g4_operator_approved_dry_run_execution',
+    dry_run_only_verified: true,
+    provider_call_budget_verified: 0,
+    no_hermes_start_verified: true,
+    no_production_mutation_verified: true,
+    no_global_config_mutation_verified: true,
+  });
+  const [updatedSessions, updatedApprovals] = await Promise.all([
+    getJson(endpoints.hermesSessionDrafts),
+    getJson(endpoints.approvalGate),
+  ]);
+  state.hermesSessionDrafts = updatedSessions;
+  state.approvalGate = updatedApprovals;
+  renderHermesSessions(updatedSessions, []);
+  renderApprovals(updatedApprovals);
+  setText('session-summary', `${document.getElementById('session-summary')?.textContent || ''}\napproved = ${result.approval.approval_id}`);
+}
+
 function wireIntentDraftButton() {
   const button = document.getElementById('create-intent-draft');
   if (!button) return;
@@ -227,13 +286,28 @@ function wireHermesSessionDraftButton() {
   });
 }
 
+function wireApproveDraftButton() {
+  const button = document.getElementById('approve-first-session-draft');
+  if (!button) return;
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await approveFirstSessionDraft();
+    } catch (error) {
+      setText('approval-summary', `approval failed: ${error.message}`);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 function renderOfflineState(error) {
   setText('runs-count', 'offline');
   setText('review-count', 'offline');
   setText('asset-count', 'offline');
   setText('worker-route', 'offline');
   const message = `API unavailable in static mode: ${error.message}`;
-  for (const id of ['runs-list', 'review-list']) {
+  for (const id of ['runs-list', 'review-list', 'approval-list']) {
     const target = document.getElementById(id);
     if (target) {
       target.className = 'list empty';
@@ -245,6 +319,7 @@ function renderOfflineState(error) {
   setText('dogfood-summary', message);
   setText('intent-summary', message);
   setText('session-summary', message);
+  setText('approval-summary', message);
 }
 
 function escapeHtml(value) {
@@ -259,8 +334,9 @@ function escapeHtml(value) {
 async function boot() {
   wireIntentDraftButton();
   wireHermesSessionDraftButton();
+  wireApproveDraftButton();
   try {
-    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents, hermesSessionDrafts] = await Promise.all([
+    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents, hermesSessionDrafts, approvalGate] = await Promise.all([
       getJson(endpoints.overview),
       getJson(endpoints.runs),
       getJson(endpoints.reviewInbox),
@@ -270,6 +346,7 @@ async function boot() {
       getJson(endpoints.frontendDogfood),
       getJson(endpoints.reviewIntents),
       getJson(endpoints.hermesSessionDrafts),
+      getJson(endpoints.approvalGate),
     ]);
     state.overview = overview;
     state.runs = runs;
@@ -280,6 +357,7 @@ async function boot() {
     state.frontendDogfood = frontendDogfood;
     state.reviewIntents = reviewIntents;
     state.hermesSessionDrafts = hermesSessionDrafts;
+    state.approvalGate = approvalGate;
     renderOverview(overview);
     renderRuns(runs);
     renderReviewInbox(reviewInbox);
@@ -288,6 +366,7 @@ async function boot() {
     renderFrontendDogfood(frontendDogfood);
     renderReviewIntents(reviewIntents);
     renderHermesSessions(hermesSessionDrafts);
+    renderApprovals(approvalGate);
   } catch (error) {
     renderOfflineState(error);
   }

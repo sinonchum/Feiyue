@@ -37,6 +37,7 @@ def test_frontend_scaffold_is_read_only_by_default() -> None:
     assert "feiyue operator console" in html.lower()
     assert "hermes agent console" in html.lower()
     assert "data-action=\"create-hermes-session-draft\"" in html
+    assert "data-action=\"approve-first-session-draft\"" in html
     assert "start-hermes-session-draft" not in html
     assert "disabled data-action=\"apply-routing-proposal\"" in html
     assert "<form" not in combined
@@ -44,7 +45,8 @@ def test_frontend_scaffold_is_read_only_by_default() -> None:
 
     assert "localstorage" not in combined
     assert "sessionstorage" not in combined
-
+    assert "api/" in html
+    assert "approval-gate" in html
 
 def test_frontend_scaffold_uses_dark_institutional_palette() -> None:
     css = (WEB / "src" / "styles.css").read_text(encoding="utf-8")

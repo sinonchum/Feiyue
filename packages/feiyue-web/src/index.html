@@ -13,9 +13,9 @@
       <div class="hero__row">
         <div>
           <h1 id="page-title">Feiyue Operator Console</h1>
-          <p class="lede">G-3 operator console for reviewing evidence, drafting approvals, and simulating redacted Hermes Bridge session events without starting Hermes.</p>
+          <p class="lede">G-4 operator console for reviewing evidence, drafting approval intents, simulating Hermes Bridge events, and creating exact dry-run approval gates — without starting Hermes or calling providers.</p>
         </div>
-        <div class="status-pill" data-safe-state="readonly">G-3 Hermes dry-run events</div>
+        <div class="status-pill" data-safe-state="readonly">G-4 approval-gated dry-run</div>
       </div>
     </header>
 
@@ -57,10 +57,12 @@
         </div>
         <ol class="timeline">
           <li>Operator reviews evidence in Feiyue.</li>
-          <li>UI submits an intent draft.</li>
+          <li>UI submits an intent draft or creates a session draft.</li>
           <li>Backend checks policy and approval gates.</li>
           <li>G-3 emits provider-free simulated Bridge events.</li>
-          <li>Exact approval is required before any real Hermes session can start.</li>
+          <li>Operator creates exact approval gate via <code>POST /api/hermes-session-drafts/:id/approve-dry-run</code>.</li>
+          <li>G-4 emits approval events; draft status transitions to <code>approved_dry_run</code>.</li>
+          <li>Real Hermes session still requires a second exact human approval gate.</li>
         </ol>
       </div>
     </section>
@@ -71,10 +73,30 @@
           <p class="eyebrow">Hermes Bridge dry-run</p>
           <h2 id="session-title">Session Draft Events</h2>
         </div>
-        <a href="/api/hermes-session-drafts" data-api-link>session drafts JSON</a>
+        <div class="panel__actions">
+          <button class="ghost-button" type="button" data-action="approve-first-session-draft" id="approve-first-session-draft" disabled>Approve first blocked draft</button>
+          <a href="/api/hermes-session-drafts" data-api-link>session drafts JSON</a>
+        </div>
       </div>
       <p>G-3 writes only provider-free dry-run session drafts under <code>.hermes/hermes-session-drafts/</code>. It does not start Hermes, call providers, execute tools, or mutate global configuration.</p>
       <pre class="code-block" id="session-summary">Waiting for <code>GET /api/hermes-session-drafts</code>.</pre>
+    </section>
+
+    <section class="panel" aria-labelledby="approval-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Exact approval gate</p>
+          <h2 id="approval-title">Dry-Run Approvals</h2>
+        </div>
+        <a href="/api/approval-gate" data-api-link>approvals JSON</a>
+      </div>
+      <p>G-4 introduces exact approval gates. An operator can approve a specific session draft for dry-run execution via <code>POST /api/hermes-session-drafts/:id/approve-dry-run</code>. The approval records the exact draft_id and verifier identity. Even approved drafts keep <code>provider_call_count=0</code>, <code>tool_call_count=0</code>, and <code>hermes_started=false</code>.</p>
+      <div class="split">
+        <div class="list" id="approval-list">
+          <p>No approvals yet.</p>
+        </div>
+        <pre class="code-block" id="approval-summary">Waiting for <code>GET /api/approval-gate</code>.</pre>
+      </div>
     </section>
 
     <section class="grid two-col">
