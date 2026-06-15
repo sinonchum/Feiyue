@@ -34,12 +34,24 @@ def _get_json(url):
         return json.loads(response.read().decode("utf-8"))
 
 
+def _post_json(url, payload):
+    request = Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"content-type": "application/json", "accept": "application/json"},
+        method="POST",
+    )
+    with urlopen(request, timeout=5) as response:
+        assert response.headers["content-type"] == "application/json"
+        return response.status, json.loads(response.read().decode("utf-8"))
+
+
 def _get_text(url):
     with urlopen(url, timeout=5) as response:
         return response.headers["content-type"], response.read().decode("utf-8")
 
 
-def _write_g1_fixture(root):
+def _write_g2_fixture(root):
     (root / ".hermes" / "model-routing.yaml").parent.mkdir(parents=True, exist_ok=True)
     (root / ".hermes" / "model-routing.yaml").write_text(
         "routes:\n"
@@ -69,29 +81,34 @@ def _write_g1_fixture(root):
             "secret": "SHOULD_NOT_LEAK_IN_DOGFOOD_SUMMARY",
         },
     )
+    _write_json(
+        root / ".hermes" / "routing-proposals" / "route-ui" / "proposal.json",
+        {"proposal_id": "route-ui", "requires_human_approval": True, "secret": "SHOULD_NOT_LEAK_IN_INTENT"},
+    )
 
 
-def test_g1_overview_api_is_read_only_summary_without_raw_secret_leak(tmp_path) -> None:
-    _write_g1_fixture(tmp_path)
+def test_g2_overview_api_reports_intent_draft_mode_without_raw_secret_leak(tmp_path) -> None:
+    _write_g2_fixture(tmp_path)
     before = {path.relative_to(tmp_path).as_posix(): path.stat().st_mtime_ns for path in tmp_path.rglob("*") if path.is_file()}
 
     overview = read_operator_console_overview(tmp_path)
 
     after = {path.relative_to(tmp_path).as_posix(): path.stat().st_mtime_ns for path in tmp_path.rglob("*") if path.is_file()}
     assert after == before
-    assert overview["surface"] == "feiyue_operator_console_g1"
-    assert overview["mode"] == "read_only"
+    assert overview["surface"] == "feiyue_operator_console_g2"
+    assert overview["mode"] == "review_intent_drafts"
     assert overview["mutates_state"] is False
-    assert overview["write_endpoints_added"] == 0
+    assert overview["write_endpoints_added"] == 1
     assert overview["provider_call_count"] == 0
     assert overview["routing"]["worker_primary"] == "local-qwen25-coder"
     assert overview["capabilities"]["history_status"] == "found"
     assert overview["frontend_dogfood"]["total_runs"] == 1
+    assert overview["review_intents"] == {"total_drafts": 0, "draft_only": True}
     assert "SHOULD_NOT_LEAK" not in json.dumps(overview, sort_keys=True)
 
 
-def test_g1_api_routes_and_app_static_shell_are_served(tmp_path) -> None:
-    _write_g1_fixture(tmp_path)
+def test_g2_api_routes_and_app_shell_are_served(tmp_path) -> None:
+    _write_g2_fixture(tmp_path)
 
     with _api_server(tmp_path) as base_url:
         app_content_type, html = _get_text(f"{base_url}/app")
@@ -101,11 +118,13 @@ def test_g1_api_routes_and_app_static_shell_are_served(tmp_path) -> None:
         routing = _get_json(f"{base_url}/api/routing")
         capabilities = _get_json(f"{base_url}/api/capabilities")
         dogfood = _get_json(f"{base_url}/api/frontend-dogfood")
+        intents = _get_json(f"{base_url}/api/review-intents")
 
     assert app_content_type == "text/html; charset=utf-8"
     assert css_content_type == "text/css; charset=utf-8"
     assert js_content_type == "text/javascript; charset=utf-8"
     assert "Feiyue Operator Console" in html
+    assert "Review Intent Drafts" in html
     assert 'href="/app/styles.css"' in html
     assert 'src="/app/app.js"' in html
     assert "GET /api/overview" in html
@@ -118,10 +137,73 @@ def test_g1_api_routes_and_app_static_shell_are_served(tmp_path) -> None:
     assert routing["routes"]["worker"]["primary"] == "local-qwen25-coder"
     assert capabilities["history_status"] == "found"
     assert dogfood["runs"][0]["run_id"] == "g1-readonly-console"
+    assert intents["drafts"] == []
+    assert intents["write_endpoints_added"] == 1
     assert "SHOULD_NOT_LEAK" not in json.dumps(dogfood, sort_keys=True)
 
 
-def test_g1_write_methods_remain_blocked(tmp_path) -> None:
+def test_g2_review_intent_post_creates_draft_only_artifact(tmp_path) -> None:
+    _write_g2_fixture(tmp_path)
+    request_payload = {
+        "item_type": "routing_proposal",
+        "item_id": "route-ui",
+        "recommended_action": "review_and_create_routing_proposal_approval",
+        "evidence_path": ".hermes/routing-proposals/route-ui/proposal.json",
+        "created_by": "test-operator",
+        "reason": "g2_test_intent_draft",
+    }
+
+    with _api_server(tmp_path) as base_url:
+        status, created = _post_json(f"{base_url}/api/review-intents", request_payload)
+        listed = _get_json(f"{base_url}/api/review-intents")
+
+    assert status == 201
+    assert created["draft_only"] is True
+    assert created["mutation_scope"] == "project_local_review_intent_draft_only"
+    assert created["provider_call_count"] == 0
+    assert created["global_hermes_config_mutated"] is False
+    assert created["production_mutated"] is False
+    assert created["draft"]["intent_kind"] == "routing_approval_draft"
+    assert created["draft"]["writes_approval"] is False
+    assert created["draft"]["applies_routing"] is False
+    assert created["draft"]["starts_hermes_session"] is False
+    draft_path = tmp_path / created["path"]
+    assert draft_path.exists()
+    assert listed["drafts"][0]["intent_id"] == created["draft"]["intent_id"]
+    assert "SHOULD_NOT_LEAK" not in json.dumps(created, sort_keys=True)
+
+
+def test_g2_rejects_intent_for_non_matching_review_item(tmp_path) -> None:
+    _write_g2_fixture(tmp_path)
+    request_payload = {
+        "item_type": "routing_proposal",
+        "item_id": "route-ui",
+        "recommended_action": "apply_approved_routing_proposal",
+        "evidence_path": ".hermes/routing-proposals/route-ui/proposal.json",
+        "created_by": "test-operator",
+        "reason": "mismatched_action",
+    }
+
+    with _api_server(tmp_path) as base_url:
+        request = Request(
+            f"{base_url}/api/review-intents",
+            data=json.dumps(request_payload).encode("utf-8"),
+            headers={"content-type": "application/json"},
+            method="POST",
+        )
+        try:
+            urlopen(request, timeout=5)
+        except HTTPError as exc:
+            assert exc.code == 404
+            payload = json.loads(exc.read().decode("utf-8"))
+        else:  # pragma: no cover - defensive
+            raise AssertionError("POST unexpectedly succeeded")
+
+    assert payload["error"] == "review_intent_draft_rejected"
+    assert not list((tmp_path / ".hermes" / "review-intent-drafts").glob("*/intent.json"))
+
+
+def test_g2_other_write_methods_remain_blocked(tmp_path) -> None:
     with _api_server(tmp_path) as base_url:
         request = Request(f"{base_url}/api/overview", method="POST")
         try:

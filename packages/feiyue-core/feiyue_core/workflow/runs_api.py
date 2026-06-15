@@ -11,6 +11,12 @@ from urllib.parse import unquote, urlparse
 from feiyue_core.workflow.asset_catalog import AssetCatalog
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
 from feiyue_core.workflow.review_inbox import ReviewInbox
+from feiyue_core.workflow.review_intents import (
+    ReviewIntentDraftError,
+    ReviewIntentDraftRequest,
+    create_review_intent_draft,
+    list_review_intent_drafts,
+)
 
 
 def _esc(value: object) -> str:
@@ -108,11 +114,12 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
     routing = _read_model_routing(project_root)
     capabilities = _read_capabilities(project_root)
     dogfood = _read_frontend_dogfood(project_root)
+    intents = list_review_intent_drafts(project_root).model_dump(mode="json")
     return {
-        "surface": "feiyue_operator_console_g1",
-        "mode": "read_only",
+        "surface": "feiyue_operator_console_g2",
+        "mode": "review_intent_drafts",
         "mutates_state": False,
-        "write_endpoints_added": 0,
+        "write_endpoints_added": 1,
         "provider_call_count": 0,
         "runs": {"total_runs": run_summary.get("total_runs", 0)},
         "review_inbox": {"total_items": len(review_summary.get("items", []))},
@@ -123,6 +130,7 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
             "feedback_status": capabilities["feedback_status"],
         },
         "frontend_dogfood": {"total_runs": len(dogfood["runs"]), "status": dogfood["status"]},
+        "review_intents": {"total_drafts": len(intents.get("drafts", [])), "draft_only": True},
     }
 
 
@@ -583,6 +591,9 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                 if path == "/api/frontend-dogfood":
                     self._send_json(200, _read_frontend_dogfood(root))
                     return
+                if path == "/api/review-intents":
+                    self._send_json(200, list_review_intent_drafts(root).model_dump(mode="json"))
+                    return
                 if path in ("/", "/dashboard"):
                     self._send_text(200, render_runs_dashboard(root), content_type="text/html; charset=utf-8")
                     return
@@ -628,6 +639,18 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                 )
 
         def do_POST(self) -> None:  # noqa: N802 - stdlib handler API
+            path = unquote(urlparse(self.path).path).rstrip("/") or "/"
+            if path == "/api/review-intents":
+                try:
+                    payload = self._read_json_body()
+                    request = ReviewIntentDraftRequest.model_validate(payload)
+                    result = create_review_intent_draft(root, request)
+                    self._send_json(201, result.model_dump(mode="json"))
+                except ReviewIntentDraftError as exc:
+                    self._send_json(exc.status_code, {"error": "review_intent_draft_rejected", "message": str(exc)})
+                except ValueError as exc:
+                    self._send_json(400, {"error": "invalid_review_intent_draft", "message": str(exc)})
+                return
             self._send_json(405, {"error": "method_not_allowed", "method": "POST"})
 
         def do_PUT(self) -> None:  # noqa: N802 - stdlib handler API
@@ -649,6 +672,17 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
             self.send_header("content-length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def _read_json_body(self) -> object:
+            length = int(self.headers.get("content-length", "0") or "0")
+            if length <= 0:
+                raise ValueError("request body is required")
+            if length > 16384:
+                raise ValueError("request body is too large for an intent draft")
+            content_type = self.headers.get("content-type", "")
+            if "application/json" not in content_type:
+                raise ValueError("content-type must be application/json")
+            return json.loads(self.rfile.read(length).decode("utf-8"))
 
         def _send_text(self, status: int, body_text: str, *, content_type: str) -> None:
             body = body_text.encode("utf-8")

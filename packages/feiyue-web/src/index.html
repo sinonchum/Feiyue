@@ -13,9 +13,9 @@
       <div class="hero__row">
         <div>
           <h1 id="page-title">Feiyue Operator Console</h1>
-          <p class="lede">Read-only frontend served by Feiyue for reviewing evidence, routing state, and future nested Hermes sessions.</p>
+          <p class="lede">G-2 operator console for reviewing evidence and creating draft-only approval intents without applying routing or starting Hermes sessions.</p>
         </div>
-        <div class="status-pill" data-safe-state="readonly">G-1 read-only console</div>
+        <div class="status-pill" data-safe-state="readonly">G-2 intent drafts</div>
       </div>
     </header>
 
@@ -28,7 +28,7 @@
       <article class="card">
         <span class="label">Review inbox</span>
         <strong class="value" id="review-count">—</strong>
-        <p>Human review items. Write-side approval controls remain disabled.</p>
+        <p>Human review items. Only draft-intent creation is enabled; approval/apply controls remain disabled.</p>
       </article>
       <article class="card">
         <span class="label">Assets</span>
@@ -83,6 +83,20 @@
       </article>
     </section>
 
+
+
+    <section class="panel" aria-labelledby="intent-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Draft-only write boundary</p>
+          <h2 id="intent-title">Review Intent Drafts</h2>
+        </div>
+        <button class="ghost-button" type="button" disabled data-action="create-review-intent-draft" id="create-intent-draft">Create draft for first review item</button>
+      </div>
+      <p>G-2 can write a project-local intent draft under <code>.hermes/review-intent-drafts/</code>. It does not create exact approval records, apply routing, start Hermes, call providers, or mutate global Hermes configuration.</p>
+      <pre class="code-block" id="intent-summary">Waiting for <code>GET /api/review-intents</code>.</pre>
+    </section>
+
     <section class="panel" aria-labelledby="routing-title">
       <div class="panel__header">
         <div>
@@ -91,7 +105,7 @@
         </div>
         <button class="ghost-button" type="button" disabled data-action="apply-routing-proposal">Apply approved routing</button>
       </div>
-      <p>Future routing writes must use Feiyue's exact approval objects and <code>RoutingApplyGate</code>. This console intentionally contains no enabled write controls.</p>
+      <p>Future routing writes must use Feiyue's exact approval objects and <code>RoutingApplyGate</code>. This console allows only draft-intent writes; exact approvals and routing apply remain disabled.</p>
       <pre class="code-block" id="routing-summary">worker.primary = loading from /api/routing</pre>
     </section>
 

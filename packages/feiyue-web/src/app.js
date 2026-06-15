@@ -6,6 +6,7 @@ const endpoints = {
   routing: '/api/routing',
   capabilities: '/api/capabilities',
   frontendDogfood: '/api/frontend-dogfood',
+  reviewIntents: '/api/review-intents',
 };
 
 const state = {
@@ -16,6 +17,7 @@ const state = {
   routing: null,
   capabilities: null,
   frontendDogfood: null,
+  reviewIntents: null,
 };
 
 function setText(id, value) {
@@ -27,6 +29,17 @@ async function getJson(path) {
   const response = await fetch(path, { headers: { accept: 'application/json' } });
   if (!response.ok) throw new Error(`${path} returned ${response.status}`);
   return response.json();
+}
+
+async function postJson(path, payload) {
+  const response = await fetch(path, {
+    method: 'POST',
+    headers: { accept: 'application/json', 'content-type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body?.message || `${path} returned ${response.status}`);
+  return body;
 }
 
 function renderOverview(payload) {
@@ -57,6 +70,8 @@ function renderRuns(payload) {
 function renderReviewInbox(payload) {
   const items = payload?.items || [];
   const target = document.getElementById('review-list');
+  const button = document.getElementById('create-intent-draft');
+  if (button) button.disabled = items.length === 0;
   if (!target) return;
   if (!items.length) {
     target.className = 'list empty';
@@ -112,6 +127,54 @@ function renderFrontendDogfood(payload) {
   setText('dogfood-summary', lines.join('\n'));
 }
 
+function renderReviewIntents(payload) {
+  const drafts = payload?.drafts || [];
+  const lines = [
+    `drafts = ${drafts.length}`,
+    `draft_only = true`,
+    `provider_call_count = ${payload?.provider_call_count ?? 0}`,
+    `global_hermes_config_mutated = ${String(payload?.global_hermes_config_mutated === true)}`,
+    `production_mutated = ${String(payload?.production_mutated === true)}`,
+  ];
+  for (const draft of drafts.slice(0, 6)) {
+    lines.push(`${draft.intent_id}: ${draft.intent_kind} / ${draft.status}`);
+  }
+  setText('intent-summary', lines.join('\n'));
+}
+
+async function createIntentDraftForFirstReviewItem() {
+  const item = state.reviewInbox?.items?.[0];
+  if (!item) return;
+  const payload = {
+    item_type: item.item_type,
+    item_id: item.item_id,
+    recommended_action: item.recommended_action,
+    evidence_path: item.evidence_path,
+    created_by: 'feiyue-operator-console',
+    reason: 'g2_operator_requested_review_intent_draft',
+  };
+  const result = await postJson(endpoints.reviewIntents, payload);
+  const updated = await getJson(endpoints.reviewIntents);
+  state.reviewIntents = updated;
+  renderReviewIntents(updated);
+  setText('intent-summary', `${document.getElementById('intent-summary')?.textContent || ''}\ncreated = ${result.draft.intent_id}`);
+}
+
+function wireIntentDraftButton() {
+  const button = document.getElementById('create-intent-draft');
+  if (!button) return;
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await createIntentDraftForFirstReviewItem();
+    } catch (error) {
+      setText('intent-summary', `intent draft failed: ${error.message}`);
+    } finally {
+      button.disabled = !(state.reviewInbox?.items?.length > 0);
+    }
+  });
+}
+
 function renderOfflineState(error) {
   setText('runs-count', 'offline');
   setText('review-count', 'offline');
@@ -128,6 +191,7 @@ function renderOfflineState(error) {
   setText('routing-summary', message);
   setText('capability-summary', message);
   setText('dogfood-summary', message);
+  setText('intent-summary', message);
 }
 
 function escapeHtml(value) {
@@ -140,8 +204,9 @@ function escapeHtml(value) {
 }
 
 async function boot() {
+  wireIntentDraftButton();
   try {
-    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood] = await Promise.all([
+    const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents] = await Promise.all([
       getJson(endpoints.overview),
       getJson(endpoints.runs),
       getJson(endpoints.reviewInbox),
@@ -149,6 +214,7 @@ async function boot() {
       getJson(endpoints.routing),
       getJson(endpoints.capabilities),
       getJson(endpoints.frontendDogfood),
+      getJson(endpoints.reviewIntents),
     ]);
     state.overview = overview;
     state.runs = runs;
@@ -157,12 +223,14 @@ async function boot() {
     state.routing = routing;
     state.capabilities = capabilities;
     state.frontendDogfood = frontendDogfood;
+    state.reviewIntents = reviewIntents;
     renderOverview(overview);
     renderRuns(runs);
     renderReviewInbox(reviewInbox);
     renderRouting(routing);
     renderCapabilities(capabilities);
     renderFrontendDogfood(frontendDogfood);
+    renderReviewIntents(reviewIntents);
   } catch (error) {
     renderOfflineState(error);
   }
