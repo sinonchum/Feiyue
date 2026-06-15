@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Feiyue Operator Console</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="hero" aria-labelledby="page-title">
+      <p class="eyebrow">Feiyue / Hermes evidence console</p>
+      <div class="hero__row">
+        <div>
+          <h1 id="page-title">Feiyue Operator Console</h1>
+          <p class="lede">Read-only frontend scaffold for reviewing Feiyue evidence, routing state, and future nested Hermes sessions.</p>
+        </div>
+        <div class="status-pill" data-safe-state="readonly">read-only scaffold</div>
+      </div>
+    </header>
+
+    <section class="grid cards" aria-label="System overview">
+      <article class="card">
+        <span class="label">Runs</span>
+        <strong class="value" id="runs-count">—</strong>
+        <p>Evidence records exposed through the existing Feiyue API.</p>
+      </article>
+      <article class="card">
+        <span class="label">Review inbox</span>
+        <strong class="value" id="review-count">—</strong>
+        <p>Human review items. Write-side approval controls remain disabled.</p>
+      </article>
+      <article class="card">
+        <span class="label">Assets</span>
+        <strong class="value" id="asset-count">—</strong>
+        <p>Project-local evidence and asset summaries.</p>
+      </article>
+    </section>
+
+    <section class="panel" aria-labelledby="hermes-console-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Nested runtime boundary</p>
+          <h2 id="hermes-console-title">Hermes Agent Console</h2>
+        </div>
+        <button class="ghost-button" type="button" disabled data-action="start-hermes-session-draft">Start session draft</button>
+      </div>
+      <div class="split">
+        <div>
+          <h3>Recommended architecture</h3>
+          <p>The browser should talk to a Feiyue backend, not directly to Hermes credentials or provider APIs. A future Hermes Bridge sidecar can stream redacted session events here.</p>
+        </div>
+        <ol class="timeline">
+          <li>Operator reviews evidence in Feiyue.</li>
+          <li>UI submits an intent draft.</li>
+          <li>Backend checks policy and approval gates.</li>
+          <li>Hermes Bridge runs an allowed profile/session.</li>
+          <li>Evidence is written under <code>.hermes/</code> and refreshed here.</li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="grid two-col">
+      <article class="panel" aria-labelledby="evidence-title">
+        <div class="panel__header">
+          <h2 id="evidence-title">Evidence Explorer</h2>
+          <a href="/dashboard" data-api-link>current dashboard</a>
+        </div>
+        <div id="runs-list" class="list empty">Waiting for <code>GET /runs</code>.</div>
+      </article>
+
+      <article class="panel" aria-labelledby="review-title">
+        <div class="panel__header">
+          <h2 id="review-title">Review Inbox</h2>
+          <a href="/dashboard/review-inbox" data-api-link>current inbox</a>
+        </div>
+        <div id="review-list" class="list empty">Waiting for <code>GET /review-inbox</code>.</div>
+      </article>
+    </section>
+
+    <section class="panel" aria-labelledby="routing-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Capability and routing</p>
+          <h2 id="routing-title">Worker route proposal surface</h2>
+        </div>
+        <button class="ghost-button" type="button" disabled data-action="apply-routing-proposal">Apply approved routing</button>
+      </div>
+      <p>Future routing writes must use Feiyue's exact approval objects and <code>RoutingApplyGate</code>. This scaffold intentionally contains no enabled write controls.</p>
+      <pre class="code-block" id="routing-summary">worker.primary = fetched by future /api/routing summary</pre>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>
