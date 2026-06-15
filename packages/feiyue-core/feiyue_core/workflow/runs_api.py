@@ -26,6 +26,10 @@ from feiyue_core.workflow.approval_gate import (
     read_approval_events,
     read_approval_verifier_evidence,
 )
+from feiyue_core.workflow.verifier_report import (
+    generate_verifier_report,
+    generate_event_diff,
+)
 from feiyue_core.workflow.review_inbox import ReviewInbox
 from feiyue_core.workflow.review_intents import (
     ReviewIntentDraftError,
@@ -133,14 +137,24 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
     intents = list_review_intent_drafts(project_root).model_dump(mode="json")
     sessions = list_hermes_session_drafts(project_root).model_dump(mode="json")
     approvals = list_dry_run_approvals(project_root).model_dump(mode="json")
+    report = generate_verifier_report(project_root)
     return {
-        "surface": "feiyue_operator_console_g4",
-        "mode": "approval_gated_dry_run",
+        "surface": "feiyue_operator_console_g5",
+        "mode": "verifier_dashboard",
         "mutates_state": False,
-        "write_endpoints_added": 3,
+        "write_endpoints_added": 4,
         "provider_call_count": 0,
         "hermes_sessions": {"total_drafts": len(sessions.get("drafts", [])), "dry_run_only": sessions.get("dry_run_only", True)},
         "approval_gate": {"total_approvals": len(approvals.get("approvals", [])), "dry_run_only": approvals.get("dry_run_only", True)},
+        "verifier_report": {
+            "total_approvals": report.total_approvals,
+            "total_anomalies": report.total_anomalies,
+            "total_checks_passed": report.total_verification_checks_passed,
+            "all_boundary_preserved": report.all_boundary_preserved,
+            "all_provider_calls_zero": report.all_provider_calls_zero,
+            "all_hermes_not_started": report.all_hermes_not_started,
+            "dry_run_only": report.dry_run_only,
+        },
         "hermes_started": False,
         "runs": {"total_runs": run_summary.get("total_runs", 0)},
         "review_inbox": {"total_items": len(review_summary.get("items", []))},
@@ -651,9 +665,16 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                             evidence = read_approval_verifier_evidence(root, parts[2])
                             self._send_json(200, evidence)
                             return
+                        if len(parts) >= 4 and parts[3] == "event-diff":
+                            diff = generate_event_diff(root, parts[2])
+                            self._send_json(200, diff)
+                            return
                         approval = read_dry_run_approval(root, parts[2])
                         self._send_json(200, approval.model_dump(mode="json"))
                         return
+                if path == "/api/verifier-report":
+                    self._send_json(200, generate_verifier_report(root).model_dump(mode="json"))
+                    return
                 if path in ("/", "/dashboard"):
                     self._send_text(200, render_runs_dashboard(root), content_type="text/html; charset=utf-8")
                     return

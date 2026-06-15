@@ -47,6 +47,7 @@ def test_frontend_scaffold_is_read_only_by_default() -> None:
     assert "sessionstorage" not in combined
     assert "api/" in html
     assert "approval-gate" in html
+    assert "verifier-report" in html
 
 def test_frontend_scaffold_uses_dark_institutional_palette() -> None:
     css = (WEB / "src" / "styles.css").read_text(encoding="utf-8")
