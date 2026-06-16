@@ -13,9 +13,9 @@
       <div class="hero__row">
         <div>
           <h1 id="page-title">Feiyue Operator Console</h1>
-          <p class="lede">G-8 operator console for reviewing evidence, drafting approval intents, creating session drafts from review inbox items via templates, simulating Hermes Bridge events, creating exact approval gates, cross-checking verifier evidence, executing approved dry-run drafts, and aggregating all approval chain events into a single chronologically-sorted audit trail. All with provider_call_count=0, hermes_started=false, and production_mutated=false.</p>
+          <p class="lede">G-9 operator console for reviewing evidence, drafting approval intents, creating session drafts from review inbox items via templates, simulating Hermes Bridge events, creating exact approval gates, cross-checking verifier evidence, executing approved dry-run drafts, aggregating all approval chain events into a single chronologically-sorted audit trail, and exporting offline markdown reports for compliance. All with provider_call_count=0, hermes_started=false, and production_mutated=false.</p>
         </div>
-        <div class="status-pill" data-safe-state="readonly">G-8 audit trail enabled</div>
+        <div class="status-pill" data-safe-state="readonly">G-9 audit export enabled</div>
       </div>
     </header>
 
@@ -66,6 +66,7 @@
           <li>G-6 pre-fills session draft fields from review inbox items via templates.</li>
           <li>G-7 replays approval events as execution output for approved dry-run drafts (two-phase: draft → approval → execute-no-provider).</li>
           <li>G-8 aggregates all approval chain events into a single chronologically-sorted audit trail with <code>?since=&lt;ISO&gt;</code> filtering.</li>
+          <li>G-9 exports the audit trail as an offline markdown report via <code>GET /api/audit-trail/export?format=markdown</code> (Content-Disposition download).</li>
           <li>Real Hermes session still requires a second exact human approval gate.</li>
         </ol>
       </div>
@@ -144,9 +145,12 @@
           <p class="eyebrow">Aggregated audit trail</p>
           <h2 id="audit-trail-title">Audit Trail</h2>
         </div>
-        <a href="/api/audit-trail" data-api-link>audit trail JSON</a>
+        <div class="panel__actions">
+          <button class="ghost-button" type="button" data-action="export-audit-markdown" id="export-audit-markdown">Export Markdown</button>
+          <a href="/api/audit-trail" data-api-link>audit trail JSON</a>
+        </div>
       </div>
-      <p>G-8 aggregates all approval chain events — session drafts, approvals, execution outputs, verifier evidence, and review intent drafts — into a single chronologically-sorted, read-only audit trail. Supports <code>?since=&lt;ISO&gt;</code> filtering.</p>
+      <p>G-8 aggregates all approval chain events — session drafts, approvals, execution outputs, verifier evidence, and review intent drafts — into a single chronologically-sorted, read-only audit trail. G-9 adds offline export: <code>GET /api/audit-trail/export?format=markdown</code> produces a compliance-ready markdown report.</p>
       <div class="split">
         <div class="list audit-trail-scroll" id="audit-trail-list">
           <p>No audit trail entries yet.</p>

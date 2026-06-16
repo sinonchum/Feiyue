@@ -16,7 +16,9 @@ if (!combined.includes('verifier-report')) failures.push('verifier-report endpoi
 if (!combined.includes('review-item-create-draft')) failures.push('review item create draft button class is missing');
 if (!combined.includes('execute-approved-dry-run')) failures.push('execute-approved-dry-run button id is missing');
 if (!combined.includes('audit-trail')) failures.push('audit-trail references (G-8) are missing');
-if (!combined.includes('G-8')) failures.push('G-8 surface identifier is missing');
+if (!combined.includes('audit-trail/export')) failures.push('audit-trail/export (G-9) endpoint is missing');
+if (!combined.includes('export-audit-markdown')) failures.push('export-audit-markdown button (G-9) is missing');
+if (!combined.includes('G-9')) failures.push('G-9 surface identifier is missing');
 if (combined.includes('start-hermes-session-draft')) failures.push('legacy Hermes session start action must stay absent');
 if (!combined.includes('disabled data-action="apply-routing-proposal"')) failures.push('routing apply action is not visibly disabled');
 if (/<form\b/i.test(combined)) failures.push('forms are not allowed in the static scaffold');
