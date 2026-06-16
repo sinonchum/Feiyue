@@ -224,3 +224,139 @@ code {
     grid-template-columns: 1fr;
   }
 }
+
+/* G-10: Cache indicator */
+.cache-indicator {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-align: right;
+}
+
+/* G-11: Timeline overlay */
+.timeline-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.timeline-modal {
+  max-width: 680px;
+  width: 100%;
+  max-height: 80vh;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 24px;
+}
+
+.timeline-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-soft);
+  flex-wrap: wrap;
+}
+
+.timeline-modal-header span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.timeline-modal-phases {
+  position: relative;
+  padding-left: 24px;
+}
+
+.timeline-modal-phases::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  bottom: 8px;
+  width: 2px;
+  background: var(--line-soft);
+}
+
+.timeline-phase {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.timeline-node {
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  margin-top: 3px;
+  border-radius: 50%;
+  background: var(--muted);
+  border: 2px solid var(--panel);
+  z-index: 1;
+}
+
+.timeline-phase--draft .timeline-node { background: var(--accent); }
+.timeline-phase--approval .timeline-node { background: #34d399; }
+.timeline-phase--verifier .timeline-node { background: #60a5fa; }
+.timeline-phase--execution .timeline-node { background: #f59e0b; }
+
+.timeline-content {
+  min-width: 0;
+}
+
+.timeline-content time {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  margin-bottom: 2px;
+}
+
+.timeline-content strong {
+  display: inline;
+  font-size: 14px;
+}
+
+.timeline-phase-label {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--line-soft);
+  color: var(--muted);
+}
+
+.timeline-content p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.timeline-content .code-block--inline {
+  margin-top: 4px;
+  padding: 6px 10px;
+  font-size: 11px;
+}
+
+/* G-12: Panel actions flex layout */
+.panel__actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}

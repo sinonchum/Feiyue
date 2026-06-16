@@ -500,6 +500,133 @@ function wireExportAuditButton() {
   });
 }
 
+// === G-10: State Persistence (localStorage) ===
+
+function saveState() {
+  try {
+    for (const [key, val] of Object.entries(state)) {
+      if (val !== null) localStorage.setItem('feiyue_state_' + key, JSON.stringify(val));
+    }
+    localStorage.setItem('feiyue_state_cached_at', new Date().toISOString());
+  } catch (e) {
+    // localStorage full or unavailable — silently continue
+  }
+}
+
+function restoreState() {
+  try {
+    const cachedAt = localStorage.getItem('feiyue_state_cached_at');
+    if (!cachedAt) return false;
+    let restored = false;
+    for (const key of Object.keys(state)) {
+      const raw = localStorage.getItem('feiyue_state_' + key);
+      if (raw) {
+        try {
+          state[key] = JSON.parse(raw);
+          restored = true;
+        } catch (e) {
+          // corrupt entry — skip
+        }
+      }
+    }
+    return restored;
+  } catch (e) {
+    return false;
+  }
+}
+
+function renderCachedIndicator() {
+  const cachedAt = localStorage.getItem('feiyue_state_cached_at');
+  if (cachedAt) {
+    const el = document.getElementById('cache-indicator');
+    if (el) el.textContent = 'cached: ' + cachedAt.slice(0, 19).replace('T', ' ');
+  }
+}
+
+// === G-11: Session Timeline ===
+
+async function showSessionTimeline(draftId) {
+  const data = await getJson('/api/session-timeline/' + draftId);
+  const overlay = document.getElementById('timeline-overlay');
+  const body = document.getElementById('timeline-body');
+  if (!overlay || !body) return;
+  body.innerHTML = [
+    '<div class="timeline-modal-header">',
+    '  <strong>Session Timeline: ' + escapeHtml(draftId) + '</strong>',
+    '  <span>status=' + escapeHtml(data.current_status) + ' · ' + data.total_events + ' events across ' + data.total_phases + ' phases</span>',
+    '</div>',
+    '<div class="timeline-modal-phases">',
+    ...(data.events || []).map((e, i) => {
+      const phaseClass = 'timeline-phase timeline-phase--' + escapeHtml(e.phase);
+      const details = e.details ? Object.entries(e.details).slice(0, 3).map(([k, v]) => k + '=' + String(v).slice(0, 40)).join(' · ') : '';
+      return '<div class="' + phaseClass + '">' +
+        '<div class="timeline-node"></div>' +
+        '<div class="timeline-content">' +
+        '  <time>' + escapeHtml(e.timestamp) + '</time>' +
+        '  <strong>' + escapeHtml(e.event_type) + '</strong>' +
+        '  <span class="timeline-phase-label">' + escapeHtml(e.phase) + '</span>' +
+        '  <p>' + escapeHtml(e.summary).slice(0, 200) + '</p>' +
+        (details ? '<pre class="code-block code-block--inline">' + escapeHtml(details) + '</pre>' : '') +
+        '</div></div>';
+    }).join(''),
+    '</div>',
+    '<button class="ghost-button" id="timeline-close">Close</button>',
+  ].join('');
+  overlay.style.display = 'flex';
+  document.getElementById('timeline-close')?.addEventListener('click', () => { overlay.style.display = 'none'; });
+  overlay.addEventListener('click', (ev) => { if (ev.target === overlay) overlay.style.display = 'none'; });
+}
+
+function wireTimelineButtons() {
+  document.addEventListener('click', (event) => {
+    const button = event.target.closest('.show-timeline-button');
+    if (!button) return;
+    const draftId = button.getAttribute('data-draft-id');
+    if (draftId) showSessionTimeline(draftId);
+  });
+}
+
+// === G-12: Artifact GC ===
+
+async function refreshCleanupStatus() {
+  const data = await getJson('/api/cleanup/status');
+  setText('cleanup-summary', [
+    'total = ' + data.total_artifacts,
+    'expired = ' + data.expired_artifacts + ' (' + data.expired_size_bytes + ' bytes)',
+    'active = ' + data.active_artifacts,
+    'ttl = ' + data.ttl_days + ' days',
+    'categories = ' + Object.entries(data.categories || {}).map(([k, v]) => k + ':' + v).join(', '),
+  ].join('\n'));
+  const btn = document.getElementById('run-cleanup');
+  if (btn) btn.disabled = data.expired_artifacts === 0;
+}
+
+async function runCleanup(ttlDays) {
+  const result = await postJson('/api/cleanup/run', { ttl_days: ttlDays || 7 });
+  setText('cleanup-summary', [
+    'removed = ' + result.removed_count + ' (' + result.removed_size_bytes + ' bytes)',
+    'kept = ' + result.kept_count,
+    'remaining = ' + result.remaining_artifacts,
+    'ttl = ' + result.ttl_days + ' days',
+  ].join('\n'));
+  await refreshCleanupStatus();
+}
+
+function wireCleanupButton() {
+  const btn = document.getElementById('run-cleanup');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    try {
+      await runCleanup(7);
+    } catch (error) {
+      setText('cleanup-summary', 'cleanup failed: ' + error.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+}
+
 function renderOfflineState(error) {
   setText('runs-count', 'offline');
   setText('review-count', 'offline');
@@ -522,6 +649,7 @@ function renderOfflineState(error) {
   setText('verifier-summary', message);
   setText('execution-output-summary', message);
   setText('audit-trail-summary', message);
+  setText('cleanup-summary', message);
 }
 
 function escapeHtml(value) {
@@ -540,6 +668,27 @@ async function boot() {
   wireApproveDraftButton();
   wireExecuteApprovedButton();
   wireExportAuditButton();
+  wireTimelineButtons();
+  wireCleanupButton();
+  // Restore cached state from localStorage (G-10)
+  const restored = restoreState();
+  if (restored) {
+    renderCachedIndicator();
+    // Render cached data immediately while fresh data loads
+    if (state.overview) renderOverview(state.overview);
+    if (state.runs) renderRuns(state.runs);
+    if (state.reviewInbox) renderReviewInbox(state.reviewInbox);
+    if (state.routing) renderRouting(state.routing);
+    if (state.capabilities) renderCapabilities(state.capabilities);
+    if (state.frontendDogfood) renderFrontendDogfood(state.frontendDogfood);
+    if (state.reviewIntents) renderReviewIntents(state.reviewIntents);
+    if (state.hermesSessionDrafts) renderHermesSessions(state.hermesSessionDrafts);
+    if (state.approvalGate) renderApprovals(state.approvalGate);
+    if (state.verifierReport) renderVerifier(state.verifierReport);
+    if (state.executionOutput) renderExecutionOutput(state.executionOutput);
+    if (state.auditTrail) renderAuditTrail(state.auditTrail);
+  }
+  // Fresh fetch — updates cached data
   try {
     const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents, hermesSessionDrafts, approvalGate, verifierReport, executionOutput, auditTrail] = await Promise.all([
       getJson(endpoints.overview),
@@ -581,6 +730,9 @@ async function boot() {
     renderVerifier(verifierReport);
     renderExecutionOutput(executionOutput);
     renderAuditTrail(auditTrail);
+    saveState();  // G-10: persist fresh data to localStorage
+    refreshCleanupStatus();  // G-12: load cleanup status
+    renderCachedIndicator();
   } catch (error) {
     renderOfflineState(error);
   }
