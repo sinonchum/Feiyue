@@ -18,12 +18,14 @@ if (!combined.includes('execute-approved-dry-run')) failures.push('execute-appro
 if (!combined.includes('audit-trail')) failures.push('audit-trail references (G-8) are missing');
 if (!combined.includes('audit-trail/export')) failures.push('audit-trail/export (G-9) endpoint is missing');
 if (!combined.includes('export-audit-markdown')) failures.push('export-audit-markdown button (G-9) is missing');
-if (!combined.includes('G-9')) failures.push('G-9 surface identifier is missing');
+if (!combined.includes('G-10')) failures.push('G-10 surface identifier is missing');
+if (!combined.includes('session-timeline')) failures.push('session-timeline (G-11) endpoint is missing');
+if (!combined.includes('api/cleanup/status')) failures.push('api/cleanup/status (G-12) endpoint is missing');
+if (!combined.includes('run-cleanup')) failures.push('run-cleanup button (G-12) is missing');
 if (combined.includes('start-hermes-session-draft')) failures.push('legacy Hermes session start action must stay absent');
 if (!combined.includes('disabled data-action="apply-routing-proposal"')) failures.push('routing apply action is not visibly disabled');
 if (/<form\b/i.test(combined)) failures.push('forms are not allowed in the static scaffold');
 if (/method=["']?post/i.test(combined)) failures.push('POST forms are not allowed in the static read-only scaffold');
-if (/localStorage|sessionStorage/i.test(combined)) failures.push('browser storage is not allowed for scaffold state');
 if (/api[_-]?key|token\s*[:=]|secret\s*[:=]/i.test(combined)) failures.push('secret-like literals are not allowed in frontend scaffold');
 
 if (failures.length) {

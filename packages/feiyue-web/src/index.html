@@ -13,11 +13,13 @@
       <div class="hero__row">
         <div>
           <h1 id="page-title">Feiyue Operator Console</h1>
-          <p class="lede">G-9 operator console for reviewing evidence, drafting approval intents, creating session drafts from review inbox items via templates, simulating Hermes Bridge events, creating exact approval gates, cross-checking verifier evidence, executing approved dry-run drafts, aggregating all approval chain events into a single chronologically-sorted audit trail, and exporting offline markdown reports for compliance. All with provider_call_count=0, hermes_started=false, and production_mutated=false.</p>
+          <p class="lede">G-10 operator console for reviewing evidence, drafting approval intents, creating session drafts from review inbox items via templates, simulating Hermes Bridge events, creating exact approval gates, cross-checking verifier evidence, executing approved dry-run drafts, aggregating all approval chain events into a single chronologically-sorted audit trail, exporting offline markdown reports for compliance, persisting dashboard state across page refreshes via localStorage, exploring per-draft session replay timelines with full lifecycle visualization, and managing artifact TTL garbage collection. All with provider_call_count=0, hermes_started=false, and production_mutated=false.</p>
         </div>
-        <div class="status-pill" data-safe-state="readonly">G-9 audit export enabled</div>
+        <div class="status-pill" data-safe-state="readonly">G-10 persistence · timeline · GC</div>
       </div>
     </header>
+
+    <div class="cache-indicator" id="cache-indicator"></div>
 
     <section class="grid cards" aria-label="System overview">
       <article class="card">
@@ -67,6 +69,9 @@
           <li>G-7 replays approval events as execution output for approved dry-run drafts (two-phase: draft → approval → execute-no-provider).</li>
           <li>G-8 aggregates all approval chain events into a single chronologically-sorted audit trail with <code>?since=&lt;ISO&gt;</code> filtering.</li>
           <li>G-9 exports the audit trail as an offline markdown report via <code>GET /api/audit-trail/export?format=markdown</code> (Content-Disposition download).</li>
+          <li>G-10 persists dashboard state across page refreshes via localStorage and restores cached data on boot.</li>
+          <li>G-11 visualizes per-draft lifecycle timelines via <code>GET /api/session-timeline/&lt;draft_id&gt;</code> (draft → approval → verifier → execution).</li>
+          <li>G-12 scans artifact directories for age-based TTL expiry and provides cleanup via <code>GET /api/cleanup/status</code> and <code>POST /api/cleanup/run</code>.</li>
           <li>Real Hermes session still requires a second exact human approval gate.</li>
         </ol>
       </div>
@@ -84,7 +89,7 @@
           <a href="/api/hermes-session-drafts" data-api-link>session drafts JSON</a>
         </div>
       </div>
-      <p>G-3 writes only provider-free dry-run session drafts under <code>.hermes/hermes-session-drafts/</code>. It does not start Hermes, call providers, execute tools, or mutate global configuration.</p>
+      <p>G-3 writes only provider-free dry-run session drafts under <code>.hermes/hermes-session-drafts/</code>. G-11 adds a Timeline button on each draft to visualize its full lifecycle: draft creation → approval → verifier check → execution replay.</p>
       <pre class="code-block" id="session-summary">Waiting for <code>GET /api/hermes-session-drafts</code>.</pre>
     </section>
 
@@ -157,6 +162,26 @@
         </div>
         <pre class="code-block" id="audit-trail-summary">Waiting for <code>GET /api/audit-trail</code>.</pre>
       </div>
+    </section>
+
+    <!-- G-11: Timeline overlay (hidden by default) -->
+    <div class="timeline-overlay" id="timeline-overlay" style="display:none">
+      <div class="timeline-modal" id="timeline-body">
+        <p>Loading timeline...</p>
+      </div>
+    </div>
+
+    <!-- G-12: Artifact GC panel -->
+    <section class="panel" aria-labelledby="cleanup-title">
+      <div class="panel__header">
+        <div>
+          <p class="eyebrow">Artifact lifecycle management</p>
+          <h2 id="cleanup-title">Artifact GC</h2>
+        </div>
+        <button class="ghost-button" type="button" data-action="run-cleanup" id="run-cleanup" disabled>Run cleanup (7d TTL)</button>
+      </div>
+      <p>G-12 scans artifact directories under <code>.hermes/</code> and reports age. Artifacts older than the configured TTL (default 7 days) can be removed. Only expires artifact directories — never touches config files or profiles.</p>
+      <pre class="code-block" id="cleanup-summary">Waiting for <code>GET /api/cleanup/status</code>.</pre>
     </section>
 
     <section class="grid two-col">

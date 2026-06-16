@@ -45,6 +45,8 @@ from feiyue_core.workflow.review_intents import (
     list_review_intent_drafts,
 )
 from feiyue_core.workflow.audit_trail import generate_audit_trail, render_audit_trail_export_markdown, AuditTrailResult
+from feiyue_core.workflow.session_timeline import generate_session_timeline
+from feiyue_core.workflow.artifact_gc import get_cleanup_status, run_cleanup
 
 
 def _esc(value: object) -> str:
@@ -150,8 +152,8 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
     exec_summary = list_execution_outputs(project_root)
     audit_trail = generate_audit_trail(project_root)
     return {
-        "surface": "feiyue_operator_console_g9",
-        "mode": "audit_export_enabled",
+        "surface": "feiyue_operator_console_g10",
+        "mode": "state_persistence_timeline_gc_enabled",
         "mutates_state": False,
         "write_endpoints_added": 6,
         "provider_call_count": 0,
@@ -789,6 +791,51 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                         ],
                     })
                     return
+                if path.startswith("/api/session-timeline/"):
+                    parts = [part for part in path.split("/") if part]
+                    if len(parts) >= 3:
+                        timeline = generate_session_timeline(root, parts[2])
+                        self._send_json(200, {
+                            "draft_id": timeline.draft_id,
+                            "current_status": timeline.current_status,
+                            "total_phases": timeline.total_phases,
+                            "total_events": timeline.total_events,
+                            "provider_call_count": timeline.provider_call_count,
+                            "hermes_started": timeline.hermes_started,
+                            "dry_run_only": timeline.dry_run_only,
+                            "events": [
+                                {
+                                    "phase": e.phase,
+                                    "timestamp": e.timestamp,
+                                    "event_type": e.event_type,
+                                    "summary": e.summary,
+                                    "status": e.status,
+                                    "details": e.details,
+                                }
+                                for e in timeline.events
+                            ],
+                        })
+                        return
+                    self._send_json(400, {"error": "invalid_path", "path": path})
+                    return
+                if path == "/api/cleanup/status":
+                    parsed = urlparse(self.path)
+                    qs = {k: v[0] for k, v in (p.split("=", 1) for p in parsed.query.split("&") if "=" in p)} if parsed.query else {}
+                    ttl = int(qs.get("ttl_days", "7"))
+                    status = get_cleanup_status(root, ttl_days=ttl)
+                    self._send_json(200, {
+                        "total_artifacts": status.total_artifacts,
+                        "expired_artifacts": status.expired_artifacts,
+                        "active_artifacts": status.active_artifacts,
+                        "total_size_bytes": status.total_size_bytes,
+                        "expired_size_bytes": status.expired_size_bytes,
+                        "ttl_days": status.ttl_days,
+                        "categories": status.categories,
+                        "mutates_state": status.mutates_state,
+                        "provider_call_count": status.provider_call_count,
+                        "hermes_started": status.hermes_started,
+                    })
+                    return
                 self._send_json(404, {"error": "not_found", "path": path})
             except RunEvidenceNotFoundError as exc:
                 self._send_json(
@@ -903,6 +950,26 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                         self._send_json(400, {"error": "invalid_execution_request", "message": str(exc)})
                     return
                 self._send_json(400, {"error": "invalid_path", "path": path})
+                return
+            if path == "/api/cleanup/run":
+                try:
+                    payload = self._read_json_body()
+                    ttl = int(payload.get("ttl_days", 7))
+                    result = run_cleanup(root, ttl_days=ttl)
+                    self._send_json(200, {
+                        "removed_count": result.removed_count,
+                        "removed_size_bytes": result.removed_size_bytes,
+                        "kept_count": result.kept_count,
+                        "remaining_artifacts": result.remaining_artifacts,
+                        "ttl_days": result.ttl_days,
+                        "mutates_state": result.mutates_state,
+                        "provider_call_count": result.provider_call_count,
+                        "hermes_started": result.hermes_started,
+                        "removed_entries": result.removed_entries,
+                        "kept_entries": result.kept_entries,
+                    })
+                except Exception as exc:
+                    self._send_json(400, {"error": "cleanup_failed", "message": str(exc)})
                 return
             self._send_json(405, {"error": "method_not_allowed", "method": "POST"})
 

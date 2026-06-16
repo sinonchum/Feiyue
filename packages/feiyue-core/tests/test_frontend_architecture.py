@@ -43,7 +43,7 @@ def test_frontend_scaffold_is_read_only_by_default() -> None:
     assert "<form" not in combined
     assert "method=\"post" not in combined
 
-    assert "localstorage" not in combined
+    assert "localStorage" in js  # G-10 uses localStorage for state persistence (read-only browser API)
     assert "sessionstorage" not in combined
     assert "api/" in html
     assert "api/execution-output" in html
@@ -103,8 +103,8 @@ def test_audit_trail_module_scans_all_artifact_sources() -> None:
     # Verify overview surface reports G-9 mode
     from feiyue_core.workflow.runs_api import read_operator_console_overview
     overview = read_operator_console_overview("/tmp/feiyue-test-audit-empty")
-    assert overview["surface"] == "feiyue_operator_console_g9"
-    assert overview["mode"] == "audit_export_enabled"
+    assert overview["surface"] == "feiyue_operator_console_g10"
+    assert overview["mode"] == "state_persistence_timeline_gc_enabled"
     assert "audit_trail" in overview
     assert overview["audit_trail"]["total_entries"] == 0
     assert overview["audit_trail"]["mutates_state"] is False
