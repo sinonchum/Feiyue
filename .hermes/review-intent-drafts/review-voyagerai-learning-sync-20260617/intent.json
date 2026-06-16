@@ -1,0 +1,21 @@
+{
+  "intent_id": "review-voyagerai-learning-sync-20260617",
+  "intent_kind": "routing_review_draft",
+  "item_type": "self_evolve",
+  "item_id": "voyagerai-learning-sync-20260617",
+  "recommended_action": "config_change",
+  "evidence_path": ".hermes/frontend-dogfood/voyagerai-learning-sync-20260617/evidence.json",
+  "created_by": "feiyue-bridge",
+  "reason": "self_evolve:Capture VOYAGERAI real-project Feiyue lessons, sync local br",
+  "status": "drafted",
+  "next_required_gate": "human_review_then_exact_approval",
+  "draft_only": false,
+  "mutates_state": true,
+  "provider_call_count": 0,
+  "global_hermes_config_mutated": false,
+  "production_mutated": true,
+  "writes_approval": false,
+  "applies_routing": false,
+  "starts_hermes_session": false,
+  "created_at": "2026-06-16T23:32:22.482932Z"
+}
