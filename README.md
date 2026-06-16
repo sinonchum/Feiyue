@@ -112,6 +112,8 @@ GET /runs/<task_id>/handoff
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution rules for TDD, provider-free defaults, secret handling, and CI expectations.
 - [`docs/resilient-session-runtime.md`](docs/resilient-session-runtime.md) — feature design for anti-amnesia runtime recovery across model fallback, network/power loss, and unknown side effects.
 - [`docs/AI递归自我提升现状讨论 2026-06-12.md`](docs/AI递归自我提升现状讨论%202026-06-12.md) — discussion notes on practical Recursive Self-Improvement (RSI), synthetic data, self-play, AI feedback, inference-time self-correction, environment-driven feedback, and agent loops.
+- [`docs/real-project-learnings-voyagerai.md`](docs/real-project-learnings-voyagerai.md) — lessons from applying Feiyue to the real VOYAGERAI consolidation repo: parent-overlay safety, weak-model gap analysis, private-submodule CI, and portable evidence.
+- [`docs/two-hermes-github-sync.md`](docs/two-hermes-github-sync.md) — GitHub-based sync strategy for sharing Feiyue learning between the Windows 11 Hermes and MacBook Hermes without syncing secrets or local runtime state.
 
 ## Status
 
