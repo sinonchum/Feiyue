@@ -95,8 +95,8 @@ def test_g3_overview_api_reports_hermes_dry_run_mode_without_raw_secret_leak(tmp
 
     after = {path.relative_to(tmp_path).as_posix(): path.stat().st_mtime_ns for path in tmp_path.rglob("*") if path.is_file()}
     assert after == before
-    assert overview["surface"] == "feiyue_operator_console_g8"
-    assert overview["mode"] == "audit_trail_enabled"
+    assert overview["surface"] == "feiyue_operator_console_g9"
+    assert overview["mode"] == "audit_export_enabled"
     assert overview["mutates_state"] is False
     assert overview["write_endpoints_added"] == 6
     assert overview["provider_call_count"] == 0

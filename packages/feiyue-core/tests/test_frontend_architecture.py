@@ -66,7 +66,7 @@ def test_frontend_scaffold_uses_dark_institutional_palette() -> None:
 
 def test_audit_trail_module_scans_all_artifact_sources() -> None:
     """G-8: audit_trail.generate_audit_trail aggregates from all sources."""
-    from feiyue_core.workflow.audit_trail import generate_audit_trail, AuditEntry, AuditTrailResult
+    from feiyue_core.workflow.audit_trail import generate_audit_trail, AuditEntry, AuditTrailResult, render_audit_trail_export_markdown
 
     # Empty project - should return empty result
     result = generate_audit_trail("/tmp/feiyue-test-audit-empty")
@@ -100,11 +100,62 @@ def test_audit_trail_module_scans_all_artifact_sources() -> None:
     assert entry.description == "Test entry"
     assert entry.details == {"draft_id": "test-001"}
 
-    # Verify overview surface reports G-8 mode
+    # Verify overview surface reports G-9 mode
     from feiyue_core.workflow.runs_api import read_operator_console_overview
     overview = read_operator_console_overview("/tmp/feiyue-test-audit-empty")
-    assert overview["surface"] == "feiyue_operator_console_g8"
-    assert overview["mode"] == "audit_trail_enabled"
+    assert overview["surface"] == "feiyue_operator_console_g9"
+    assert overview["mode"] == "audit_export_enabled"
     assert "audit_trail" in overview
     assert overview["audit_trail"]["total_entries"] == 0
     assert overview["audit_trail"]["mutates_state"] is False
+
+    # Verify export markdown generation
+    markdown = render_audit_trail_export_markdown(result)
+    assert isinstance(markdown, str)
+    assert "# Feiyue Audit Trail Report" in markdown
+    assert "## Summary" in markdown
+    assert "| Total entries | 0 |" in markdown
+    assert "## Source Breakdown" in markdown
+    assert "## Chronological Event Log" in markdown
+    assert "provider-free" in markdown
+    assert "G-9" in markdown
+    assert "No audit trail entries found" in markdown or "No entries" in markdown
+
+    # Export with real data
+    result_with_data = generate_audit_trail("/tmp/feiyue-test-audit-empty")
+    # Create minimal entries manually to test table rendering
+    from feiyue_core.workflow.audit_trail import AuditEntry
+    data_result = AuditTrailResult(
+        total_entries=3,
+        sources_found={"draft": 2, "approval": 1},
+        entries=[
+            AuditEntry(
+                timestamp="2026-01-01T00:00:00+00:00",
+                source="draft",
+                event_type="session_draft_created",
+                description="Test draft created",
+                details={"draft_id": "test-001"},
+            ),
+            AuditEntry(
+                timestamp="2026-01-02T00:00:00+00:00",
+                source="approval",
+                event_type="dry_run_approved",
+                description="Test approval",
+                details={"approved_by": "operator"},
+            ),
+            AuditEntry(
+                timestamp="2026-01-03T00:00:00+00:00",
+                source="draft",
+                event_type="approval_required",
+                description="Approval required for test",
+            ),
+        ],
+    )
+    markdown_data = render_audit_trail_export_markdown(data_result)
+    assert "📝 Draft" in markdown_data or "Draft" in markdown_data
+    assert "✅ Approval" in markdown_data or "Approval" in markdown_data
+    assert "| 1 |" in markdown_data  # chronological log row
+    assert "Test draft created" in markdown_data
+    assert "Test approval" in markdown_data
+    assert "Approval required for test" in markdown_data
+    assert "3" in markdown_data  # total entries

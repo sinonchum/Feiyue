@@ -44,7 +44,7 @@ from feiyue_core.workflow.review_intents import (
     create_review_intent_draft,
     list_review_intent_drafts,
 )
-from feiyue_core.workflow.audit_trail import generate_audit_trail, AuditTrailResult
+from feiyue_core.workflow.audit_trail import generate_audit_trail, render_audit_trail_export_markdown, AuditTrailResult
 
 
 def _esc(value: object) -> str:
@@ -150,8 +150,8 @@ def read_operator_console_overview(project_root: str | Path) -> dict[str, object
     exec_summary = list_execution_outputs(project_root)
     audit_trail = generate_audit_trail(project_root)
     return {
-        "surface": "feiyue_operator_console_g8",
-        "mode": "audit_trail_enabled",
+        "surface": "feiyue_operator_console_g9",
+        "mode": "audit_export_enabled",
         "mutates_state": False,
         "write_endpoints_added": 6,
         "provider_call_count": 0,
@@ -727,6 +727,42 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                             self._send_json(exc.status_code, {"error": "execution_output_not_found", "message": str(exc)})
                         return
                     self._send_json(400, {"error": "invalid_path", "path": path})
+                    return
+                if path == "/api/audit-trail/export":
+                    parsed = urlparse(self.path)
+                    qs = {k: v[0] for k, v in (p.split("=", 1) for p in parsed.query.split("&") if "=" in p)} if parsed.query else {}
+                    fmt = qs.get("format", "markdown")
+                    since = qs.get("since", None)
+                    audit = generate_audit_trail(root, since=since)
+                    if fmt == "json":
+                        self._send_json(200, {
+                            "total_entries": audit.total_entries,
+                            "since": audit.since,
+                            "sources_found": audit.sources_found,
+                            "provider_call_count": audit.provider_call_count,
+                            "hermes_started": audit.hermes_started,
+                            "global_hermes_config_mutated": audit.global_hermes_config_mutated,
+                            "production_mutated": audit.production_mutated,
+                            "entries": [
+                                {
+                                    "timestamp": e.timestamp,
+                                    "source": e.source,
+                                    "event_type": e.event_type,
+                                    "description": e.description,
+                                    "details": e.details,
+                                }
+                                for e in audit.entries
+                            ],
+                        })
+                        return
+                    markdown = render_audit_trail_export_markdown(audit)
+                    body = markdown.encode("utf-8")
+                    self.send_response(200)
+                    self.send_header("content-type", "text/markdown; charset=utf-8")
+                    self.send_header("content-disposition", 'attachment; filename="feiyue-audit-trail-report.md"')
+                    self.send_header("content-length", str(len(body)))
+                    self.end_headers()
+                    self.wfile.write(body)
                     return
                 if path.startswith("/api/audit-trail"):
                     parsed = urlparse(self.path)

@@ -468,6 +468,38 @@ function wireExecuteApprovedButton() {
   });
 }
 
+async function exportAuditMarkdown() {
+  const response = await fetch('/api/audit-trail/export?format=markdown', {
+    headers: { accept: 'text/markdown' },
+  });
+  if (!response.ok) throw new Error(`export returned ${response.status}`);
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `feiyue-audit-trail-${new Date().toISOString().slice(0, 10)}.md`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  document.body.removeChild(anchor);
+  URL.revokeObjectURL(url);
+  setText('audit-trail-summary', `${document.getElementById('audit-trail-summary')?.textContent || ''}\nexported = feiyue-audit-trail-${new Date().toISOString().slice(0, 10)}.md`);
+}
+
+function wireExportAuditButton() {
+  const button = document.getElementById('export-audit-markdown');
+  if (!button) return;
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      await exportAuditMarkdown();
+    } catch (error) {
+      setText('audit-trail-summary', `export failed: ${error.message}`);
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
 function renderOfflineState(error) {
   setText('runs-count', 'offline');
   setText('review-count', 'offline');
@@ -507,6 +539,7 @@ async function boot() {
   wireHermesSessionDraftButton();
   wireApproveDraftButton();
   wireExecuteApprovedButton();
+  wireExportAuditButton();
   try {
     const [overview, runs, reviewInbox, assets, routing, capabilities, frontendDogfood, reviewIntents, hermesSessionDrafts, approvalGate, verifierReport, executionOutput, auditTrail] = await Promise.all([
       getJson(endpoints.overview),
