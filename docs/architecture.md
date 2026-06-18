@@ -1,24 +1,55 @@
 # Feiyue Architecture
 
-Feiyue is a Hermes-based Creative Evolution Loop Orchestrator. The current implementation is a Provider-Free Foundation: it validates the system boundaries, recovery surfaces, safety gates, and handoff artifacts without using real provider credentials or mutating Hermes configuration.
+Feiyue is a self-evolving AI development orchestrator built on top of Hermes Agent. The architecture separates specification (strong models), execution (weak models), verification, policy, and curation into distinct roles, connected by typed evidence at every boundary.
 
 ## System Flow
 
-The static diagram below is checked into the repository and uses only local SVG markup.
+```mermaid
+flowchart TB
+    subgraph Human["Human Direction"]
+        A[Creative Intent]
+    end
 
-![Feiyue architecture flow](assets/feiyue-architecture.svg)
+    subgraph Specification["Specification Layer"]
+        B[Strong Model / Teacher]
+        C[Task Contract]
+    end
 
-```text
-Human Creative Direction
-  -> Strong Spec / Teacher
-  -> Task Contract
-  -> Weak Worker / Student
-  -> Sandbox / Candidate Writes
-  -> Verifier
-  -> Policy Governor
-  -> Run Evidence
-  -> Handoff / Dashboard / Static Export Bundle
-  -> Curator / Asset Promotion
+    subgraph Execution["Execution Layer"]
+        D[Weak Model / Student]
+        E[Sandbox / Candidate Writes]
+        F[Verifier]
+    end
+
+    subgraph Governance["Governance Layer"]
+        G[Policy Governor]
+        H[Run Evidence]
+    end
+
+    subgraph Inspection["Inspection Layer"]
+        I[Handoff / Dashboard]
+        J[Static Export Bundle]
+    end
+
+    subgraph Learning["Learning Layer"]
+        K[Curator / Asset Promotion]
+        L[Lessons, Evals, Templates]
+    end
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E --> F
+    F -- "pass" --> G
+    F -- "fail" --> B
+    G --> H
+    H --> I
+    H --> J
+    H --> K
+    K --> L
+    L -.->|"fed back into profiles"| B
+    L -.->|"fed back into profiles"| D
 ```
 
 ## Core Roles
@@ -27,21 +58,25 @@ Human Creative Direction
 
 The human supplies taste, product intent, and authorization decisions. Human approval is treated as explicit evidence, not model memory.
 
-### Strong Spec / Teacher
+### Strong Model / Teacher
 
-The strong model role is responsible for PRD/spec/task-contract quality and sparse guidance. In the current provider-free implementation, teacher behavior is deterministic fake guidance so that tests and CI do not depend on live model calls.
+The strong model role is responsible for specification, task decomposition, and sparse guidance. Successful patterns reduce teacher dependence over time as lessons and routing rules accumulate.
 
-### Weak Worker / Student
+### Weak Model / Student
 
-The weak worker role attempts bounded execution. Current examples use deterministic candidate writes and toy workflows to prove execution, verifier failure, teacher retry, and verified promotion behavior.
+The weak model role attempts bounded execution within sandboxed constraints. In the provider-free implementation, student behavior is deterministic so tests and CI do not depend on live model calls.
 
 ### Verifier
 
-The Verifier is the source of truth for pass/fail behavior. A workflow is not considered successful because a model says it is successful; it is successful only when the verifier and persisted evidence agree.
+The Verifier is the single source of truth for pass/fail behavior. A workflow is not considered successful because a model says it is; it is successful only when the verifier and persisted evidence agree.
 
 ### Policy Governor
 
-The Policy Governor gates high-risk, sensitive, retry, teacher-call, token, and promotion decisions. It produces auditable decisions and blocks or escalates before side effects when required.
+The Policy Governor gates high-risk operations — retries, teacher calls, promotions, and production changes. It produces auditable decisions and escalates to human approval when required.
+
+### Curator
+
+The Curator reviews successful run evidence, promotes reusable assets (lessons, regression evals, task templates), and manages the asset lifecycle. Promoted assets feed back into model profiles to reduce errors and teacher calls on future runs.
 
 ## Evidence and Handoff Surfaces
 
@@ -50,13 +85,11 @@ The Policy Governor gates high-risk, sensitive, retry, teacher-call, token, and 
 Run Evidence is persisted under `.hermes/runs/<task_id>/run-evidence.json`. It captures:
 
 - status;
-- policy action/reason;
+- policy action and reason;
 - execution evidence;
-- retry evidence;
-- promotion evidence;
+- retry and promotion evidence;
 - approval evidence;
-- `safe_to_retry`;
-- `next_safe_action`;
+- `safe_to_retry` and `next_safe_action`;
 - report paths.
 
 ### Handoff Summary
@@ -69,31 +102,26 @@ The local API and dashboard are read-only inspection surfaces. They do not execu
 
 ### Static Export Bundle
 
-Static Export Bundle is the portable offline report surface. The export-all pipeline creates HTML, `manifest.json`, a ZIP bundle, extracts it, and verifies the extracted report.
+Static Export Bundle is the portable offline report surface. The export-all pipeline renders HTML, a `manifest.json`, a ZIP bundle, extracts it, and verifies the extracted report.
 
 ## Provider-Free Foundation
 
-The current foundation proves:
+The current implementation validates all system boundaries without using real provider credentials or mutating Hermes configuration:
 
 - deterministic workflow execution;
 - verifier-gated retry and promotion;
-- policy evidence;
-- fallback handoff;
-- read-only dashboard/API inspection;
+- policy evidence and fallback handoff;
+- read-only dashboard and API inspection;
 - static report export and verification;
-- provider-free example smoke;
-- provider-free benchmark smoke;
+- provider-free smoke tests and benchmarks;
 - CI quality gates.
 
-## Explicitly Gated Future Work
+## Gated Future Work
 
-The following are not enabled by this architecture yet:
+The following are explicitly gated and require separate authorization:
 
-- real provider execution;
-- Hermes profile scheduling;
+- real provider execution with credentials;
+- Hermes profile scheduling and multi-worker routing;
 - real weak-model vs strong-model benchmark calls;
-- real multi-worker routing;
-- production promotion / rollback automation;
+- production promotion and rollback automation;
 - long-lived sensitive artifact storage.
-
-These require explicit human authorization and additional fake-provider tests before any real credential or model call is introduced.

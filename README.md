@@ -1,5 +1,10 @@
 # Feiyue
 
+[![Python](https://img.shields.io/badge/python-3.11+-2b5b84?logo=python&logoColor=white)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue?logo=open-source-initiative&logoColor=white)](LICENSE)
+[![CI](https://github.com/sinonchum/Feiyue/actions/workflows/ci.yml/badge.svg)](https://github.com/sinonchum/Feiyue/actions)
+[![Built on Hermes Agent](https://img.shields.io/badge/built%20on-Hermes%20Agent-6b46c1?logo=data:image/svg%2bxml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxNiIgaGVpZ2h0PSIxNiIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PHBhdGggZD0iTTEyIDJMMiA3bDEwIDUgMTAtNS0xMC01eiIvPjxwYXRoIGQ9Ik0yIDE3bDEwIDUgMTAtNSIvPjxwYXRoIGQ9Ik0yIDEybDEwIDUgMTAtNSIvPjwvc3ZnPg==)](https://hermes-agent.nousresearch.com)
+
 > A self-evolving AI development orchestrator — strong models specify, weak models execute, deterministic verifiers gate quality, and the system learns from every run.
 
 Feiyue is an open-source framework for building **verification-gated, evidence-driven AI agent workflows**. It addresses a practical problem in LLM-based development: strong models (GPT-5, Claude 4) are reliable but expensive, while weaker models (DeepSeek, Llama) are cheap but unreliable for complex tasks. Feiyue separates the roles — strong models for specification and oversight, weak models for bounded execution — with deterministic verification as the ground truth for pass/fail. Every operation produces auditable evidence, and successful patterns are distilled into reusable assets that compound over time.
