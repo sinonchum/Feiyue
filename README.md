@@ -1,204 +1,151 @@
 # Feiyue
 
-Feiyue is a private research/design repository for a Hermes-based Creative Evolution Loop Orchestrator: a self-evolving AI development organization that turns human creative direction into strong-model PRD/spec/task contracts, weak-model execution, tool-grounded verification, teacher-guided repair, and reusable skills/evals/templates/routing rules. Its canonical direction is to make weaker/cheaper student models increasingly reliable, expand their task boundary with evidence, and gradually develop system roles that can contribute creative variants and opportunities under human taste selection.
+> A self-evolving AI development orchestrator — strong models specify, weak models execute, deterministic verifiers gate quality, and the system learns from every run.
 
-## Implementation
+Feiyue is an open-source framework for building **verification-gated, evidence-driven AI agent workflows**. It addresses a practical problem in LLM-based development: strong models (GPT-5, Claude 4) are reliable but expensive, while weaker models (DeepSeek, Llama) are cheap but unreliable for complex tasks. Feiyue separates the roles — strong models for specification and oversight, weak models for bounded execution — with deterministic verification as the ground truth for pass/fail. Every operation produces auditable evidence, and successful patterns are distilled into reusable assets that compound over time.
 
-- Core package: `packages/feiyue-core`
-- Current slice: Pydantic schema contracts, recovery-runtime data contracts, command execution, JSONL trace writing, pytest verification, isolated worktree execution, session journal, recovery manifest persistence, recovery prompt generation, operation recording, local-loop recovery integration, reconciliation, resume context preparation, side-effect inspection, inspector-backed reconciliation, persisted resume cleanup, automatic file/git/artifact side-effect check recording, full interruption resume simulation, high-risk recovery safety gating, git remote/GitHub ref reconciliation, CLI demo entrypoint, LocalLoop crash simulation, deterministic candidate generation, verification feedback analysis, candidate revision loop, role-aware fake student/teacher provider contracts, teacher intervention policy, model role router, structured candidate output parsing, prompt template versioning, candidate service orchestration, toy student/teacher iteration loop, persisted iteration trace, trace replay resume context, iteration fallback resume prompt, and provider-free iteration resume demo, project knowledge layer, task contract rendering, bug dossier models, lesson packet models, regression eval assets, model routing table assets, curator input bundles, distillation proposal models, teacher guidance normalizer, curation review gate, capability ladder, worker performance records, model capability profiles, capability recommendation rules, creative briefs, creative variant schemas, creative critiques, user selection feedback, strategy evaluation records, strategy scorecards, benchmark task suites, strategy comparison reports, fake Hermes profile runner integration, provider failure diagnostics/redaction, provider profile integration smoke, provider-free toy workflow execution, sandboxed candidate file writes, verifier-gated promotion readiness, bug dossier generation on failure, fake teacher-guided retry, verified patch promotion to target branches, persisted workflow/teacher/promotion reports, M12 policy/action evidence, run-evidence indexes, approval-aware fallback handoff summaries, `RunCatalog` aggregate summaries, read-only local API, and `feiyue-runs` CLI for listing/showing/handoff rendering.
-- Local test command:
+## Why Feiyue
+
+Teams building LLM-based agent systems commonly hit three problems:
+
+- **Cost vs. quality**: Using capable models for everything is prohibitively expensive. Using cheap models alone produces unreliable results.
+- **No ground truth**: Models report success, but there is no independent verification. Failures compound silently.
+- **No learning**: Each run starts from scratch. Successful strategies and failure modes are not captured as reusable knowledge.
+
+Feiyue addresses these with a structured orchestration loop:
+
+```
+Human Direction → Strong Model (Spec) → Task Contract → Weak Model (Execute)
+  → Verifier → Policy Governor → Evidence → Curator → Assets
+```
+
+## Architecture
+
+### The Evolution Loop
+
+| Component | Role |
+|---|---|
+| **Strong Model** | Specification, task decomposition, sparse teacher guidance |
+| **Weak Model** | Bounded execution using cost-efficient inference |
+| **Verifier** | Deterministic pass/fail — the single source of truth |
+| **Policy Governor** | Budget, risk, privacy, and human-approval gates |
+| **Curator** | Distills successful patterns into lessons and evaluation cases |
+
+### Key Concepts
+
+**Strong/Weak Separation** — Strong models define what to build and how to verify success. Weak models execute within sandboxed boundaries. This lets teams reserve capable models for direction and oversight while using cost-effective models for the bulk of execution.
+
+**Verifier-Gated Execution** — A workflow is not considered successful because a model says so. It is successful only when the verifier and persisted evidence agree. Failures trigger teacher-guided retry within bounded budgets.
+
+**Evidence-First Design** — Every operation — execution, retry, promotion, approval — produces typed, persisted evidence. This replaces model self-reporting with auditable records suitable for compliance, rollback, and longitudinal analysis.
+
+**Policy-Governed Safety** — High-risk operations (retries, teacher calls, promotions, production changes) pass through typed policy gates before any side effect. Gates produce auditable decisions and escalate to human approval when required.
+
+**Asset Distillation** — Successful runs produce lessons, regression evaluation cases, and task templates. These are promoted through a curator review gate and reused in future runs, compounding capability gains and reducing teacher dependence over time.
+
+## Project Structure
+
+```
+Feiyue/
+├── packages/feiyue-core/      # Core engine (Python)
+│   ├── feiyue_core/
+│   │   ├── audit/              # Evidence and audit trails
+│   │   ├── candidates/         # Candidate output management
+│   │   ├── capability/         # Capability profiling and routing
+│   │   ├── creative/           # Creative briefs and variant generation
+│   │   ├── curation/           # Asset promotion and review gates
+│   │   ├── evaluation/         # Benchmarks and evaluation runner
+│   │   ├── generation/         # Prompt templates and generation
+│   │   ├── orchestrator/       # Workflow orchestration
+│   │   ├── providers/          # Model provider interfaces
+│   │   ├── recovery/           # Session resilience and recovery
+│   │   ├── routing/            # Model routing tables
+│   │   ├── runtime/            # Runtime contracts and simulation
+│   │   ├── safety/             # Policy governor and safety gates
+│   │   ├── sandbox/            # Sandboxed execution environment
+│   │   ├── schemas/            # Pydantic schema contracts
+│   │   ├── verifiers/          # Deterministic verification
+│   │   └── workflow/           # CLI, API, export, execution
+│   ├── tests/                  # 725+ deterministic tests
+│   └── pyproject.toml
+├── docs/                       # Public documentation
+├── examples/                   # Provider-free examples
+├── scripts/                    # Utility scripts
+└── tools/                      # Development tools
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Python 3.11+
+- No API keys required for provider-free mode
+
+### Install
 
 ```bash
 cd packages/feiyue-core
-python3 -m pytest tests/ -q
+pip install -e '.[dev]'
 ```
 
-- Interruption/resume demo command:
+### Run the provider-free smoke test
 
 ```bash
-cd packages/feiyue-core
-python3 -m feiyue_core.runtime.interruption_simulation --root /tmp/feiyue-demo --json
+python -m feiyue_core.examples.provider_free_smoke \
+  --root /tmp/feiyue-example \
+  --out /tmp/feiyue-example-report \
+  --bundle /tmp/feiyue-example-report.zip
 ```
 
-- Run evidence CLI commands:
+Expected marker: `PROVIDER_FREE_EXAMPLE_SMOKE_OK`
+
+### Run all tests
 
 ```bash
-cd packages/feiyue-core
-python3 -m feiyue_core.workflow.runs_cli --root ../.. list
-python3 -m feiyue_core.workflow.runs_cli --root ../.. list --json
-python3 -m feiyue_core.workflow.runs_cli --root ../.. show <task_id>
-python3 -m feiyue_core.workflow.runs_cli --root ../.. handoff <task_id>
-python3 -m feiyue_core.workflow.runs_api --root ../.. --host 127.0.0.1 --port 8765
-python3 -m feiyue_core.workflow.runs_export --root ../.. --out ../../.hermes/static-runs-report
-python3 -m feiyue_core.workflow.runs_export_verify ../../.hermes/static-runs-report/manifest.json
-python3 -m feiyue_core.workflow.runs_export_bundle --report ../../.hermes/static-runs-report --out ../../.hermes/static-runs-report.zip
-python3 -m feiyue_core.workflow.runs_export_all --root ../.. --out ../../.hermes/static-runs-report --bundle ../../.hermes/static-runs-report.zip
-# export writes index.html, manifest.json, assets/index.html, review-inbox/index.html, and runs/<task_id>.html
+python -m pytest -q
 ```
 
-- Provider-free example smoke command:
+725+ tests covering orchestration, safety gates, recovery, and evidence pipelines — all deterministic, all provider-free.
 
-```bash
-cd packages/feiyue-core
-python3 -m feiyue_core.examples.provider_free_smoke \
-  --root /tmp/feiyue-provider-free-example \
-  --out /tmp/feiyue-provider-free-example-report \
-  --bundle /tmp/feiyue-provider-free-example-report.zip
-# expected marker: PROVIDER_FREE_EXAMPLE_SMOKE_OK
-```
+## CLI Overview
 
-- Provider-free benchmark smoke command:
+Feiyue ships with the `feiyue-runs` command for evidence inspection and approval-gated operations:
 
-```bash
-cd packages/feiyue-core
-python3 -m feiyue_core.evaluation.benchmark_runner \
-  --quick \
-  --output /tmp/feiyue-benchmark.json \
-  --output-markdown /tmp/feiyue-benchmark.md
-# expected marker: BENCHMARK_SMOKE_OK
-```
+| Command | Purpose |
+|---|---|
+| `feiyue-runs list` | List persisted run evidence |
+| `feiyue-runs show <task_id>` | Inspect a run's full evidence |
+| `feiyue-runs handoff <task_id>` | Render a fallback handoff summary |
+| `feiyue-runs capability-history` | Build longitudinal capability history |
+| `feiyue-runs longitudinal-gain` | Measure before/after improvement over time |
+| `feiyue-runs review-inbox` | List pending review items (read-only) |
+| `feiyue-runs curator-live-proposal` | Build asset proposal from verified evidence |
+| `feiyue-runs promote-curator-asset` | Promote a reviewed asset with rollback evidence |
 
-- Creative-to-execution provider-free E2E smoke command:
+Additional commands for asset-reuse smoke, creative-to-execution E2E, multi-student dry-run, and export are documented in the [CLI Reference](docs/cli-reference.md).
 
-```bash
-cd packages/feiyue-core
-python3 -m feiyue_core.creative.e2e_smoke \
-  --root ../.. \
-  --run-id wave5-5-local \
-  --seed "Turn a human creative seed into a verifier-backed task contract" \
-  --write-report
-# console script when installed: creative-e2e-smoke --run-id wave5-5-local --seed "..." --write-report
-# writes ../../.hermes/creative-e2e/wave5-5-local/evidence.json and report.md
-# expected marker: CREATIVE_E2E_SMOKE_OK
-```
+## Documentation
 
-Read-only API endpoints:
+- [Architecture](docs/architecture.md) — System flow, roles, evidence surfaces
+- [Operator Guide](docs/operator-guide.md) — Daily operations and evidence inspection
+- [CLI Reference](docs/cli-reference.md) — Complete command reference
+- [Security Boundaries](docs/security-boundaries.md) — Authorization rules and safety defaults
+- [Release Checklist](docs/release-checklist.md) — CI gates and verification requirements
+- [Approval Runbooks](docs/approval-runbooks.md) — Authorization procedures for promotions and routing
+- [Rollback Guide](docs/rollback-guide.md) — Safe rollback procedures
+- [Resilient Session Runtime](docs/resilient-session-runtime.md) — Anti-amnesia recovery design
+- [Live Smoke Playbook](docs/live-smoke-playbook.md) — Smoke testing checklist
+- [Contributing](CONTRIBUTING.md) — Development conventions and CI expectations
 
-```text
-GET /
-GET /dashboard
-GET /dashboard/assets
-GET /dashboard/review-inbox
-GET /dashboard/runs/<task_id>
-GET /assets
-GET /review-inbox
-GET /runs
-GET /runs/<task_id>
-GET /runs/<task_id>/handoff
-```
+## Development
 
-## Documents
+Feiyue was built iteratively, starting from provider-free safety foundations through real-profile integration, creative-to-execution workflows, longitudinal measurement, and deployment readiness. The development process follows these principles:
 
-- [`docs/Feiyue-master-blueprint.md`](docs/Feiyue-master-blueprint.md) — highest-level canonical blueprint for Feiyue as a Hermes-based Creative Evolution Loop Orchestrator: human creativity, strong-model specification, weak-model execution, tool-grounded verification, teacher-guided repair, asset distillation, weak-model capability expansion, and emerging creative roles.
-- [`docs/Feiyue-system-doctrine.md`](docs/Feiyue-system-doctrine.md) — canonical doctrine for Feiyue's system-level self-evolution, student/teacher model roles, sparse teacher intervention, distillation, and cross-model quality preservation. Future plans and development default to this doctrine unless explicitly overridden.
-- [`docs/Feiyue-self-evolution-development-outline.md`](docs/Feiyue-self-evolution-development-outline.md) — canonical v2 development plan derived from the Master Blueprint, covering completed code assets, upcoming milestones, feature scope, tech stack, dependencies, parallel/serial work, and two-track functional/cleanliness acceptance gates.
-- [`docs/Feiyue-PRD.md`](docs/Feiyue-PRD.md) — product requirements for a verifiable feedback-driven AI self-improvement system.
-- [`docs/Feiyue-development-outline.md`](docs/Feiyue-development-outline.md) — detailed development outline, dependencies, parallelization plan, serial blockers, risks, and solution paths.
-- [`docs/index.md`](docs/index.md) — static docs index for canonical direction, architecture, release gates, contribution rules, and provider-free smoke surfaces.
-- [`docs/architecture.md`](docs/architecture.md) — provider-free architecture flow, roles, evidence/handoff surfaces, and gated future work.
-- [`docs/assets/feiyue-architecture.svg`](docs/assets/feiyue-architecture.svg) — static flat SVG diagram of the Feiyue provider-free workflow.
-- [`docs/release-checklist.md`](docs/release-checklist.md) — release gate checklist covering local commands, CI requirements, secret scan, and authorization boundaries.
-- [`docs/cli-reference.md`](docs/cli-reference.md) — stable `feiyue-runs` command reference covering evidence inspection, approval-gated operations, semantic review, and creative metrics commands.
-- [`docs/operator-guide.md`](docs/operator-guide.md) — operator entrypoint for daily checks, evidence paths, no global Hermes config mutation, and dry-run defaults.
-- [`docs/approval-runbooks.md`](docs/approval-runbooks.md) — exact authorization procedures for promotion, routing, and multi-worker dry-run approvals.
-- [`docs/live-smoke-playbook.md`](docs/live-smoke-playbook.md) — provider-free rehearsal, live/profile smoke authorization checklist, and abort gates.
-- [`docs/security-boundaries.md`](docs/security-boundaries.md) — forbidden actions, review inbox read-only behavior, secrets, and production PR/promotion disabled by default.
-- [`docs/rollback-guide.md`](docs/rollback-guide.md) — rollback evidence requirements, local rollback simulation, and stop conditions.
-- [`docs/real-provider-integration-plan.md`](docs/real-provider-integration-plan.md) — plan-only sequence and safety checklist for explicitly authorized real provider execution, Hermes profile subprocess smoke, teacher escalation, and real weak/strong benchmark work.
-- [`docs/real-multi-worker-live-dry-run.md`](docs/real-multi-worker-live-dry-run.md) — Wave5-3 fake-first/fail-closed CLI seam for authorized real Hermes multi-worker dry-run evidence under `.hermes/real-multi-worker-runs/<run_id>/evidence.json`.
-- [`docs/feiyue-frontend-hermes-embedding.md`](docs/feiyue-frontend-hermes-embedding.md) — frontend architecture proposal for a Feiyue operator console with a safe Hermes Bridge sidecar boundary.
-- [`docs/plans/feiyue-frontend-dogfood-real-task.md`](docs/plans/feiyue-frontend-dogfood-real-task.md) — plan for using the Feiyue frontend itself as a real recursive dogfood task and benchmark.
-- [`docs/plans/local-qwen-feiyue-github-submission-plan.md`](docs/plans/local-qwen-feiyue-github-submission-plan.md) — proposed commit/PR stack for local Qwen dogfood, Phase A-F scripts, and frontend scaffolding.
-- [`CONTRIBUTING.md`](CONTRIBUTING.md) — contribution rules for TDD, provider-free defaults, secret handling, and CI expectations.
-- [`docs/resilient-session-runtime.md`](docs/resilient-session-runtime.md) — feature design for anti-amnesia runtime recovery across model fallback, network/power loss, and unknown side effects.
-- [`docs/AI递归自我提升现状讨论 2026-06-12.md`](docs/AI递归自我提升现状讨论%202026-06-12.md) — discussion notes on practical Recursive Self-Improvement (RSI), synthetic data, self-play, AI feedback, inference-time self-correction, environment-driven feedback, and agent loops.
-- [`docs/real-project-learnings-voyagerai.md`](docs/real-project-learnings-voyagerai.md) — lessons from applying Feiyue to the real VOYAGERAI consolidation repo: parent-overlay safety, weak-model gap analysis, private-submodule CI, and portable evidence.
-- [`docs/two-hermes-github-sync.md`](docs/two-hermes-github-sync.md) — GitHub-based sync strategy for sharing Feiyue learning between the Windows 11 Hermes and MacBook Hermes without syncing secrets or local runtime state.
+- **Provider-free by default** — All core tests and CI pass deterministically without network access or API credentials
+- **Evidence-first** — Every operation produces typed, persisted evidence that serves as the audit trail
+- **TDD** — Red-green-refactor for all behavior changes
+- **No secrets in code** — Provider credentials are never checked into the repository
 
-## Status
+## License
 
-Private repository. Current baseline includes provider-free Feiyue core foundations through M9; M6 asset proposal persistence/review/promotion-gate writer; M9 benchmark case and trace-fixture preparation contracts; M10 safe provider/profile integration foundation plus real-provider plan-only authorization checklist, typed authorization/evidence records, and gated Hermes profile subprocess runner; M11 provider-free workflow execution, bounded multi-round fake teacher retry, verified branch promotion, production-promotion safety/rollback boundary, and run report persistence; M12 policy governor, budget/risk/privacy gates, exact-match human approval, action evidence, run-evidence indexes, and fallback handoff summaries; M13 `feiyue-runs` CLI, `RunCatalog`, read-only local API/dashboard/drill-down, read-only asset catalog, static HTML export, manifest hashing/verifier, portable bundle, and export-all pipeline; M9/M10 live-benchmark and multi-worker routing contracts that fail closed without explicit authorization; and M14 GitHub Actions CI gates with compileall, pytest, static export-all smoke, provider-free example smoke, provider-free benchmark smoke, release checklist, contributing guide, architecture doc, static docs index, SVG architecture diagram, secret scan, CI contract tests, and Node24 actions runtime opt-in. Current verified baseline: `703 passed`. Wave4-1F established the real Hermes profile benchmark checkpoint: 45/45 real Hermes profile calls passed across weak/mid/strong profiles, with `gemini-3.1-pro` now the canonical Gemini strong model. M10 real profile benchmark lane usable; M10 real multi-worker execution lane not yet implemented. Wave4-2B real profile workflow smoke passed with marker `WAVE4_2B_REAL_PROFILE_WORKFLOW_OK`: `feiyue-weak-deepseek-flash` produced a sandboxed toy-repo patch with provider_call_count: 1, workflow_status: verified, verifier pass, promotion-ready report, and clean source checkout. Wave4-2C real teacher retry smoke passed with marker `WAVE4_2C_REAL_TEACHER_RETRY_OK`: `feiyue-weak-deepseek-flash` produced a controlled failing first patch, `feiyue-strong-gpt55` provided teacher guidance, provider_call_count: 3, initial_workflow_status: needs_teacher, final_workflow_status: verified, retry_performed true, and clean source checkout. Wave4-2D productized that bridge into `RealProfileWorkflowRunner` plus `feiyue-runs workflow-smoke` evidence inspection, with fake-first contracts for worker/teacher retry evidence and redacted `.hermes/workflow-smokes/<run_id>/` reports. Wave4-3A added real-project-style dry-run semantics: dry_run_only: true, promotion_attempted: false, verifier-backed promotion_ready may be true, but no production promotion is attempted. Wave4-3B-1 added `RealProfilePromotionApproval` for exact approval binding to run_id/task_id/changed_files/target_branch/source_commit_sha/workflow_report_hash; Wave4-3B-2 added `RealProfilePromotionGate` plus `feiyue-runs workflow-promotion` evidence inspection, with fail-closed `missing_promotion_approval` and success-path `promotion_approval_applies` contracts. Wave4-3B-3 executed a low-risk real-project branch-only promotion smoke with run_id `wave4-3b-3-low-risk-real-project-promotion-smoke-v3`, target branch `feiyue/w43b-approved-promotion-smoke`, promoted commit `66f6055fec5a90f192b78bc6719e6938d46ba053`, remote branch verification, and clean main checkout. Wave4-3C productized approval into `feiyue-runs approve-promotion` and `feiyue-runs promote-approved`, then executed run_id `wave4-3c-productized-approval-cli-smoke-v2` into target branch `feiyue/w43c-productized-approval-cli-smoke` with promoted commit `d8370868a992320590d23865b2e77099b57930ad` and remote branch verification. Wave4-4 added `CapabilityFeedbackAggregator` and `feiyue-runs capability-feedback --write-report` to summarize workflow-smoke/workflow-promotion evidence into audit-only `latest.json` and `latest.md` reports with `routing_table_mutated: false`; routing table changes remain recommendations only. Wave4-4B added `RoutingProposalGenerator` and `feiyue-runs routing-proposal --proposal-id wave4-4b-routing-proposal-smoke --write-proposal` to produce human-reviewed routing proposals with `requires_human_approval: true`, source feedback/routing hashes, and `routing_table_mutated: false`. Wave4-4C added `RoutingApplyGate`, `approve-routing-proposal`, and `apply-approved-routing` for exact approval-gated routing updates; smoke `wave4-4c-routing-apply-smoke` applied only after `routing_proposal_approval_applies`, mutated a temporary routing table to `steady-4c`, and cleaned local artifacts. Wave4-5 added `MultiWorkerOrchestrationPlanner` and `feiyue-runs multi-worker-plan` to create provider-free multi-worker route plans from approved routing/apply evidence; smoke `wave4-5-multi-worker-orchestration-smoke` selected `steady-4c` with `routing_apply_evidence_loaded`, `provider_execution_requested: false`, and `global_hermes_config_mutated: false`. Wave4-5B added `MultiWorkerWorkflowDryRunOrchestrator` and `feiyue-runs multi-worker-workflow` evidence inspection to execute approved multi-worker plans as dry-run-only workflows; smoke `wave4-5b-approved-multi-worker-dry-run-smoke` selected `steady-4c`, recorded `multi_worker_plan_authorization_applies`, kept dry_run_only: true, promotion_attempted: false, and global_hermes_config_mutated: false. Wave4-5C productized that authorization into `approve-multi-worker-dry-run` and `run-approved-multi-worker-dry-run`; smoke `wave4-5c-productized-dry-run-approval-smoke` created persisted approval for `execute_multi_worker_workflow_dry_run`, ran the approved fake-worker dry-run, emitted `WAVE4_5C_PRODUCTIZED_DRY_RUN_APPROVAL_OK`, and preserved dry_run_only: true plus promotion_attempted: false. Wave4-5D/A added the authorization-gated Hermes profile runner seam (`--profile-runner fake|hermes`) for selected-worker multi-worker dry-runs; Wave4-5E/B added fail-closed multi-worker teacher escalation authorization (`MultiWorkerTeacherEscalationAuthorization`) and fake retry evidence; Wave4-6/C added longitudinal capability history reports; Wave4-6D added sandboxed curator asset promotion with dedup/rollback evidence; Wave4-6E added a read-only review inbox; Wave4-6F added local-only promotion PR-plan and rollback simulation contracts. Batch1 added `feiyue-runs live-smoke-plan --write-plan` for exact-authorized live A/B smoke readiness without live calls, `feiyue-runs longitudinal-gain --write-report` for before/after capability trend reports, read-only `/review-inbox` and `/dashboard/review-inbox` surfaces plus static export coverage, and operator runbooks for approvals, live smoke, security boundaries, and rollback. Real-project production promotion remains gated on exact explicit authorization, review, rollback, and configured credentials.
-
-
-## Latest verified live asset loop
-
-The first curator live asset loop has completed on verified Live B evidence. `feiyue-runs curator-live-proposal --write-proposal` converted `live-b-real-teacher-retry-smoke-20260614` into review-required proposal `asset-live-b-real-teacher-retry-20260614`; `feiyue-runs promote-curator-asset --proposal-id ... --patch-id lesson --rollback-ref ...` then approved and promoted the project-local lesson `.hermes/lessons/asset-live-b-real-teacher-retry-20260614.md` with rollback evidence. Distillation bundles can now promote their lesson, regression_eval, and task_template patches separately by `--patch-id` (or `--patch-index`), with per-patch promotion evidence under `.hermes/asset-proposals/<proposal_id>/promotions/`. The loop requires verified dry-run evidence, first verifier failure, teacher-guided retry, final verifier pass, `dry_run_only: true`, `promotion_attempted: false`, and `global_hermes_config_mutated: false`; production PR/promotion remains disabled by default.
-
-## Wave5-1 asset reuse / longitudinal gain smoke
-
-Status: provider-free dry-run harness implemented. `feiyue-runs asset-reuse-smoke --run-id <id> --lesson-path .hermes/lessons/<lesson>.md --write-report` loads a promoted project-local lesson from `.hermes/lessons`, injects it into a comparable deterministic smoke, and writes `.hermes/asset-reuse/<run_id>/evidence.json` plus `report.md`. Evidence is shaped for longitudinal/capability history follow-up and records `dry_run_only: true`, `promotion_attempted: false`, and `global_hermes_config_mutated: false`. Expected baseline remains a placeholder until a reviewed project-local lesson and longitudinal sample set are run together; do not infer production lift from the dry-run smoke alone.
-
-## Wave5-5 creative-to-execution E2E smoke
-
-Status: provider-free dry-run implemented. `creative-e2e-smoke --run-id <id> --seed <human-seed> --write-report` (or `python3 -m feiyue_core.creative.e2e_smoke`) creates a deterministic `CreativeBrief`, variants, critiques, selected-variant feedback, PRD/spec text, a `TaskContract`, and a fake verified workflow report. It persists curator-ready evidence under `.hermes/creative-e2e/<run_id>/evidence.json` and optional `report.md`. Evidence records `dry_run_only: true`, `promotion_attempted: false`, `curator_proposal_ready: true`, and `global_hermes_config_mutated: false`; no provider/profile calls, global Hermes mutation, or production promotion are attempted by default.
-
-## Blueprint Status Sync v2
-
-Feiyue is now approximately **75–80%** complete against the Master Blueprint as an engineering system: provider-free safety foundations, real Hermes profile evidence, Phase C live evidence ingestion, `real_creative_e2e` creative dry-run evidence, capability-history, longitudinal-gain reporting, and approval-gated promotion/release seams are implemented and CI-verified. The remaining frontier is no longer broader profile repetition; the first targeted **longitudinal mini-program** has run as `longitudinal-mini-program-20260614`, proving a provider-free 3-batch measurement path with teacher_call_rate_delta -1.0, retry_count_delta -2, and repeat_error_count_delta -2. 4A productized sequenced real teacher retry with `run-approved-multi-worker-teacher-retry`; real Feiyue repo smoke `real-repo-4a-productized-teacher-retry-dry-run` verified `feiyue-mid-deepseek-pro` + `feiyue-strong-gpt55` with provider_call_count 3, retry_performed true, dry_run_only true, and no promotion/global mutation. 4C captured the next **true multi-student planner** design in `docs/true-multi-student-planner-design.md`; 5A/5B implemented `MultiStudentDryRunExecutor` plus `approve-true-multi-student-dry-run`, `run-approved-true-multi-student-dry-run`, and `true-multi-student-workflow` evidence inspection with `reject_on_conflict` merge handling. 5C real Feiyue repo smoke `real-repo-5c-one-real-one-fake-dry-run` verified one real profile plus one fake profile with source worktree clean; 5D smoke `real-repo-5d-all-real-multi-student-dry-run` verified `feiyue-mid-deepseek-pro` + `feiyue-strong-gpt55` as distinct student assignments, provider_call_count 2, conflict_files empty, dry_run_only true, promotion_attempted false, and global_hermes_config_mutated false. 6A added `create_multi_student_pr_plan`, then planned and exact-approved a local-only fake draft PR from the 5D evidence with approval_applies true, external_pr_created false, auto_merge false, and mutates_production false. 6B added `GitHubDraftPRAdapter` plus `create-approved-draft-pr --adapter github`, then created real GitHub draft PR #2 (`https://github.com/sinonchum/Feiyue/pull/2`) from `feiyue/6b-draft-pr-smoke` to `main`; verification showed isDraft true, state OPEN, autoMergeRequest null, checks passed, and no merge/deployment/production mutation. 7A ran `real-repo-7a-true-multi-student-feature-dry-run` with two real profiles (`feiyue-mid-deepseek-pro` and `feiyue-strong-gpt55`), provider_call_count 2, conflict_files empty, combined verifier passed, dry_run_only true, and no promotion/global mutation. 7B promoted the verified sandbox diff into real feature Draft PR #3 (`https://github.com/sinonchum/Feiyue/pull/3`) on branch `feiyue/7b-real-feature-pr`; 7C attached provider-free semantic/safety review evidence `wave7-7c-pr3-semantic-safety-review` to the PR body via REST PATCH after `gh pr edit` scope checks failed; 7D generated merge-readiness evidence only (`wave7-7d-pr3-merge-readiness-evidence-only`) with PR checks passed, isDraft true, autoMergeRequest null, merge_performed false, auto_merge_enabled false, deploy_performed false, and production_mutated false. The next frontier is the real multi-worker project slice beyond evidence-only readiness: explicitly approved merge/rollback/deploy operations after human review. 8A added `MergeRollbackDeployReadinessPlan`, exact `approve-merge-rollback-deploy-readiness`, and `verify-merge-rollback-deploy-readiness`; smoke `wave8-8a-pr3-readiness-design` bound PR #3's 7D merge-readiness evidence, rollback plan, deploy plan, and post-merge verification plan, then verified status `ready` with approval_applies true while keeping merge_performed false, auto_merge_enabled false, deploy_performed false, and production_mutated false. 8B added `MergeExecutionApproval`, exact `approve-merge-execution`, and `execute-approved-merge`; smoke `wave8-8b-pr3-fake-merge-smoke` approved a fake adapter execution over the 8A readiness report, recorded `fake_adapter_simulated_merge_only` with simulated_merge_performed `true`, merge_performed `false`, external_side_effect_performed `false`, deploy_performed `false`, and production_mutated `false`, while the GitHub adapter inspection blocked PR #3 with `pr_is_draft` before any merge side effect. 8C added `PRReadyForReviewApproval`, `approve-pr-ready-for-review`, and `transition-pr-ready-for-review`; the same `wave8-8b-pr3-fake-merge-smoke` chain recorded `fake_adapter_simulated_ready_for_review_only` with simulated_ready_for_review_performed `true`, ready_for_review_performed `false`, external_side_effect_performed `false`, merge_performed `false`, deploy_performed `false`, and production_mutated `false`, while the GitHub adapter returned blocked with `external_pr_mutation_not_authorized` so PR #3 stayed Draft/Open. 8D added `PRReadyForReviewExternalMutationApproval`, `approve-pr-ready-for-review-external-mutation`, and `transition-pr-ready-for-review --adapter github --perform-external-mutation`; approval `wave8-8d-pr3-real-ready-for-review-approval` performed the real GitHub Draft-to-ready transition for PR #3 only, recording `github_pr_marked_ready_for_review`, isDraft `false`, ready_for_review_performed `true`, external_side_effect_performed `true`, merge_performed `false`, deploy_performed `false`, production_mutated `false`, and autoMergeRequest `null`. 8E added `RefreshedMergeReadinessEvidence` and `refresh-merge-readiness`; smoke `wave8-8e-pr3-nondraft-merge-readiness-refresh` refreshed PR #3 after ready-for-review and produced status `ready_for_human_merge_review` with `pr_non_draft_checks_passed_merge_readiness_refreshed`, isDraft `false`, checks_passed `true`, merge_performed `false`, auto_merge_enabled `false`, deploy_performed `false`, and production_mutated `false`. 8F-1 added `PreMergeFinalAudit` and `pre-merge-final-audit`; smoke `wave8-8f1-pr3-pre-merge-final-audit` generated an `approval_requested` artifact for PR #3 with `pre_merge_final_audit_passed_approval_request_ready`, merge_approval_request_ready `true`, head SHA `3f6537124c4bf353daf09cf2384d8eceb30b6a86`, changed files `packages/feiyue-core/feiyue_core/workflow/wave7_feature_marker.py` and `packages/feiyue-core/tests/test_wave7_feature_marker.py`, merge_performed `false`, auto_merge_enabled `false`, deploy_performed `false`, and production_mutated `false`. 8F-2 added `RealMergeExecutionApproval`, `RealMergeExecutionEvidence`, `approve-real-merge`, and `execute-approved-real-merge`; approval id `wave8-8f2-pr3-real-merge-approval` bound action `execute_real_github_merge`, 8F-1 audit hash, PR #3, head SHA, target branch, and merge_method `squash`; execution status `merged` recorded `real_merge_execution_approval_applies` and `github_pr_merged`, merge commit `7615eff150594a6d42c89ba5b309921d9d712ebb`, auto_merge_enabled `false`, deploy_performed `false`, and production_mutated `false`. 8G added `PostMergeVerificationHandoff` and `post-merge-handoff`; smoke `wave8-8g-pr3-post-merge-no-deploy-handoff` recorded post-merge verification status `handoff_ready`, `post_merge_verification_passed`, `no_deploy_release_handoff_ready`, release_handoff_ready `true`, local_test_baseline `695 passed`, CI run `27510205254`, deploy_performed `false`, and production_mutated `false`. 8H / Wave 9 planning saved `docs/plans/wave9-real-multi-worker-project-slice-plan.md`, defining the next real multi-worker project slice, immediate Wave9-2 task-pack step, dry_run_only: true, promotion_attempted: false, global_hermes_config_mutated: false, no-deploy scope, and production_mutated `false`. Wave9-2 added `Wave9TaskPack`, `Wave9TaskAssignment`, and `wave9-task-pack`; smoke `wave9-2-real-multi-worker-task-pack` persisted provider-free task-pack evidence with provider_call_count `0`, dry_run_only: true, promotion_attempted: false, global_hermes_config_mutated: false, and production_mutated `false`. Wave9-3 added `Wave9TaskPackAuthorization`, `Wave9AuthorizationCheck`, and `approve-wave9-real-multi-worker-run`; authorization `wave9-3-real-multi-worker-dry-run-authorization` binds action `execute_wave9_real_multi_worker_dry_run`, task-pack hash `f8ab0e3682e25a033c1f19c603dbe82f45c2f92cd42558feac3e3acfcf09aecb`, worker profiles, verifier commands, merge strategy, provider_call_count `0`, dry_run_only: true, promotion_attempted: false, global_hermes_config_mutated: false, and production_mutated `false`. Wave9-4 added `Wave9TaskPackExecutor` and `run-approved-wave9-real-multi-worker-dry-run`; real smoke `wave9-4-real-multi-worker-dry-run` consumed the Wave9-3 authorization with `feiyue-mid-deepseek-pro` + `feiyue-strong-gpt55`, provider_call_count `2`, conflict_files `[]`, reason `combined_verifier_passed`, dry_run_only: true, promotion_attempted: false, external_pr_created: false, merge_performed: false, deploy_performed: false, global_hermes_config_mutated: false, production_mutated `false`, and source_repo_clean: true. Wave9-5 added `Wave9LocalPRPlan` and `wave9-local-pr-plan`; smoke `wave9-5-local-pr-plan` converted verified execution `wave9-4-real-multi-worker-dry-run` into provider-free local PR-plan evidence with provider_call_count `0`, changed files for `wave9_marker.py` and `test_wave9_marker.py`, reason `local_pr_plan_only`, dry_run_only: true, promotion_attempted: false, external_pr_created: false, merge_performed: false, deploy_performed: false, global_hermes_config_mutated: false, production_mutated `false`, and source_repo_clean: true. Wave9-6 added `Wave9LocalBranchMaterialization`, `approve-wave9-local-pr-plan-materialization`, and `materialize-wave9-local-pr-plan`; smoke `wave9-6-local-branch-materialization` materialized `wave9-5-local-pr-plan` into local branch `wave9/real-multi-worker-marker` with provider_call_count `0`, local_branch_created: true, reason `local_branch_materialized` + `local_verifier_passed`, branch_pushed: false, external_pr_created: false, merge_performed: false, deploy_performed: false, promotion_attempted: false, production_mutated `false`, and source_repo_clean: true. Wave9-7 added `Wave9LocalBranchCommit`, `approve-wave9-local-branch-commit`, and `commit-wave9-local-branch`; smoke `wave9-7-local-branch-commit` committed verified materialization `wave9-6-local-branch-materialization` locally on `wave9/real-multi-worker-marker` with provider_call_count `0`, local_commit_created: true, local commit SHA `1a95bfc4c0578cef566b515da31047df1eda595e`, reason `local_verifier_passed` + `local_branch_commit_created`, branch_pushed: false, external_pr_created: false, merge_performed: false, deploy_performed: false, promotion_attempted: false, and production_mutated `false`. Wave9-8 added `Wave9DraftPRApproval`, `Wave9DraftPR`, `approve-wave9-draft-pr`, and `create-wave9-draft-pr`; the gate is exact-bound to Wave9-7 commit evidence and permits only Draft PR creation with auto_merge_enabled: false, merge_performed: false, deploy_performed: false, and production_mutated `false`. Wave9-9/10 added provider-free `Wave9PRSemanticReview` plus `Wave9CapabilityIngestion` with `wave9-pr-semantic-review` and `wave9-capability-ingest`; review/ingestion evidence records provider_call_count `0`, mutates_state: false, routing_table_mutated: false, merge_performed: false, deploy_performed: false, and production_mutated `false`. Wave9-11/15 advanced PR #4 through ready-for-review, checks, squash merge, local post-merge verification, and no-deploy handoff `wave9-15-pr4-post-merge-no-deploy-handoff`; merge commit `78ae64c6751741b9a0924fd8ff8457ba54c690ee`, local baseline `695 passed`, deploy_performed: false, production_mutated `false`.
-
-## Wave5 completion status
-
-Wave5-1 through Wave5-6 have been implemented as fake-first / dry-run-safe productized seams. Wave5-1 loads promoted lessons and emits asset-reuse longitudinal evidence; Wave5-2 promotes lesson/regression_eval/task_template bundle patches separately with per-patch rollback evidence; Wave5-3 persists authorized real multi-worker dry-run history evidence while tests and smoke use fake runners; Wave5-4 creates draft PR plans/approvals/fake draft PR evidence with `auto_merge: false`; Wave5-5 runs provider-free creative seed → variant → PRD/spec → task contract → verified workflow evidence; Wave5-6 verifies release-candidate readiness with CI, rollback, exact production approval, and `production_mutated: false` dry-run evidence. Phase B productization adds disabled write-side review UI controls, generated `docs/cli-reference.md`, provider-free semantic review evidence, and creative proposal acceptance/taste metrics. Real external PR creation, merge, deployment, and production mutation remain disabled unless separately authorized with credentials and rollback approval.
-
-## Wave10-1 through Wave13-1 execution batch
-
-Status: executed on 2026-06-15 as local evidence-first operations with no real provider calls, no global Hermes config mutation, no deploy, and no production mutation.
-
-- **Wave10-1 longitudinal mini-program**: `wave10-1-longitudinal-mini-program-20260615` completed 3 batches (`baseline` → `lesson_injected` → `routing_adjusted`) with `pass_rate_delta: 1.0`, `teacher_call_rate_delta: -1.0`, `retry_count_delta: -2`, `repeat_error_count_delta: -2`, `provider_call_count: 0`, `dry_run_only: true`, `promotion_attempted: false`, and `production_mutated: false`.
-- **Wave10-2 asset lifecycle / reuse smoke**: `wave10-2-asset-reuse-smoke-20260615` loaded `.hermes/lessons/wave5-teacher-reduction-medium-20260614.md`, prevented the comparable deterministic error, and recorded after-metrics with `verified: true`, `teacher_used: false`, `retry_count: 0`, `dry_run_only: true`, `promotion_attempted: false`, and `global_hermes_config_mutated: false`.
-- **Wave10-3 routing/capability learning refresh**: `capability-history --write-report` refreshed 127 local records and `longitudinal-gain --write-report` refreshed the grouped before/after report. This remains measurement evidence only; no routing table or Hermes global config was mutated.
-- **Wave11-1 approval dashboard data**: `review-inbox --format json` returned 63 read-only review items with `mutates_state: false` across asset proposals, routing proposals, workflow promotions, and multi-worker plans.
-- **Wave11-2 evidence explorer**: `feiyue-runs-export-all` produced and verified static export/bundle artifacts under `.hermes/static-run-reports/wave11-2-evidence-explorer-20260615`, including `review-inbox/index.html`; both initial and extracted manifest verification passed.
-- **Wave12-1 creative role feedback marker**: `wave12-1-creative-feedback-20260615` recorded a deferred creative feedback decision linked to Wave10-1, with summary `provider_call_count: 0`, `mutates_state: false`, and `global_hermes_config_mutated: false`.
-- **Wave13-1 deploy/rollback readiness**: `wave13-1-deploy-rollback-readiness-20260615` created, approved, and verified a merge/rollback/deploy readiness design with `approval_applies: true`, `merge_performed: false`, `auto_merge_enabled: false`, `deploy_performed: false`, and `production_mutated: false`. The deploy target is still intentionally blocked until a real environment and exact deployment approval exist.
-
-## Wave14-1 through Wave14-4 closure batch
-
-Status: executed on 2026-06-15 via `Wave14ClosureRunner` as an evidence-first closure batch. The batch intentionally performed no real provider call, no external deployment, and no production mutation.
-
-- **Wave14-1 real longitudinal 3-task program boundary**: `wave14-closure-20260615` records `longitudinal_task_count: 3`, `longitudinal_teacher_call_rate_delta: -1.0`, and dry-run/no-production safety inherited from the Wave10 evidence path.
-- **Wave14-2 operator cockpit v1**: the same closure evidence records `operator_cockpit_v1_ready: true`, `evidence_explorer_verified: true`, and read-only review inbox/static evidence explorer readiness.
-- **Wave14-3 routing learning apply loop**: records `routing_learning_apply_loop_ready: true`, `routing_table_mutated: false`, and requires human-reviewed apply before any routing mutation.
-- **Wave14-4 deploy target / release artifact**: selects `deploy_target_selected: local-release-artifact`, records `requires_exact_deploy_approval: true`, `deploy_performed: false`, and `production_mutated: false`; real deployment remains blocked pending a concrete environment and exact approval.
-
-## Wave14 real-environment 1-4 authorized run
-
-Status: executed on 2026-06-15 after explicit user authorization (`我授权，真实环境跑一轮1-4`). Evidence run: `wave14-real-env-1to4-20260615`.
-
-- **Wave14-1 real worker execution**: ran one real Hermes profile subprocess through `feiyue-mid-deepseek-pro` against a clean local toy repo. Result: `status: verified`, `provider_call_count: 1`, source repo clean, `dry_run_only: true`, no promotion, and no global Hermes config mutation.
-- **Wave14-2 real operator artifact**: exported a fresh static operator cockpit bundle at `.hermes/static-run-reports/wave14-real-env-1to4-20260615-operator-cockpit.zip`; `static_export_all_ok: true`; review inbox remained read-only with `mutates_state: false`.
-- **Wave14-3 routing learning**: generated routing proposal `wave14-real-env-1to4-20260615-routing-learning-proposal`; kept a **safe routing apply hold** because the proposal still includes stale/non-installed `steady-4c` alongside `feiyue-mid-deepseek-pro`; `routing_table_mutated: false`.
-- **Wave14-4 local release artifact readiness**: verified readiness `wave14-real-env-1to4-20260615-local-release-artifact-readiness-v2`; local artifact readiness is ready, but `deploy_performed: false` and `production_mutated: false` because no external production target was supplied.
-
-## Wave14 filtered Routing Apply
-
-Status: executed after user instruction to run Routing Apply before deployment discussion. Proposal `wave14-real-env-1to4-20260615-routing-learning-filtered` filtered out stale/non-installed `steady-4c` and applied only the real profile recommendation.
-
-- Approval: `auth.wave14-real-env-1to4-20260615-routing-learning-filtered.apply`.
-- Result: `status: applied`; `applied_profiles: feiyue-mid-deepseek-pro`; `routing_table_mutated: false` because the worker route already used `feiyue-mid-deepseek-pro`.
-- Safety: `steady-4c excluded`; no deploy was run; `deploy_performed: false`; `production_mutated: false`.
-
-## Wave14 Deployment 1 GitHub Release Artifact
-
-Deployment 1 published the verified Wave14 operator evidence bundle as a GitHub Release artifact after explicit approval (`同意Deployment 1`).
-
-- Release: `wave14-real-env-20260615` — https://github.com/sinonchum/Feiyue/releases/tag/wave14-real-env-20260615
-- Asset: `wave14-real-env-1to4-20260615-operator-cockpit.zip`
-- Asset SHA256: `b6913a8cf30c4e1f2bfcacfcc421717744edf0a972ef596f3f849c3e4bf8301e`
-- Source commit: `c09f8ab8e7cd3f1b0b2c0b4b98880eaf3aba5aed`
-- CI: https://github.com/sinonchum/Feiyue/actions/runs/27543390141
-- Verification: `post_download_manifest_verify: STATIC_REPORT_VERIFY_OK checked_files=3`
-- Deployment scope: `deploy_target: github_release_artifact`; `deploy_performed: true`; no service started; no external API deployed; `production_mutated: false`.
-
-## Wave14 Deployment 2 GitHub Pages Static Cockpit
-
-Deployment 2 published the Wave14 cockpit as a public GitHub Pages static site in a standalone repo so the private Feiyue source repo remained private.
-
-- Public repo: `sinonchum/Feiyue-operator-cockpit` — https://github.com/sinonchum/Feiyue-operator-cockpit
-- Cockpit URL: https://sinonchum.github.io/Feiyue-operator-cockpit/wave14-real-env-20260615/
-- public_pages_commit: 964c138914c567d1b0f0102597df1bd23e3a28d4
-- Source release asset SHA256: `b6913a8cf30c4e1f2bfcacfcc421717744edf0a972ef596f3f849c3e4bf8301e`
-- Remote manifest SHA256: `ceb6dab511c017f2fc537bc88790d2310c47bed686c2a21bbdfc7d6bf13361b8`
-- Verification: `index.html`, `manifest.json`, `assets/index.html`, and `review-inbox/index.html` returned HTTP 200.
-- Deployment scope: `deploy_target: github_pages_static_cockpit_public_repo`; `deploy_performed: true`; `github_pages_config_mutated: true`; `private_source_repo_publicized: false`; `external_api_deployed: false`; `provider_call_count: 0`; `production_mutated: false`.
-
+This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
