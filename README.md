@@ -43,6 +43,67 @@ Human Direction → Strong Model (Spec) → Task Contract → Weak Model (Execut
 
 **Asset Distillation** — Successful runs produce lessons, regression evaluation cases, and task templates. These are promoted through a curator review gate and reused in future runs, compounding capability gains and reducing teacher dependence over time.
 
+## Feiyue + Hermes
+
+Feiyue is built on top of [Hermes Agent](https://hermes-agent.nousresearch.com) — an open-source AI agent framework by Nous Research. The relationship is a layered one:
+
+```
+Feiyue (orchestration, verification, curation, evidence)
+  └─ Hermes Agent (profiles, tool calling, model routing, sessions)
+       └─ LLM Providers (OpenAI, Anthropic, DeepSeek, local, etc.)
+```
+
+### How they nest
+
+**Hermes profiles as the execution layer** — Feiyue defines named Hermes profiles for each model role (`feiyue-weak-deepseek-flash`, `feiyue-mid-deepseek-pro`, `feiyue-strong-gpt55`, etc.). When Feiyue needs to dispatch a task, it launches a Hermes profile subprocess with the appropriate model and toolset. The profile handles the actual model call, while Feiyue handles verification, policy gates, and evidence persistence.
+
+**Hermes Bridge** — The Feiyue operator console uses a Hermes Bridge sidecar to launch or resume Hermes sessions under explicit controls. The browser is an operator surface, not an agent runtime. Approved intents flow through Feiyue's policy gates before reaching a Hermes profile. Results write back as evidence under `.hermes/`.
+
+**Skill integration** — Feiyue's promoted lessons and routing rules can be consumed by Hermes as skills. When Hermes runs in a project that uses Feiyue, it loads these assets to benefit from accumulated learning — fewer teacher calls, fewer retries, and better model routing.
+
+**Closed loop** — Hermes executes the work; Feiyue verifies the result, records the evidence, and distills reusable knowledge. On the next run, that knowledge feeds back through Hermes profiles as improved lessons, routing, and task templates.
+
+## Multi-Machine Sync
+
+Feiyue is designed to share its accumulated learning across multiple Hermes instances — for example, a Windows workstation and a MacBook, or a team of developers.
+
+### Sync layer
+
+The Feiyue GitHub repository is the canonical sync medium. It holds the shared learning kernel:
+
+| Syncs via Feiyue repo | Stays local |
+|---|---|
+| Promoted lessons (`.hermes/lessons/`) | API keys and OAuth tokens |
+| Regression evaluation cases (`.hermes/evals/`) | Gateway session databases |
+| Task templates (`.hermes/task-templates/`) | Machine-specific cron state |
+| Routing rules (`.hermes/model-routing.yaml`) | Raw chat history and dumps |
+| Hermes Bridge scripts and CI patterns | Local memory and user profile |
+
+### Workflow
+
+Before starting a major task on any machine:
+
+```bash
+# Pull the latest shared learning
+cd ~/work/Feiyue
+git pull --ff-only
+
+# Install any new skills or bridge scripts
+python tools/hermes-bridge/install_local_assets.py --install-skill --install-bridge
+```
+
+Then work inside the target project. After finishing:
+
+```bash
+# Commit new lessons, evals, or routing improvements
+cd ~/work/Feiyue
+git add .hermes/lessons/ .hermes/evals/ .hermes/task-templates/
+git commit -m "feat: lessons from ..."
+git push
+```
+
+The other machine pulls before its next session and benefits from the accumulated learning without sharing secrets or fragile local state.
+
 ## Project Structure
 
 ```
