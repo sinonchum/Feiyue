@@ -8,6 +8,36 @@ from pathlib import Path
 from typing import Sequence
 from urllib.parse import unquote, urlparse
 
+
+def _parse_query(parsed_url) -> dict[str, str]:
+    """Parse query string with URL decoding. Returns a dict of last-value-per-key."""
+    from urllib.parse import parse_qs
+    raw = parse_qs(parsed_url.query, keep_blank_values=True)
+    return {k: (v[-1] if isinstance(v, list) else v) for k, v in raw.items()} if raw else {}
+
+
+def _validate_ttl(ttl_str: str | None, default: int = 7) -> int:
+    if ttl_str is None:
+        return default
+    try:
+        ttl = int(ttl_str)
+    except ValueError:
+        raise ValueError(f"ttl_days must be an integer, got {ttl_str!r}")
+    if not (1 <= ttl <= 365):
+        raise ValueError(f"ttl_days must be between 1 and 365, got {ttl}")
+    return ttl
+
+
+def _validate_since(since_str: str | None) -> str | None:
+    if since_str is None or since_str.strip() == "":
+        return None
+    from datetime import datetime
+    try:
+        datetime.fromisoformat(since_str)
+    except ValueError:
+        raise ValueError(f"since must be a valid ISO-8601 date, got {since_str!r}")
+    return since_str
+
 from feiyue_core.workflow.asset_catalog import AssetCatalog
 from feiyue_core.workflow.execution import RunCatalog, RunEvidenceLoader, RunEvidenceNotFoundError
 from feiyue_core.workflow.hermes_sessions import (
@@ -732,9 +762,12 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                     return
                 if path == "/api/audit-trail/export":
                     parsed = urlparse(self.path)
-                    qs = {k: v[0] for k, v in (p.split("=", 1) for p in parsed.query.split("&") if "=" in p)} if parsed.query else {}
+                    qs = _parse_query(parsed)
                     fmt = qs.get("format", "markdown")
-                    since = qs.get("since", None)
+                    if fmt not in ("markdown", "json"):
+                        self._send_json(400, {"error": "invalid_format", "message": f"unsupported format: {fmt!r}"})
+                        return
+                    since = _validate_since(qs.get("since", None))
                     audit = generate_audit_trail(root, since=since)
                     if fmt == "json":
                         self._send_json(200, {
@@ -768,8 +801,8 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                     return
                 if path.startswith("/api/audit-trail"):
                     parsed = urlparse(self.path)
-                    qs = {k: v[0] for k, v in (p.split("=", 1) for p in parsed.query.split("&") if "=" in p)} if parsed.query else {}
-                    since = qs.get("since", None)
+                    qs = _parse_query(parsed)
+                    since = _validate_since(qs.get("since", None))
                     audit = generate_audit_trail(root, since=since)
                     self._send_json(200, {
                         "total_entries": audit.total_entries,
@@ -820,8 +853,8 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
                     return
                 if path == "/api/cleanup/status":
                     parsed = urlparse(self.path)
-                    qs = {k: v[0] for k, v in (p.split("=", 1) for p in parsed.query.split("&") if "=" in p)} if parsed.query else {}
-                    ttl = int(qs.get("ttl_days", "7"))
+                    qs = _parse_query(parsed)
+                    ttl = _validate_ttl(qs.get("ttl_days"))
                     status = get_cleanup_status(root, ttl_days=ttl)
                     self._send_json(200, {
                         "total_artifacts": status.total_artifacts,
@@ -954,7 +987,7 @@ def create_runs_api_handler(project_root: str | Path) -> type[BaseHTTPRequestHan
             if path == "/api/cleanup/run":
                 try:
                     payload = self._read_json_body()
-                    ttl = int(payload.get("ttl_days", 7))
+                    ttl = _validate_ttl(str(payload.get("ttl_days", 7)))
                     result = run_cleanup(root, ttl_days=ttl)
                     self._send_json(200, {
                         "removed_count": result.removed_count,

@@ -502,10 +502,38 @@ function wireExportAuditButton() {
 
 // === G-10: State Persistence (localStorage) ===
 
+const CACHE_TTL_MS = 86400000;  // 24 hours
+
+function _isCacheExpired() {
+  try {
+    const cachedAt = localStorage.getItem('feiyue_state_cached_at');
+    if (!cachedAt) return true;
+    return Date.now() - new Date(cachedAt).getTime() > CACHE_TTL_MS;
+  } catch (e) {
+    return true;
+  }
+}
+
+function _truncateForCache(key, val) {
+  // Only cache summary-level data, not full event arrays
+  if (!val || typeof val !== 'object') return val;
+  // Clone so we don't mutate in-memory state
+  const copy = Array.isArray(val) ? [...val] : { ...val };
+  // Truncate audit trail entries to summary
+  if (key === 'auditTrail' && copy.entries && Array.isArray(copy.entries)) {
+    copy.entries = copy.entries.slice(-50);
+  }
+  // Truncate execution output event lists
+  if (key === 'executionOutput' && copy.outputs && Array.isArray(copy.outputs)) {
+    copy.outputs = copy.outputs.map(o => o.events ? { ...o, events: o.events.slice(-5) } : o);
+  }
+  return copy;
+}
+
 function saveState() {
   try {
     for (const [key, val] of Object.entries(state)) {
-      if (val !== null) localStorage.setItem('feiyue_state_' + key, JSON.stringify(val));
+      if (val !== null) localStorage.setItem('feiyue_state_' + key, JSON.stringify(_truncateForCache(key, val)));
     }
     localStorage.setItem('feiyue_state_cached_at', new Date().toISOString());
   } catch (e) {
@@ -515,6 +543,7 @@ function saveState() {
 
 function restoreState() {
   try {
+    if (_isCacheExpired()) return false;
     const cachedAt = localStorage.getItem('feiyue_state_cached_at');
     if (!cachedAt) return false;
     let restored = false;
@@ -535,11 +564,36 @@ function restoreState() {
   }
 }
 
+function clearCache() {
+  try {
+    for (const key of Object.keys(state)) {
+      localStorage.removeItem('feiyue_state_' + key);
+    }
+    localStorage.removeItem('feiyue_state_cached_at');
+    const el = document.getElementById('cache-indicator');
+    if (el) el.textContent = 'cache cleared';
+  } catch (e) {
+    // ignore
+  }
+}
+
+function wireClearCacheButton() {
+  const btn = document.getElementById('clear-cache');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    clearCache();
+    btn.disabled = true;
+  });
+}
+
 function renderCachedIndicator() {
   const cachedAt = localStorage.getItem('feiyue_state_cached_at');
-  if (cachedAt) {
+  if (cachedAt && !_isCacheExpired()) {
     const el = document.getElementById('cache-indicator');
     if (el) el.textContent = 'cached: ' + cachedAt.slice(0, 19).replace('T', ' ');
+  } else if (cachedAt && _isCacheExpired()) {
+    const el = document.getElementById('cache-indicator');
+    if (el) el.textContent = 'cache expired';
   }
 }
 
@@ -670,6 +724,7 @@ async function boot() {
   wireExportAuditButton();
   wireTimelineButtons();
   wireCleanupButton();
+  wireClearCacheButton();
   // Restore cached state from localStorage (G-10)
   const restored = restoreState();
   if (restored) {

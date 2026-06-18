@@ -234,6 +234,12 @@ code {
   text-align: right;
 }
 
+.clear-cache-btn {
+  margin-left: 12px;
+  font-size: 11px;
+  padding: 2px 10px;
+}
+
 /* G-11: Timeline overlay */
 .timeline-overlay {
   position: fixed;

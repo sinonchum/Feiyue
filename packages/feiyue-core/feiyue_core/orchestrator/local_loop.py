@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import uuid4
 
+import sys
+
 from pydantic import Field
 
 from feiyue_core.audit import JsonlTraceWriter
@@ -150,7 +152,7 @@ class LocalLoop:
         status = ExecutionStatus.FINISHED if verification.passed else ExecutionStatus.FAILED
         exit_code = verification.metadata.get("exit_code")
         duration_ms = verification.metadata.get("duration_ms")
-        command = " ".join(verification.metadata.get("command", ["python3", "-m", "pytest", "-q"]))
+        command = " ".join(verification.metadata.get("command", [sys.executable, "-m", "pytest", "-q"]))
         return ExecutionRun(
             id=f"run_{uuid4().hex}",
             candidate_id=candidate.id,
