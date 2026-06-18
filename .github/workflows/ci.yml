@@ -108,6 +108,16 @@ jobs:
           test -f "$TMP/benchmark.json"
           test -f "$TMP/benchmark.md"
 
+      - name: Repository hygiene
+        run: |
+          set -euo pipefail
+          if test -n "$(git ls-files '.hermes/**')"; then
+            echo "Tracked generated .hermes artifacts are not allowed:"
+            git ls-files '.hermes/**'
+            exit 1
+          fi
+          echo REPO_HYGIENE_OK
+
       - name: Secret scan
         run: |
           set -euo pipefail

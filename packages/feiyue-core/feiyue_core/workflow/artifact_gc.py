@@ -11,8 +11,10 @@ Provides:
   than ttl_days. Returns a report of what was removed.
 
 Safety: provider-free, no Hermes start, no global config mutation.
-Only removes expired artifact directories — never touches config.yaml,
-.env, model-routing.yaml, or any file outside .hermes/.
+The status scan is read-only; the cleanup run is an explicit project-local
+artifact mutation because it removes expired directories under .hermes/.
+It never touches config.yaml, .env, model-routing.yaml, or any file outside
+.hermes/.
 """
 
 from __future__ import annotations
@@ -88,7 +90,7 @@ class CleanupRunResult:
     removed_entries: list[dict[str, object]] = field(default_factory=list)
     kept_entries: list[dict[str, object]] = field(default_factory=list)
     ttl_days: int = 7
-    mutates_state: bool = False
+    mutates_state: bool = True
     provider_call_count: int = 0
     hermes_started: bool = False
 
@@ -154,7 +156,7 @@ def _scan_hermes_hermes(root: Path) -> list[ArtifactEntry]:
             meta = _read_artifact_meta(artifact_dir)
             entries.append(
                 ArtifactEntry(
-                    path=str(artifact_dir.relative_to(root)),
+                    path=artifact_dir.relative_to(root).as_posix(),
                     category=category_label,
                     age_days=round(age, 1),
                     size_bytes=size,
@@ -186,7 +188,7 @@ def get_cleanup_status(project_root: str | Path, ttl_days: int = 7) -> CleanupSt
             meta = _read_artifact_meta(entry_dir)
             entries.append(
                 ArtifactEntry(
-                    path=str(entry_dir.relative_to(root)),
+                    path=entry_dir.relative_to(root).as_posix(),
                     category=label,
                     age_days=round(age, 1),
                     size_bytes=size,
